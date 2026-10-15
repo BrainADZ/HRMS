@@ -128,3 +128,42 @@ test('strict mode signs you out after leaving the office and pauses the clock', 
   assert.equal(empTeam.length, 0, 'employees have no team');
   assert.equal((await hr.put('/settings', { geofence: { mode: 'off' } })).status, 200);
 });
+
+test('employee working place controls assigned-branch access and remote attendance', async () => {
+  const admin = await as(ctx.base, CEO);
+  const eid = ctx.db.value('SELECT employee_id FROM users WHERE email = ?', EMP);
+  const branch = ctx.db.insert('locations', { name: 'Assigned test branch' });
+  const otherBranch = ctx.db.insert('locations', { name: 'Other test branch' });
+  const officeId = ctx.db.insert('office_sites', { name: 'Assigned test office', location_id: branch, ...OFFICE, radius_m: 200, active: 1 });
+  const otherId = ctx.db.insert('office_sites', { name: 'Other test office', location_id: otherBranch, lat: HOME.lat, lng: HOME.lng, radius_m: 200, ip_ranges: '127.0.0.1', active: 1 });
+  const before = ctx.db.get('SELECT work_place, location_id FROM employees WHERE id = ?', eid);
+  try {
+    assert.equal((await admin.put(`/employees/${eid}`, { work_place: 'elsewhere' })).status, 400);
+    assert.equal((await admin.put(`/employees/${eid}`, { work_place: 'onsite', location_id: '' })).status, 400);
+    assert.equal((await admin.put(`/employees/${eid}`, { work_place: 'onsite', location_id: branch })).status, 200);
+    assert.equal((await admin.get(`/employees/${eid}`)).body.employee.work_place, 'onsite');
+    assert.equal((await admin.put('/settings', { geofence: { mode: 'login' } })).status, 200);
+    // The other branch's network must not bypass the assigned branch check.
+    assert.equal((await signIn({ email: EMP, password: PW, location: HOME })).status, 403);
+    assert.equal((await signIn({ email: EMP, password: PW })).body.code, 'location_required');
+    assert.equal((await signIn({ email: EMP, password: PW, location: INSIDE })).status, 200);
+    ctx.db.update('office_sites', officeId, { active: 0 });
+    assert.equal((await signIn({ email: EMP, password: PW, location: INSIDE })).body.code, 'office_not_configured');
+    assert.equal((await admin.put(`/employees/${eid}`, { work_place: 'wfh' })).status, 200);
+    const remote = await as(ctx.base, EMP);
+    const w = (await remote.get('/attendance/workday')).body.workday;
+    ctx.db.run('DELETE FROM work_sessions WHERE employee_id = ? AND date = ?', eid, w.date);
+    ctx.db.run('DELETE FROM attendance WHERE employee_id = ? AND date = ?', eid, w.date);
+    assert.equal((await remote.post('/attendance/check-in')).status, 200);
+    assert.equal((await remote.get('/attendance/workday')).body.workday.mode, 'wfh');
+    assert.equal((await remote.put(`/employees/${eid}`, { work_place: 'onsite', location_id: otherBranch })).status, 200);
+    assert.equal((await admin.get(`/employees/${eid}`)).body.employee.work_place, 'wfh', 'employees cannot change their own work assignment');
+    assert.equal((await remote.post('/attendance/check-out', { action: 'break' })).status, 200);
+    assert.equal((await remote.post('/attendance/check-in')).status, 200);
+  } finally {
+    ctx.db.update('employees', eid, before);
+    ctx.db.run('DELETE FROM office_sites WHERE id IN (?, ?)', officeId, otherId);
+    await admin.put('/settings', { geofence: { mode: 'off' } });
+  }
+});
+

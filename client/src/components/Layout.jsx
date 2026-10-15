@@ -11,13 +11,13 @@ import { useClickOutside, useDebounced } from '../lib/hooks.js';
 import { Avatar, Button, Field, Input, Modal } from './ui.jsx';
 import WorkClock, { SignInPrompts, SignOutModal, LocationGuard } from './WorkClock.jsx';
 import { useWorkday } from '../lib/workday.js';
+import CompanyLogo from './CompanyLogo.jsx';
 
-export function Logo({ size = '' }) {
+export function Logo({ size = '', showHrms = true }) {
   return (
     <div className={`logo ${size}`}>
-      <div className="b">BrainADZ</div>
-      <div className="h">HRMS</div>
-      {size !== 'sm' && <div className="tg">People &nbsp;|&nbsp; Process &nbsp;|&nbsp; Possibilities</div>}
+      <CompanyLogo compact={size === 'sm'} />
+      {showHrms && <div className="h">HRMS</div>}
     </div>
   );
 }
@@ -37,7 +37,7 @@ export function BrandBanner() {
   return (
     <div className="brand-banner">
       <div>
-        <div className="big"><span className="b">BrainADZ</span> <span className="h">HRMS</span></div>
+        <div className="big"><CompanyLogo /> <span className="h">HRMS</span></div>
         <div className="sub">Unified people operations across all BrainADZ verticals</div>
       </div>
       <div className="script">People<br />Power<br />Progress</div>
@@ -65,12 +65,14 @@ const NAV = [
   { to: '/screener', label: 'Resume Screener AI', icon: Sparkles, roles: ['admin', 'hr'] },
   { to: '/employees', label: 'Employees', icon: Users },
   { to: '/documents', label: 'Documents', icon: FolderOpen },
-  { to: '/leave', label: 'Leave & Policies', icon: CalendarDays },
+  { label: 'Policies', icon: ShieldCheck, children: [
+    { to: '/performance', label: 'Appraisal Policy', icon: ChartColumnIncreasing },
+    { to: '/leave', label: 'Leave Policy', icon: CalendarDays },
+    { to: '/attendance', label: 'Attendance Policy', icon: Clock },
+    { to: '/posh', label: 'POSH Policy', icon: ShieldCheck },
+  ] },
   { to: '/calendar', label: 'Holiday Calendar', icon: CalendarRange },
   { to: '/payroll', label: 'Payroll', icon: CreditCard, roles: ['admin', 'hr'] },
-  { to: '/performance', label: 'Performance', icon: ChartColumnIncreasing },
-  { to: '/attendance', label: 'Attendance', icon: Clock },
-  { to: '/posh', label: 'POSH', icon: ShieldCheck },
   { to: '/resignation', label: 'Resignation', icon: FileText },
   { to: '/reports', label: 'Reports', icon: ChartNoAxesColumn, roles: ['admin', 'hr'] },
   { to: '/settings', label: 'Settings', icon: Settings, roles: ['admin', 'hr'] },
@@ -78,14 +80,36 @@ const NAV = [
 
 function Sidebar({ open, onClose }) {
   const { user } = useApp();
+  const { pathname } = useLocation();
+  const [policiesOpen, setPoliciesOpen] = useState(false);
+  const [policiesHovered, setPoliciesHovered] = useState(false);
+  const policiesActive = NAV.find((n) => n.children).children.some((n) => pathname === n.to);
+  const policiesExpanded = policiesOpen || policiesHovered;
+  useEffect(() => { setPoliciesOpen(policiesActive); }, [pathname, policiesActive]);
   const items = NAV.filter((n) => !n.roles || n.roles.includes(user.role));
   return (
     <>
       {open && <div className="scrim" onClick={onClose} />}
       <aside className={`sidebar ${open ? 'open' : ''}`}>
-        <div className="brand"><Link to={user.role === 'employee' ? '/my' : '/'} onClick={onClose} style={{ textDecoration: 'none' }}><Logo /></Link></div>
+        <div className="brand"><Link to={user.role === 'employee' ? '/my' : '/'} onClick={onClose} style={{ textDecoration: 'none' }}><Logo showHrms={false} /></Link></div>
         <nav className="nav" aria-label="Main">
-          {items.map((n) => (
+          {items.map((n) => n.children ? (
+            <div key={n.label} className="nav-group" onMouseEnter={() => setPoliciesHovered(true)} onMouseLeave={() => setPoliciesHovered(false)}>
+              <button type="button" className={`nav-group-toggle ${policiesActive ? 'active' : ''}`} aria-expanded={policiesExpanded} aria-controls="policies-submenu"
+                onClick={() => { setPoliciesHovered(false); setPoliciesOpen((value) => !value); }}
+                onKeyDown={(e) => { if (e.key === 'Escape') { setPoliciesOpen(false); setPoliciesHovered(false); } }}>
+                <n.icon size={21} strokeWidth={1.9} />{n.label}
+                <ChevronDown size={16} className={`nav-group-chevron ${policiesExpanded ? 'expanded' : ''}`} />
+              </button>
+              <div id="policies-submenu" className="nav-submenu" hidden={!policiesExpanded}>
+                {n.children.map((child) => (
+                  <NavLink key={child.to} to={child.to} onClick={onClose}>
+                    <child.icon size={17} strokeWidth={1.9} />{child.label}
+                  </NavLink>
+                ))}
+              </div>
+            </div>
+          ) : (
             <NavLink key={n.to} to={n.to} end={n.end} onClick={onClose}>
               <n.icon size={21} strokeWidth={1.9} />{n.label}
             </NavLink>
@@ -225,7 +249,7 @@ export function ChangePassword({ onClose, forced }) {
 }
 
 function UserMenu() {
-  const { user, logout } = useApp();
+  const { user, logout, toast } = useApp();
   const workday = useWorkday();
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState(false);
@@ -233,7 +257,7 @@ function UserMenu() {
   const signOut = () => {
     setOpen(false);
     if (workday?.workday?.openSince) setLeaving(true);
-    else logout();
+    else logout().catch((error) => toast(error.message || 'Could not sign out. Please try again.', 'error'));
   };
   const nav = useNavigate();
   const ref = useClickOutside(useCallback(() => setOpen(false), []));

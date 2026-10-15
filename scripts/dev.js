@@ -2,7 +2,6 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
-import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -12,22 +11,8 @@ try {
 } catch (error) {
   if (error.code !== 'ENOENT') throw error;
 }
-// Both processes need the same API port, including a PORT set in .env.
+// Vite starts only after the API reports the port it actually bound.
 const options = { cwd: root, stdio: 'inherit', env: { ...process.env, PORT: process.env.PORT || '3000' } };
-
-// Fail before starting Vite if another API is already using this port.
-try {
-  await new Promise((resolve, reject) => {
-    const probe = net.createServer();
-    probe.once('error', reject);
-    probe.listen(Number(options.env.PORT) || 3000, options.env.HOST || '0.0.0.0', () => probe.close(resolve));
-  });
-} catch (error) {
-  console.error(error.code === 'EADDRINUSE'
-    ? `\n  API port ${options.env.PORT} is already in use. Stop the existing server with Ctrl+C, then run npm run dev again.\n`
-    : `\n  API port could not be opened: ${error.message}\n`);
-  process.exit(1);
-}
 
 let api;
 let vite;
@@ -44,8 +29,8 @@ function stop(code = 0) {
   vite?.kill();
 }
 
-function launch(args, name) {
-  const child = spawn(process.execPath, args, options);
+function launch(args, name, extra = {}) {
+  const child = spawn(process.execPath, args, { ...options, ...extra });
   child.on('error', (error) => {
     console.error(`${name} could not start: ${error.message}`);
     stop(1);
@@ -60,7 +45,21 @@ function launch(args, name) {
   return child;
 }
 
-const startApi = () => launch(['--disable-warning=ExperimentalWarning', 'server/index.js'], 'API');
+const startApi = () => {
+  const child = launch(['--disable-warning=ExperimentalWarning', 'server/index.js'], 'API', { stdio: ['inherit', 'inherit', 'inherit', 'ipc'] });
+  child.on('message', async (message) => {
+    if (message.type !== 'hrms:ready' || stopping || child !== api) return;
+    const changed = options.env.PORT !== String(message.port);
+    options.env.PORT = String(message.port);
+    if (vite && changed) {
+      const old = vite;
+      vite = undefined;
+      await new Promise((resolve) => { old.once('exit', resolve); old.kill(); });
+    }
+    if (!vite && !stopping) vite = launch(['node_modules/vite/bin/vite.js', '--config', 'client/vite.config.js'], 'Vite');
+  });
+  return child;
+};
 
 // Check source content rather than filesystem notifications: on Windows the
 // native Node watcher can repeatedly restart even when no source has changed.
@@ -81,7 +80,6 @@ function sourceHash() {
 
 let previous = sourceHash();
 api = startApi();
-vite = launch(['node_modules/vite/bin/vite.js', '--config', 'client/vite.config.js'], 'Vite');
 timer = setInterval(async () => {
   if (stopping || restarting) return;
   let current;

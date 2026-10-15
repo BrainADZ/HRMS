@@ -61,7 +61,7 @@ export function AppProvider({ children }) {
 
   // pause: stop the work clock; the next sign-in asks the reason for the gap.
   const logout = useCallback(async ({ pause = false } = {}) => {
-    try { await api.post('/auth/logout', { pause }); } catch { /* ignore */ }
+    await api.post('/auth/logout', { pause });
     clearWorkday();
     setUser(null);
     setMeta(null);

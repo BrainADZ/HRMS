@@ -10,8 +10,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    strictPort: true,
-    proxy: { '/api': `http://localhost:${process.env.PORT || 3000}` },
+    host: '127.0.0.1',
+    strictPort: false,
+    proxy: { '/api': `http://127.0.0.1:${process.env.PORT || 3000}` },
   },
   build: {
     outDir: path.join(here, 'dist'),

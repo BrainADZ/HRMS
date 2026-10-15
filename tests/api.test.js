@@ -28,6 +28,24 @@ test('unauthenticated and cross-site requests are blocked', async () => {
   assert.equal(r.status, 403);
 });
 
+test('logout clears the cookie and invalidates the saved session token', async () => {
+  const login = await fetch(`${ctx.base}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'hrms' },
+    body: JSON.stringify({ email: HR, password: 'Brainadz@2026' }),
+  });
+  assert.equal(login.status, 200);
+  const cookie = login.headers.get('set-cookie').split(';')[0];
+  const out = await fetch(`${ctx.base}/auth/logout`, {
+    method: 'POST', headers: { Cookie: cookie, 'X-Requested-With': 'hrms' },
+  });
+  assert.equal(out.status, 200);
+  assert.match(out.headers.get('set-cookie'), /hrms_session=;/);
+  assert.match(out.headers.get('set-cookie'), /Max-Age=0/);
+  assert.equal((await fetch(`${ctx.base}/auth/me`, { headers: { Cookie: cookie } })).status, 401);
+  assert.equal((await fetch(`${ctx.base}/employees`, { headers: { Cookie: cookie } })).status, 401);
+});
+
 test('employees cannot open payroll or other people\'s HR records', async () => {
   const c = await as(ctx.base, EMP);
   assert.equal((await c.get('/payroll')).status, 403);

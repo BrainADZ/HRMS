@@ -2,6 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createApp } from './app.js';
+import { listenAvailable } from './listen.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.DATA_DIR || path.join(here, '..', 'data');
@@ -18,19 +19,17 @@ function lanAddresses() {
     .map((i) => i.address);
 }
 
-const port = Number(process.env.PORT) || 3000;
+const preferredPort = process.env.PORT === undefined ? 3000 : Number(process.env.PORT);
 const host = process.env.HOST || '0.0.0.0';
-app.listen(port, host, (error) => {
-  // Express calls this callback on listen errors as well as successful startup.
-  if (error) {
-    console.error(error.code === 'EADDRINUSE'
-      ? `\n  API port ${port} is already in use. Stop the existing server with Ctrl+C, then try again.\n`
-      : `\n  API could not start: ${error.message}\n`);
-    process.exitCode = 1;
-    return;
-  }
+try {
+  const server = await listenAvailable(app, { port: preferredPort, host });
+  const port = server.address().port;
+  process.send?.({ type: 'hrms:ready', port });
   console.log('\n  BrainADZ HRMS is running.\n');
-  console.log(`  On this computer:   http://localhost:${port}`);
+  console.log(`  On this computer:   http://127.0.0.1:${port}`);
   for (const ip of lanAddresses()) console.log(`  On the office Wi-Fi: http://${ip}:${port}`);
   console.log('\n  Keep this window open. Press Ctrl+C to stop.\n');
-});
+} catch (error) {
+  console.error(`\n  API could not start: ${error.message}\n`);
+  process.exitCode = 1;
+}

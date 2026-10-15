@@ -75,10 +75,15 @@ export async function checkIn(body) {
   return r;
 }
 
-export async function checkOut() {
-  const r = await api.post('/attendance/check-out');
+export async function checkOut(action = 'checkout') {
+  const r = await api.post('/attendance/check-out', { action });
   await refreshWorkday();
   return r;
+}
+
+export function breakNow(s, now = Date.now()) {
+  const w = s?.workday;
+  return (w?.breakMinutes || 0) + (w?.breakSince ? Math.max(0, (now + (s.offset || 0) - Date.parse(w.breakSince)) / 60000) : 0);
 }
 
 // Pages that show attendance reload when the clock changes.

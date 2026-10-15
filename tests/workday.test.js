@@ -44,6 +44,35 @@ test('stepping out and coming back asks the reason for the gap', async () => {
   assert.equal((await back.get('/attendance/workday')).body.workday.signedOutAway, false);
 });
 
+test('breaks persist, resume without a gap prompt and exclude break time from work', async () => {
+  const emp = await as(ctx.base, EMP);
+  let w = (await emp.get('/attendance/workday')).body.workday;
+  const employee = ctx.db.get('SELECT id FROM employees WHERE email = ?', EMP);
+  ctx.db.run('DELETE FROM work_sessions WHERE employee_id = ? AND date = ?', employee.id, w.date);
+  ctx.db.run('DELETE FROM attendance WHERE employee_id = ? AND date = ?', employee.id, w.date);
+  w = (await emp.get('/attendance/workday')).body.workday;
+  if (!w.openSince) await emp.post('/attendance/check-in', { gap_reason: 'Personal work' });
+  assert.equal((await emp.post('/attendance/check-out', { action: 'break' })).status, 200);
+  assert.equal((await emp.post('/attendance/check-out', { action: 'break' })).status, 400);
+  w = (await emp.get('/attendance/workday')).body.workday;
+  assert.equal(w.openSince, null);
+  assert.ok(w.breakSince);
+  const start = new Date(Date.now() - 10 * 60000).toISOString();
+  const end = new Date(Date.now() - 5 * 60000).toISOString();
+  ctx.db.run("UPDATE work_sessions SET start_at = ?, end_at = ? WHERE employee_id = ? AND date = ? AND ended_by = 'break'", start, end, employee.id, w.date);
+  const back = await as(ctx.base, EMP);
+  w = (await back.get('/attendance/workday')).body.workday;
+  assert.equal(w.breakSince, end);
+  const worked = w.workedMinutes;
+  assert.equal((await back.post('/attendance/check-in')).status, 200);
+  w = (await back.get('/attendance/workday')).body.workday;
+  assert.ok(w.openSince);
+  assert.equal(w.breakSince, null);
+  assert.equal(w.gaps.at(-1).reason, 'Break');
+  assert.ok(w.breakMinutes >= 5 && w.breakMinutes < 6);
+  assert.equal(w.workedMinutes, worked);
+});
+
 test('a short day is explained by the employee and decided by their manager or the CEO', async () => {
   const { db } = ctx;
   const emp = db.get("SELECT * FROM employees WHERE email = ?", EMP);

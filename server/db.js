@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS employees (
   manager_id INTEGER REFERENCES employees(id),
   employment_type TEXT NOT NULL DEFAULT 'Full-time',
   location_id INTEGER REFERENCES locations(id),
+  work_place TEXT CHECK (work_place IN ('wfh', 'onsite')),
   join_date TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'Active',
   exit_date TEXT,
@@ -390,6 +391,10 @@ export function openDb(file) {
   const raw = new DatabaseSync(file);
   raw.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
   raw.exec(SCHEMA);
+  // Existing demo and employee records retain their current location policy.
+  if (!raw.prepare('PRAGMA table_info(employees)').all().some((column) => column.name === 'work_place')) {
+    raw.exec("ALTER TABLE employees ADD COLUMN work_place TEXT CHECK (work_place IN ('wfh', 'onsite'))");
+  }
   const cache = new Map();
   const stmt = (sql) => {
     let s = cache.get(sql);

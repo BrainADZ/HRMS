@@ -64,6 +64,7 @@ export function exemption(db, user, settings, today) {
   const p = geofencePolicy(settings);
   if (p.mode === 'off') return { reason: 'Location check is off' };
   if (user.role === 'admin') return { reason: 'Administrator' };
+  if (user.employeeId && db.value('SELECT work_place FROM employees WHERE id = ?', user.employeeId) === 'wfh') return { reason: 'Assigned work from home' };
   if (user.employeeId && p.exemptEmployeeIds.includes(user.employeeId)) return { reason: 'Allowed to work from anywhere' };
   if (p.allowWfhAndLeave && user.employeeId) {
     const e = db.get('SELECT * FROM employees WHERE id = ?', user.employeeId);
@@ -79,8 +80,14 @@ export function exemption(db, user, settings, today) {
 export function checkLocation(db, { user, coords, ip, today, settings = getSettings(db) }) {
   const ex = exemption(db, user, settings, today);
   if (ex) return { ok: true, method: 'exempt', exempt: ex.reason, dayBound: Boolean(ex.dayOnly) };
-  const sites = db.all('SELECT * FROM office_sites WHERE active = 1');
-  if (!sites.length) return { ok: true, method: 'exempt', exempt: 'No office locations set up' };
+  const employee = user.employeeId ? db.get('SELECT work_place, location_id FROM employees WHERE id = ?', user.employeeId) : null;
+  const assigned = employee?.work_place === 'onsite';
+  const sites = assigned
+    ? db.all('SELECT * FROM office_sites WHERE active = 1 AND location_id = ?', employee.location_id)
+    : db.all('SELECT * FROM office_sites WHERE active = 1');
+  if (!sites.length) return assigned
+    ? { ok: false, code: 'office_not_configured', message: 'Your assigned branch has no active office location. Ask HR to configure it in Settings > Office Locations.' }
+    : { ok: true, method: 'exempt', exempt: 'No office locations set up' };
   const net = sites.find((s) => ipMatches(ip, s.ip_ranges));
   if (net) return { ok: true, method: 'network', site: net, dayBound: true };
   if (!coords) return { ok: false, code: 'location_required', message: 'Share your location to continue. Sign-in is only allowed from the office.' };
@@ -90,7 +97,7 @@ export function checkLocation(db, { user, coords, ip, today, settings = getSetti
     if (!best || d < best.distance) best = { site: s, distance: d };
   }
   const distance = Math.round(best.distance);
-  if (best.distance <= best.site.radius_m + Math.min(coords.accuracy, best.site.radius_m)) {
+  if (coords.accuracy <= geofencePolicy(settings).maxAccuracyM && best.distance <= best.site.radius_m) {
     return { ok: true, method: 'gps', site: best.site, distance, accuracy: coords.accuracy, dayBound: true };
   }
   if (coords.accuracy > geofencePolicy(settings).maxAccuracyM) {

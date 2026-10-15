@@ -60,7 +60,7 @@ function Today() {
               {me.record?.check_in ? <>Checked in at {fmtTime(me.record.check_in)}{me.record.check_out && <> · out at {fmtTime(me.record.check_out)}</>} {me.late && <Badge tone="amber">Late</Badge>}</> : ['H', 'WO'].includes(me.status.code) ? LABEL[me.status.code] : me.status.code === 'L' ? `On ${me.status.leave?.name}` : 'You have not checked in'}
             </div>
             {clock?.workday?.sessions.length > 0 && <>
-              <div className="small muted mt-8">{clock.workday.openSince ? 'Working' : 'Paused'} · {clockText(workedNow(clock, now), false)} of {clockText(clock.workday.requiredMinutes, false)} today</div>
+              <div className="small muted mt-8">{clock.workday.openSince ? 'Working' : clock.workday.breakSince ? 'On break' : 'Paused'} · {clockText(workedNow(clock, now), false)} of {clockText(clock.workday.requiredMinutes, false)} today</div>
               <SessionList w={clock.workday} />
             </>}
           </div>

@@ -36,7 +36,7 @@ function listRow(e, leaveSet) {
   return {
     id: e.id, code: e.code, name: fullName(e), first_name: e.first_name, last_name: e.last_name, designation: e.designation, grade: e.grade,
     department: e.department, department_id: e.department_id, vertical: e.vertical, vertical_short: e.vertical_short, vertical_color: e.vertical_color, vertical_id: e.vertical_id,
-    location: e.location, status: e.status === 'Active' && leaveSet.has(e.id) ? 'On Leave' : e.status, employment_type: e.employment_type,
+    location: e.location, work_place: e.work_place, status: e.status === 'Active' && leaveSet.has(e.id) ? 'On Leave' : e.status, employment_type: e.employment_type,
     join_date: e.join_date, exit_date: e.exit_date, email: e.email, phone: e.phone, has_photo: Boolean(e.photo), manager: e.m_first ? fullName({ first_name: e.m_first, last_name: e.m_last }) : null,
   };
 }
@@ -68,6 +68,8 @@ function readEmployeeBody(db, b, { partial = false } = {}) {
   set('grade', oneOf(b.grade || null, GRADES, { name: 'Grade' }));
   if (!partial || has('manager_id')) out.manager_id = b.manager_id ? id(b.manager_id) : null;
   set('employment_type', oneOf(b.employment_type || 'Full-time', TYPES, { name: 'Employment type' }));
+  if (has('work_place')) out.work_place = oneOf(b.work_place || null, ['wfh', 'onsite'], { name: 'Working place' });
+  if (out.work_place === 'onsite' && !partial && !out.location_id) fail(400, 'Select an assigned branch for On Site work');
   if (!partial || has('join_date')) out.join_date = date(b.join_date, { required: true, name: 'Joining date' });
   set('about', str(b.about, { max: 1000 }));
   if (!partial || has('skills')) out.skills = strList(b.skills);
@@ -270,6 +272,8 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
       const body = Object.fromEntries(Object.entries(req.body).filter(([k]) => allowed.includes(k)));
       data = readEmployeeBody(db, body, { partial: true });
     } else fail(403, 'You can only edit your own profile');
+    const updated = { ...existing, ...data };
+    if (updated.work_place === 'onsite' && !updated.location_id) fail(400, 'Select an assigned branch for On Site work');
     if (data.email && data.email !== existing.email) {
       db.run('UPDATE users SET email = ? WHERE employee_id = ?', data.email, eid);
     }

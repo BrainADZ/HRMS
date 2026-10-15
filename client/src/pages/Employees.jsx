@@ -222,6 +222,7 @@ function Overview({ data, isSelf, onAction, reload }) {
             <dt><BadgeCheck size={15} />Employee ID</dt><dd>{e.code}</dd>
             <dt><CalendarDays size={15} />Joining Date</dt><dd>{fmtDate(e.join_date)}</dd>
             <dt><Briefcase size={15} />Employment Type</dt><dd>{e.employment_type}</dd>
+            <dt><Briefcase size={15} />Working place</dt><dd>{e.work_place === 'wfh' ? 'WFH (Work from home)' : e.work_place === 'onsite' ? 'On Site (Office)' : 'Not assigned'}</dd>
             <dt><MapPin size={15} />Work Location</dt><dd>{e.location ? `${e.location}, India` : '—'}</dd>
             {e.dob && <><dt><CalendarDays size={15} />Date of Birth</dt><dd>{fmtDate(e.dob)}</dd></>}
             {e.address && <><dt><MapPin size={15} />Address</dt><dd>{e.address}</dd></>}
@@ -532,7 +533,7 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly }) {
   const [f, setF] = useState(() => ({
     first_name: e?.first_name || '', last_name: e?.last_name || '', email: e?.email || '', phone: e?.phone || '', gender: e?.gender || '', dob: e?.dob || '',
     vertical_id: e?.vertical_id || '', department_id: e?.department_id || '', designation: e?.designation || '', grade: e?.grade || 'Executive',
-    manager_id: e?.manager_id || '', employment_type: e?.employment_type || 'Full-time', location_id: e?.location_id || '', join_date: e?.join_date || meta.today,
+    manager_id: e?.manager_id || '', employment_type: e?.employment_type || 'Full-time', location_id: e?.location_id || '', work_place: e ? (e.work_place || '') : 'onsite', join_date: e?.join_date || meta.today,
     ctc: c.ctc ?? '', monthly_tds: c.monthlyTds ?? '', pan: c.pan || '', uan: c.uan || '', bank_name: c.bank_name || '', bank_account: c.bank_account || '', ifsc: c.ifsc || '',
     address: e?.address || '', emergency_contact: e?.emergency_contact || '', about: e?.about || '', skills: (e?.skills || []).join(', '),
     create_login: true, role: 'employee',
@@ -541,6 +542,10 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly }) {
   const [temp, setTemp] = useState(null);
   const set = (k) => (ev) => setF((s) => ({ ...s, [k]: ev.target.type === 'checkbox' ? ev.target.checked : ev.target.value }));
   const save = async () => {
+    if (!selfOnly && f.work_place === 'onsite' && !f.location_id) {
+      toast('Select an assigned branch for On Site work', 'error');
+      return;
+    }
     const body = selfOnly
       ? { phone: f.phone, address: f.address, emergency_contact: f.emergency_contact, about: f.about, skills: f.skills }
       : { ...f, ctc: f.ctc === '' ? 0 : Number(f.ctc), monthly_tds: f.monthly_tds === '' ? '' : Number(f.monthly_tds) };
@@ -579,7 +584,8 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly }) {
           <Field label="Grade"><Select value={f.grade} onChange={set('grade')} options={['Executive', 'Senior', 'Manager', 'Head', 'CXO']} /></Field>
           <Field label="Reporting manager"><EmployeeSelect value={f.manager_id} onChange={set('manager_id')} placeholder="None" exclude={e ? [e.id] : []} /></Field>
           <Field label="Employment type"><Select value={f.employment_type} onChange={set('employment_type')} options={['Full-time', 'Part-time', 'Contract', 'Intern']} /></Field>
-          <Field label="Work location"><Select value={f.location_id} onChange={set('location_id')} placeholder="Select" options={opts(meta.locations)} /></Field>
+          <Field label="Working place" hint="WFH allows remote work. On Site uses the assigned branch when office location checks are enabled."><Select value={f.work_place} onChange={set('work_place')} placeholder="Not assigned" options={[{ value: 'onsite', label: 'On Site (Office)' }, { value: 'wfh', label: 'WFH (Work from home)' }]} /></Field>
+          <Field label={f.work_place === 'onsite' ? 'Assigned branch *' : 'Branch'}><Select value={f.location_id} onChange={set('location_id')} placeholder="Select branch" options={opts(meta.locations)} /></Field>
           <Field label="Joining date *"><Input type="date" value={f.join_date} onChange={set('join_date')} /></Field>
           <div className="form-section">Pay & statutory</div>
           <Field label="Annual CTC (₹)" hint={f.ctc ? `${lpa(Number(f.ctc) / 100000)}` : 'Gross cost to company per year'}><Input type="number" min="0" value={f.ctc} onChange={set('ctc')} /></Field>

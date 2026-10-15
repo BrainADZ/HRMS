@@ -5,6 +5,7 @@ import { useApi } from '../lib/hooks.js';
 import { fmtDate } from '../lib/format.js';
 import { Loading, ErrorBox, Button } from '../components/ui.jsx';
 import { PayslipView } from './Payroll.jsx';
+import CompanyLogo from '../components/CompanyLogo.jsx';
 
 // Print-friendly pages: /print/payslip/:id and /print/experience|relieving/:resignationId
 export default function Print() {
@@ -40,7 +41,7 @@ function Letter({ kind, r }) {
   return (
     <div style={{ lineHeight: 1.75, fontSize: 15 }}>
       <div className="row between" style={{ borderBottom: '2px solid var(--navy)', paddingBottom: 12, marginBottom: 28 }}>
-        <div className="logo"><div className="b">BrainADZ</div><div className="tg">People | Process | Possibilities</div></div>
+        <div className="logo"><CompanyLogo /></div>
         <div className="small muted right">Date: {fmtDate(today)}<br />Ref: BZ/HR/{kind === 'experience' ? 'EXP' : 'REL'}/{r.code}</div>
       </div>
       <h2 style={{ textAlign: 'center', marginBottom: 24, fontSize: 20, textDecoration: 'underline' }}>{kind === 'experience' ? 'TO WHOMSOEVER IT MAY CONCERN' : 'RELIEVING LETTER'}</h2>

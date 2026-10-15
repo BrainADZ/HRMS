@@ -12,7 +12,7 @@ export async function api(path, { method = 'GET', body, form } = {}) {
   const type = res.headers.get('content-type') || '';
   const data = type.includes('application/json') ? await res.json() : await res.text();
   if (!res.ok) {
-    const err = new Error((data && data.error) || `Request failed (${res.status})`);
+    const err = new Error((data && (data.error || data.message)) || `Request failed (${res.status})`);
     err.status = res.status;
     err.code = data?.code;
     err.data = data;

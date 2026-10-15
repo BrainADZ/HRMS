@@ -43,7 +43,7 @@ npm run build
 npm start
 ```
 
-Open http://localhost:3000. The first start creates a demo company with about 100 fictional employees, six months of attendance and payroll, candidates, reviews and resignations.
+Open the URL printed in the terminal. The server tries port 3000 (or `PORT` from `.env`); if occupied, it automatically binds a free port. The first start creates a demo company with about 100 fictional employees, six months of attendance and payroll, candidates, reviews and resignations.
 
 Demo logins (password `Brainadz@2026` for all):
 
@@ -135,7 +135,7 @@ Environment variables:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PORT` | `3000` | Port to listen on |
+| `PORT` | `3000` | Preferred port; automatically uses a free port if occupied. Set `0` to always ask the OS for a free port. |
 | `HOST` | `0.0.0.0` | Network interface; `127.0.0.1` keeps it to this computer only |
 | `DATA_DIR` | `./data` | Database (`hrms.db`) and uploads. **Must be on a persistent disk.** |
 | `SEED` | `demo` | `demo` or `empty` for the first start |
@@ -172,7 +172,7 @@ Things to know:
 ## For developers
 
 ```bash
-npm run dev     # API on :3000 with auto-restart + Vite dev server on :5173
+npm run dev     # API + Vite select free ports automatically; open the Vite URL printed
 npm test        # unit and API tests (node:test)
 ```
 

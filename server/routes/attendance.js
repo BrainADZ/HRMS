@@ -89,7 +89,9 @@ export default function attendanceRoutes(r, { db }) {
 
   r.post('/attendance/check-in', (req, res) => {
     if (!req.user.employeeId) fail(400, 'Your login is not linked to an employee record');
-    const mode = oneOf(req.body.mode || 'office', ['office', 'wfh'], { name: 'Mode' });
+    let mode = oneOf(req.body.mode || 'office', ['office', 'wfh'], { name: 'Mode' });
+    const employee = db.get('SELECT work_place FROM employees WHERE id = ?', req.user.employeeId);
+    if (employee?.work_place === 'wfh') mode = 'wfh';
     const gapReason = req.body.gap_reason ? oneOf(req.body.gap_reason, GAP_REASONS, { name: 'Reason' }) : null;
     const gapNote = str(req.body.gap_note, { max: 300 });
     if (gapReason === 'Other' && !gapNote) fail(400, 'Add a short note for "Other"');
@@ -119,7 +121,8 @@ export default function attendanceRoutes(r, { db }) {
 
   r.post('/attendance/check-out', (req, res) => {
     if (!req.user.employeeId) fail(400, 'Your login is not linked to an employee record');
-    const out = endSession(db, { employeeId: req.user.employeeId, date: today(db), by: 'checkout', userId: req.user.id });
+    const by = oneOf(req.body.action || 'checkout', ['checkout', 'break'], { name: 'Action' });
+    const out = endSession(db, { employeeId: req.user.employeeId, date: today(db), by, userId: req.user.id });
     if (!out) fail(400, 'Your work clock is not running');
     res.json({ ok: true, at: out.at, workedMinutes: out.workedMinutes, worked: fmtMinutes(out.workedMinutes), hours: Math.round((out.workedMinutes / 60) * 10) / 10 });
   });

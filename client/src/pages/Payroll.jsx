@@ -10,6 +10,7 @@ import { inr, inrShort, fmtDate, fmtMonth, addMonths, fmtShort } from '../lib/fo
 import { Card, Kpi, Badge, Button, Empty, Loading, ErrorBox, Person, Modal, Select, Pagination, useConfirm, Menu } from '../components/ui.jsx';
 import { Steps, Donut, Legend, Bars, Ring, CAT, STATUS } from '../components/charts.jsx';
 import { BrandBanner } from '../components/Layout.jsx';
+import CompanyLogo from '../components/CompanyLogo.jsx';
 import { ClaimModal } from '../components/forms.jsx';
 
 export default function Payroll() {
@@ -216,7 +217,7 @@ function PayslipCard({ line, label, onDetails }) {
   const p = line.payslip;
   return (
     <div className="card tight" style={{ boxShadow: 'none' }}>
-      <div className="row between"><div className="logo sm"><div className="b" style={{ fontSize: 18 }}>BrainADZ</div><div className="h" style={{ fontSize: 18 }}>HRMS</div></div><div className="right"><b>Payslip</b><div className="small muted">{label}</div></div></div>
+      <div className="row between"><div className="logo sm"><CompanyLogo compact /><div className="h" style={{ fontSize: 18 }}>HRMS</div></div><div className="right"><b>Payslip</b><div className="small muted">{label}</div></div></div>
       <div className="row mt-16" style={{ gap: 12 }}>
         <Person name={line.name} id={line.employeeId} hasPhoto={line.has_photo} size={48} sub={`${line.code} | ${line.designation || ''}`} />
         <span className="grow" /><Badge>{line.status === 'Processed' ? 'Processing' : line.status}</Badge>
@@ -242,7 +243,7 @@ export function PayslipView({ data: p, label, company = 'BrainADZ' }) {
   return (
     <div>
       <div className="row between" style={{ borderBottom: '2px solid var(--navy)', paddingBottom: 12 }}>
-        <div className="logo"><div className="b">{company}</div><div className="tg">Payslip for {label}</div></div>
+        <div className="logo"><CompanyLogo alt={company} /><div className="tg">Payslip for {label}</div></div>
         <div className="right small"><div className="b7" style={{ fontSize: 16 }}>Salary Slip</div><div className="muted">{label}</div></div>
       </div>
       <dl className="kv mt-16" style={{ gridTemplateColumns: '130px 1fr 130px 1fr' }}>

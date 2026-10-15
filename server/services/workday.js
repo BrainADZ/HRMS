@@ -13,7 +13,7 @@ import { getSettings, fullName, notifyUsers, userIdForEmployee } from '../core.j
 import * as D from '../lib/dates.js';
 import { dayStatuses } from './calendar.js';
 
-export const GAP_REASONS = ['Client meeting', 'Site / field visit', 'Lunch break', 'Personal work', 'Medical', 'Other'];
+export const GAP_REASONS = ['Client meeting', 'Site / field visit', 'Lunch break', 'Break', 'Personal work', 'Medical', 'Other'];
 const HALF_DAY_MINUTES = 240;
 
 const minutesBetween = (a, b) => Math.max(0, Math.round((Date.parse(b) - Date.parse(a)) / 60000));
@@ -68,6 +68,8 @@ export function workdaySummary(db, employeeId, date, settings = getSettings(db))
     openSince: open?.start_at || null,
     mode: sessions[0]?.mode || null,
     awaySince: !open && last?.end_at ? last.end_at : null,
+    breakSince: !open && last?.ended_by === 'break' ? last.end_at : null,
+    breakMinutes: gapsOf(sessions).filter((g) => g.leftBy === 'break').reduce((total, g) => total + Math.max(0, (Date.parse(g.to) - Date.parse(g.from)) / 60000), 0),
     // Signed out mid-day: the next sign-in asks for the reason and offers to resume.
     signedOutAway: Boolean(!open && last?.ended_by === 'signout'),
     requiredMinutes: requiredMinutes(settings),
@@ -93,6 +95,7 @@ export function startSession(db, { employeeId, date, mode, gapReason, gapNote, u
   const sessions = db.all('SELECT * FROM work_sessions WHERE employee_id = ? AND date = ? ORDER BY start_at', employeeId, date);
   if (sessions.some((s) => !s.end_at)) return { error: 'Your work clock is already running' };
   const returning = sessions.length > 0;
+  if (returning && sessions.at(-1).ended_by === 'break') gapReason = 'Break';
   if (returning && !gapReason) return { error: 'Tell us the reason for the gap before checking in again', needsReason: true };
   db.tx(() => {
     db.insert('work_sessions', {
