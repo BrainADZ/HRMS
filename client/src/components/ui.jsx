@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Inbox, LoaderCircle, Ellipsis, X } from 'lucide-react';
 import { colorFor } from '../lib/format.js';
-import { photoUrl } from '../lib/api.js';
+import { photoUrl, apiAssetUrl } from '../lib/api.js';
 import { useClickOutside } from '../lib/hooks.js';
 import { useApp } from '../context.jsx';
 
@@ -72,7 +72,7 @@ export function Avatar({ name = '', id, hasPhoto, src: suppliedSrc, size = 36, o
   const app = useApp();
   const [failedSrc, setFailedSrc] = useState(null);
   const knownPhoto = hasPhoto || app?.meta?.employees?.find((employee) => employee.id === Number(id))?.has_photo;
-  const source = suppliedSrc || (id && knownPhoto ? photoUrl(id) : null);
+  const source = apiAssetUrl(suppliedSrc) || (id && knownPhoto ? photoUrl(id) : null);
   const src = source && !window.hrmsDemo && !/^(blob:|data:)/.test(source) ? `${source}${source.includes('?') ? '&' : '?'}rev=${app?.photoVersion || 0}` : source;
   const style = { width: size, height: size, fontSize: Math.max(11, size * 0.38), background: colorFor(name), borderRadius: square ? 12 : '50%' };
   return (

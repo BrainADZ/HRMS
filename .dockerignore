@@ -4,6 +4,9 @@ data
 .git
 *.log
 .env
+**/.env
+**/.env.*
+!**/.env.example
 demo/dist
 .test-results
 .github

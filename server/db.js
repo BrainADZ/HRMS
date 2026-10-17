@@ -14,7 +14,7 @@ const types = { getTypeParser(oid, format) {
   return [20, 1700].includes(oid) && format !== 'binary' ? numberParser : pg.types.getTypeParser(oid, format);
 } };
 export function postgresConfig(env = process.env) {
-  if (!env.DATABASE_URL && !env.PGDATABASE) throw new Error('Set DATABASE_URL, or PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD in .env.');
+  if (!env.DATABASE_URL && !env.PGDATABASE) throw new Error('Set DATABASE_URL, or PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD in server/.env.');
   const url = new URL(env.DATABASE_URL || 'postgresql://localhost');
   if (!env.DATABASE_URL) {
     url.hostname = env.PGHOST || 'localhost';

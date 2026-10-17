@@ -1,6 +1,6 @@
 # Local operation and verification
 
-The imported company uses local PostgreSQL. Run `npm start` after `npm run build`, or use `npm run dev` while editing. Preserve the current `.env`; it contains the local connection credentials.
+The imported company uses local PostgreSQL. Run `npm start` after `npm run build`, or use `npm run dev` while editing. Preserve the current `server/.env`; it contains the local connection credentials.
 
 ## Verification commands
 
@@ -20,7 +20,7 @@ Run `npm run db:verify-backup` to restore the latest backup into a newly generat
 
 PostgreSQL client tools must be installed. The commands find Windows PostgreSQL installations automatically; elsewhere they use `PATH`. Override discovery using `PG_DUMP_PATH` and `PG_RESTORE_PATH`. Use matching PostgreSQL client/server versions. TLS certificate configuration for client tools should follow their native PostgreSQL environment settings.
 
-For an actual recovery, stop HRMS, create an empty destination database, restore `database.dump` using `pg_restore --clean --if-exists --exit-on-error --no-owner --no-privileges`, restore the matching `uploads` directory, and point `.env` at that destination before restarting. Restore into a separate destination first and inspect it before switching the application.
+For an actual recovery, stop HRMS, create an empty destination database, restore `database.dump` using `pg_restore --clean --if-exists --exit-on-error --no-owner --no-privileges`, restore the matching `uploads` directory, and point `server/.env` at that destination before restarting. Restore into a separate destination first and inspect it before switching the application.
 
 Automatic scheduling, retention and an off-machine backup destination are deployment choices and are not configured on this laptop. A Windows Task Scheduler action can run `npm run db:backup` with this repository as its working directory.
 

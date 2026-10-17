@@ -28,7 +28,8 @@ import { cleanUploads, validateUploads } from './services/uploads.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-export async function createApp({ databaseUrl, database, dataDir = path.resolve('data'), seed = 'demo', serveClient = true, today } = {}) {
+export async function createApp({ databaseUrl, database, dataDir = path.resolve('data'), seed = 'demo', serveClient = true, today, clientOrigin = process.env.CLIENT_ORIGIN || '' } = {}) {
+  const allowedOrigin = clientOrigin ? new URL(clientOrigin).origin : '';
   const db = database || (await openDb({ connectionString: databaseUrl }));
   const uploads = path.join(dataDir, 'uploads');
   // Lets the demo seed store sample files (employee documents).
@@ -103,6 +104,18 @@ export async function createApp({ databaseUrl, database, dataDir = path.resolve(
     next();
   });
   app.use(express.json({ limit: '2mb' }));
+  app.use('/api', (req, res, next) => {
+    res.vary('Origin');
+    const origin = req.get('Origin');
+    if (origin && origin === allowedOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Requested-With');
+    }
+    if (req.method === 'OPTIONS') return res.status(origin && origin === allowedOrigin ? 204 : 403).end();
+    next();
+  });
   app.use(sessionMiddleware(db));
   // CSRF guard: state-changing API calls must carry a custom header, which a
   // cross-site form or image request cannot add.

@@ -40,7 +40,7 @@ Accounts created/reset with a temporary password must change it before accessing
 
 PostgreSQL connection credentials are separate from every HRMS login. If `password authentication failed for user "postgres"` appears, PostgreSQL has rejected the connection password; changing an HRMS user's password will not fix it.
 
-For passwords containing special characters, leave `DATABASE_URL` empty and use these fields in `.env`:
+For passwords containing special characters, leave `DATABASE_URL` empty and use these fields in `server/.env`:
 
 ```env
 DATABASE_URL=
@@ -65,4 +65,4 @@ Bank transfers remain a manual CSV/reconciliation workflow; no live bank API is 
 
 API regression coverage includes every one of the 49 static GET/export routes discovered from the route files, plus cross-role write workflows for employee accounts, hiring/interviews, payroll, performance, policies/POSH, assets and helpdesk. Existing attendance, leave, document and resignation tests continue to run. This is automated API coverage, not a claim that every browser action or external integration has been exercised.
 
-Validation: 63/63 tests passed; the final demo-session revocation and administrator-role protection regressions also passed in a focused rerun. Production and standalone demo builds passed. Large demo WASM/data binaries are now embedded after bundling, avoiding compiler failures on oversized base64 input. The local PostgreSQL password was subsequently reset with authorization and saved privately in `.env`; original authentication rules were restored. Permanent database `hrms` is initialized with migrations 1 and 2. Live administrator login and 23 module APIs passed. That clean-company setup was verified first. The original SQLite dataset was later imported at the user's request for local testing; imported employees use generated usernames and their original passwords, while the configured administrator credentials are preserved.
+Validation: 63/63 tests passed; the final demo-session revocation and administrator-role protection regressions also passed in a focused rerun. Production and standalone demo builds passed. Large demo WASM/data binaries are now embedded after bundling, avoiding compiler failures on oversized base64 input. The local PostgreSQL password was subsequently reset with authorization and saved privately in `server/.env`; original authentication rules were restored. Permanent database `hrms` is initialized with migrations 1 and 2. Live administrator login and 23 module APIs passed. That clean-company setup was verified first. The original SQLite dataset was later imported at the user's request for local testing; imported employees use generated usernames and their original passwords, while the configured administrator credentials are preserved.

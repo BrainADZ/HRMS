@@ -4,6 +4,8 @@ The previously reproduced application defects have been fixed. The local Postgre
 
 This report covers the local working tree, including uncommitted changes. It replaces the previous open-defect status. `AUDIT.md` is historical. Remote GitHub parity and a hosted deployment were not assessed.
 
+Environment separation update: backend settings now reside in `server/.env` and frontend settings in `client/.env`, each with its own example. Root run/database/test commands and development proxy configuration were updated. The configuration change passed 11 focused PostgreSQL/CORS/session tests, a production client build, a backend-secret bundle check and a live Chrome sign-in/employee-page check through separate frontend/API ports. The full-suite figures below describe the preceding profile-photo verification. See `ENVIRONMENT.md` for the new commands.
+
 ## Verification
 
 | Check | Result |

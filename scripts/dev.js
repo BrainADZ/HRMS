@@ -4,15 +4,20 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseEnv } from 'node:util';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-try {
-  process.loadEnvFile(path.join(root, '.env'));
-} catch (error) {
-  if (error.code !== 'ENOENT') throw error;
+const serverOnly = process.argv.includes('--server-only');
+function backendEnvironment() {
+  let values = {};
+  try { values = parseEnv(fs.readFileSync(path.join(root, 'server', '.env'), 'utf8')); }
+  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  return { ...values, ...process.env, SERVE_CLIENT: 'false' };
 }
 // Vite starts only after the API reports the port it actually bound.
-const options = { cwd: root, stdio: 'inherit', env: { ...process.env, PORT: process.env.PORT || '3000' } };
+// Backend file secrets are passed to the API process only, never to Vite.
+const options = { cwd: root, stdio: 'inherit', env: { ...process.env } };
+let apiPort;
 
 let api;
 let vite;
@@ -46,17 +51,19 @@ function launch(args, name, extra = {}) {
 }
 
 const startApi = () => {
-  const child = launch(['--disable-warning=ExperimentalWarning', 'server/index.js'], 'API', { stdio: ['inherit', 'inherit', 'inherit', 'ipc'] });
+  const child = launch(['--disable-warning=ExperimentalWarning', 'server/index.js'], 'API', { env: backendEnvironment(), stdio: ['inherit', 'inherit', 'inherit', 'ipc'] });
   child.on('message', async (message) => {
     if (message.type !== 'hrms:ready' || stopping || child !== api) return;
-    const changed = options.env.PORT !== String(message.port);
-    options.env.PORT = String(message.port);
+    const changed = apiPort !== message.port;
+    apiPort = message.port;
     if (vite && changed) {
       const old = vite;
       vite = undefined;
       await new Promise((resolve) => { old.once('exit', resolve); old.kill(); });
     }
-    if (!vite && !stopping) vite = launch(['node_modules/vite/bin/vite.js', '--config', 'client/vite.config.js'], 'Vite');
+    if (!serverOnly && !vite && !stopping) vite = launch(['node_modules/vite/bin/vite.js', '--config', 'client/vite.config.js'], 'Vite', {
+      env: { ...process.env, HRMS_API_PROXY_TARGET: `http://127.0.0.1:${apiPort}` },
+    });
   });
   return child;
 };
@@ -69,7 +76,7 @@ function sourceHash() {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
       const file = path.join(dir, entry.name);
       if (entry.isDirectory()) visit(file);
-      else if (entry.isFile() && /\.(?:[cm]?js|json)$/.test(entry.name)) {
+      else if (entry.isFile() && (/\.(?:[cm]?js|json|sql)$/.test(entry.name) || entry.name === '.env')) {
         hash.update(file).update('\0').update(fs.readFileSync(file)).update('\0');
       }
     }

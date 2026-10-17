@@ -10,7 +10,7 @@ For administrator email login and employee username login, see [LOGIN_SETUP.md](
 
 ## Local Windows setup
 
-Your installed PostgreSQL service must be running. In the project's `.env`, leave `DATABASE_URL` empty and set:
+Your installed PostgreSQL service must be running. In the project's `server/.env`, leave `DATABASE_URL` empty and set:
 
 ```env
 DATABASE_URL=
@@ -28,7 +28,7 @@ COOKIE_SECURE=false
 TRUST_PROXY=
 ```
 
-The PostgreSQL password and HRMS administrator password are separate. Quotes in `.env` are useful when a password contains `#`; use a quote style that does not occur inside your password. Never commit `.env` or paste passwords into chat. `DATABASE_URL`, when nonempty, takes precedence over the separate connection fields.
+The PostgreSQL password and HRMS administrator password are separate. Quotes in `server/.env` are useful when a password contains `#`; use a quote style that does not occur inside your password. Never commit `server/.env` or paste passwords into chat. `DATABASE_URL`, when nonempty, takes precedence over the separate connection fields.
 
 Then run in a terminal inside this folder:
 
@@ -72,4 +72,4 @@ The Node/Docker server needs a reachable PostgreSQL instance and connection sett
 
 `npm test` runs API integration tests against isolated embedded PostgreSQL engines (PGlite), plus database tests for constraints, rollback, parameter binding and transaction client isolation. No tests connect to your company database. `npm run db:check` verifies the actual configured PostgreSQL server and migrations without printing its connection password. The optional browser demo also uses PGlite and resets on reload; production uses the `pg` driver against an external PostgreSQL server.
 
-Validation on 17 October 2026: all 55 automated tests passed; production client and optional standalone demo builds passed. A separate temporary PostgreSQL 18.6 server also passed database creation, migration, empty-company seeding, administrator login, ten module read APIs, transaction writes and numeric-result checks through the real `pg` driver. That test server was stopped. The permanent `hrms` database has now also been created on the local PostgreSQL 18.6 service. Migrations 1 and 2 are applied. The initial clean-company verification passed for administrator login and 23 module APIs. The original SQLite dataset was subsequently imported for local testing as described above, retaining the configured administrator. The PostgreSQL password was reset with authorization, saved privately in `.env`, and the original authentication rules were restored.
+Validation on 17 October 2026: all 55 automated tests passed; production client and optional standalone demo builds passed. A separate temporary PostgreSQL 18.6 server also passed database creation, migration, empty-company seeding, administrator login, ten module read APIs, transaction writes and numeric-result checks through the real `pg` driver. That test server was stopped. The permanent `hrms` database has now also been created on the local PostgreSQL 18.6 service. Migrations 1 and 2 are applied. The initial clean-company verification passed for administrator login and 23 module APIs. The original SQLite dataset was subsequently imported for local testing as described above, retaining the configured administrator. The PostgreSQL password was reset with authorization, saved privately in `server/.env`, and the original authentication rules were restored.

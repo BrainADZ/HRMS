@@ -3,6 +3,8 @@ client/dist/
 data/
 *.log
 .env
+.env.*
+!.env.example
 .DS_Store
 demo/dist
 .test-results/

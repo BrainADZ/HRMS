@@ -22,6 +22,7 @@ try {
     databaseUrl: process.env.DATABASE_URL,
     dataDir,
     seed: process.env.SEED === 'empty' ? 'empty' : 'demo',
+    serveClient: process.env.SERVE_CLIENT !== 'false',
   });
   const { app } = runtime;
   const server = await listenAvailable(app, { port: preferredPort, host });

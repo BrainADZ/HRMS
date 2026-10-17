@@ -35,7 +35,7 @@ It is a complete application: a Node.js server with a PostgreSQL database, real 
 
 ## Run it on your computer
 
-You need **Node.js 22.13 or newer** ([download](https://nodejs.org)) and **PostgreSQL 16+**. Configure `.env` using [DATABASE_SETUP.md](DATABASE_SETUP.md); then create the database and schema with `npm run db:setup`. The server uses PostgreSQL only.
+You need **Node.js 22.13 or newer** ([download](https://nodejs.org)) and **PostgreSQL 16+**. Configure `server/.env` using [DATABASE_SETUP.md](DATABASE_SETUP.md); then create the database and schema with `npm run db:setup`. The server uses PostgreSQL only.
 
 ```bash
 npm install
@@ -44,7 +44,7 @@ npm run build
 npm start
 ```
 
-Open the URL printed in the terminal. The server tries port 3000 (or `PORT` from `.env`); if occupied, it automatically binds a free port. With `SEED=demo`, the first start creates a demo company with about 100 fictional employees, six months of attendance and payroll, candidates, reviews and resignations.
+Open the URL printed in the terminal. The server tries port 3000 (or `PORT` from `server/.env`); if occupied, it automatically binds a free port. With `SEED=demo`, the first start creates a demo company with about 100 fictional employees, six months of attendance and payroll, candidates, reviews and resignations.
 
 Demo logins (password `Brainadz@2026` for all). Only the administrator signs in by email; HR, managers and employees use the first-name + employee-ID username shown on the demo sign-in screen. See [LOGIN_SETUP.md](LOGIN_SETUP.md).
 
@@ -67,7 +67,7 @@ Set an Anthropic API key before starting the server:
 ANTHROPIC_API_KEY=sk-ant-... npm start
 ```
 
-or put it in a `.env` file (copy `.env.example`). The screener then sends each resume (PDF files as documents, DOCX as text) and the job requirement to **Claude Opus 5.5** (`claude-opus-5-5`) and gets back a structured result: overall match, per-skill scores with evidence, matched and missing criteria, knockout answers, extracted contact and career details, and a summary. "Ask AI" answers questions about a candidate from their resume. Server-side refusal fallback is enabled (`fallbacks: "default"`), so if the model declines a request the API retries it on Anthropic's recommended fallback model.
+or put it in a `server/.env` file (copy `server/.env.example`). The screener then sends each resume (PDF files as documents, DOCX as text) and the job requirement to **Claude Opus 5.5** (`claude-opus-5-5`) and gets back a structured result: overall match, per-skill scores with evidence, matched and missing criteria, knockout answers, extracted contact and career details, and a summary. "Ask AI" answers questions about a candidate from their resume. Server-side refusal fallback is enabled (`fallbacks: "default"`), so if the model declines a request the API retries it on Anthropic's recommended fallback model.
 
 Each screened resume is one API call billed to your Anthropic account. Without a key, the screener uses keyword and rule-based scoring and "Ask AI" quotes the matching lines of the resume. Set `HRMS_AI_MODEL` to use a different Claude model.
 
@@ -86,7 +86,7 @@ One computer in the office runs the HRMS; everyone on the same Wi-Fi or LAN open
 
 1. On that computer, install **Node.js** (LTS version from [nodejs.org](https://nodejs.org)).
 2. Copy this project folder onto it (download the ZIP from GitHub and unzip it).
-3. Configure PostgreSQL in `.env` and run `npm run db:setup` once (see [DATABASE_SETUP.md](DATABASE_SETUP.md)), then double-click **`start-office.bat`** (Windows) or **`start-office.command`** (Mac; the first time, right-click → Open). The first run installs and builds, which takes a few minutes.
+3. Configure PostgreSQL in `server/.env` and run `npm run db:setup` once (see [DATABASE_SETUP.md](DATABASE_SETUP.md)), then double-click **`start-office.bat`** (Windows) or **`start-office.command`** (Mac; the first time, right-click → Open). The first run installs and builds, which takes a few minutes.
 4. The window prints the address to share, for example:
 
    ```
@@ -124,7 +124,7 @@ Every push to that branch redeploys automatically; the data on the disk is kept.
 ```bash
 docker build -t brainadz-hrms .
 docker run -d -p 3000:3000 -v hrms-data:/app/data \
-  --env-file .env brainadz-hrms
+  --env-file server/.env brainadz-hrms
 ```
 
 ### Other hosts
@@ -173,6 +173,8 @@ Things to know:
 - Change the demo password or remove demo data before inviting real users; the login page lists the demo accounts while demo data is loaded.
 
 ## For developers
+
+Frontend/backend configuration and separate run commands are documented in [ENVIRONMENT.md](ENVIRONMENT.md). Private settings are in `server/.env`; frontend settings are in `client/.env`. Use `npm run dev:server` and `npm run dev:client` in separate terminals, or `npm run dev` for both.
 
 See [CURRENT_AUDIT.md](CURRENT_AUDIT.md) for verified status and [OPERATIONS.md](OPERATIONS.md) for PostgreSQL tests, browser checks, backups and recovery.
 
