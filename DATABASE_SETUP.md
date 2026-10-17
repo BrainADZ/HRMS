@@ -1,5 +1,7 @@
 # PostgreSQL setup
 
+Migration 4 adds attendance correction requests with pending-request uniqueness and foreign keys. Apply it with `npm run db:setup`, or let normal server startup apply migrations before serving routes. It does not reimport or erase employee, attendance or payroll records. The current web remediation checklist is in [REMEDIATION_STATUS.md](REMEDIATION_STATUS.md).
+
 The running server uses PostgreSQL only and does not read or modify the old SQLite database. The optional migration command below can explicitly import it. PostgreSQL 16 or newer is recommended. Uploaded files remain in `DATA_DIR/uploads`; the database is stored by PostgreSQL separately.
 
 An explicit one-time import is available for the old SQLite data: `npm run db:import-sqlite -- --confirm-import`. It requires an initial empty PostgreSQL company, creates a consistent SQLite snapshot (including WAL changes) and a PostgreSQL custom-format backup under `data/backups/`, imports records in one transaction, preserves record IDs and existing password hashes, regenerates usernames, advances identity sequences, and keeps the configured administrator credentials. Old sessions are excluded. Uploaded files stay at their existing paths. A populated PostgreSQL company cannot be overwritten with this command. `SQLITE_IMPORT_FILE` overrides the default `data/hrms.db`; `PG_DUMP_PATH` can override the PostgreSQL backup executable. Keep the app idle during import; account sessions are cleared and users should sign in again afterward.

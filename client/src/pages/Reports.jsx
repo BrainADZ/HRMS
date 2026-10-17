@@ -8,8 +8,12 @@ import { Card, Kpi, Button, Loading, ErrorBox, Empty } from '../components/ui.js
 import { Bars, LineChart, Donut, Legend, HBars } from '../components/charts.jsx';
 
 export default function Reports() {
-  const { meta } = useApp();
-  const { data, error, reload } = useApi('/reports/summary');
+  const { meta, vertical } = useApp();
+  const [department, setDepartment] = useState('');
+  const [employee, setEmployee] = useState('');
+  const [asOf, setAsOf] = useState(meta.today);
+  const filters = new URLSearchParams({ ...(vertical ? { vertical } : {}), ...(department ? { department } : {}), ...(employee ? { employee } : {}), as_of: asOf });
+  const { data, error, reload } = useApi('/reports/summary?' + filters);
   const { data: runs } = useApi('/payroll?month=' + meta.today.slice(0, 7));
   const [month, setMonth] = useState(meta.today.slice(0, 7));
   if (error && !data) return <ErrorBox error={error} onRetry={reload} />;
@@ -29,6 +33,11 @@ export default function Reports() {
   return (
     <div>
       <div className="page-head"><div><h1>Reports</h1><div className="sub">Workforce trends and downloadable registers for audits and planning.</div></div></div>
+      <div className="row wrap mb-16" style={{ gap: 12 }}>
+        <label className="small">As of <input aria-label="Report date" className="input" type="date" value={asOf} onChange={(e) => e.target.value && setAsOf(e.target.value)} /></label>
+        <select aria-label="Report department" className="input" value={department} onChange={(e) => setDepartment(e.target.value)}><option value="">All departments</option>{meta.departments.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>
+        <select aria-label="Report employee" className="input" value={employee} onChange={(e) => setEmployee(e.target.value)}><option value="">All employees</option>{meta.employees.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.code})</option>)}</select>
+      </div>
       <div className="kpis">
         <Kpi icon={Users} tone="blue" label="Headcount" value={data.headcount} />
         <Kpi icon={TrendingDown} tone="red" label="Attrition (last 12 months)" value={`${data.annualAttrition}%`} />
@@ -61,7 +70,7 @@ export default function Reports() {
             <div key={t} className="card tight row" style={{ boxShadow: 'none', gap: 12 }}>
               <FileSpreadsheet size={26} className="green" style={{ flexShrink: 0 }} />
               <div className="grow" style={{ minWidth: 0 }}><div className="b6 small">{t}</div><div className="xs muted">{d}</div></div>
-              <Button size="sm" icon={Download} onClick={() => download(p)}>CSV</Button>
+              <Button size="sm" icon={Download} onClick={() => download(p + (p.includes('?') ? '&' : '?') + filters)}>CSV</Button>
             </div>
           ))}
           {runs?.run && <div className="card tight row" style={{ boxShadow: 'none', gap: 12 }}><FileSpreadsheet size={26} className="green" /><div className="grow"><div className="b6 small">Payroll register · {runs.label}</div><div className="xs muted">Earnings, deductions and employer cost per employee</div></div><Button size="sm" icon={Download} onClick={() => download(`/payroll/runs/${runs.run.id}/register.csv`)}>CSV</Button></div>}

@@ -12,8 +12,23 @@
 import { getSettings, fullName, notifyUsers, userIdForEmployee } from '../core.js';
 import * as D from '../lib/dates.js';
 import { dayStatuses } from './calendar.js';
+import { workflow } from '../database/workflows.js';
+import { invalidatePayrollInputs } from './payroll-inputs.js';
 
 export const GAP_REASONS = ['Client meeting', 'Site / field visit', 'Lunch break', 'Break', 'Personal work', 'Medical', 'Other'];
+// Overnight clocks belong to the date on which the configured shift starts.
+export function workDate(date, settings, now = new Date()) {
+  const end = settings.workdayEnd || '18:30';
+  const start = settings.workdayStart || '09:30';
+  const time = new Intl.DateTimeFormat('en-GB', { timeZone: settings.timezone, hourCycle: 'h23', hour: '2-digit', minute: '2-digit' }).format(new Date(now));
+  return end < start && time <= end ? D.addDays(date, -1) : date;
+}
+
+export function shiftEnd(date, settings) {
+  const end = settings.workdayEnd || '18:30';
+  const endDate = end < (settings.workdayStart || '09:30') ? D.addDays(date, 1) : date;
+  return D.zonedIso(endDate, end, settings.timezone);
+}
 const HALF_DAY_MINUTES = 240;
 
 const minutesBetween = (a, b) => Math.max(0, Math.round((Date.parse(b) - Date.parse(a)) / 60000));
@@ -89,6 +104,7 @@ export async function syncAttendance(db, employeeId, date, userId) {
   await db.run(`INSERT INTO attendance (employee_id, date, status, check_in, check_out, updated_by) VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(employee_id, date) DO UPDATE SET status = excluded.status, check_in = excluded.check_in, check_out = excluded.check_out, updated_by = excluded.updated_by`,
   employeeId, date, status, sessions[0].start_at, lastOut, userId ?? null);
+  await invalidatePayrollInputs(db, date, date);
 }
 
 export async function startSession(db, { employeeId, date, mode, gapReason, gapNote, userId, now = new Date().toISOString() }) {
@@ -123,11 +139,12 @@ export async function endSession(db, { employeeId, date, by = 'checkout', userId
 
 // Sessions left running past midnight are closed at the end of that workday
 // (or where they started, if that was later).
-export async function closeStaleSessions(db, today, settings) {
+export async function closeStaleSessions(db, today, settings, now = new Date().toISOString()) {
   settings ??= await getSettings(db);
   const stale = await db.all('SELECT * FROM work_sessions WHERE end_at IS NULL AND date < ?', today);
   for (const s of stale) {
-    const end = D.zonedIso(s.date, settings.workdayEnd || '18:30', settings.timezone);
+    const end = shiftEnd(s.date, settings);
+    if (end > now) continue;
     await db.run("UPDATE work_sessions SET end_at = ?, ended_by = 'auto' WHERE id = ?", end > s.start_at ? end : s.start_at, s.id);
     await syncAttendance(db, s.employee_id, s.date, null);
   }
@@ -136,7 +153,8 @@ export async function closeStaleSessions(db, today, settings) {
     await ensureSessions(db, a.employee_id, a.date);
     const s = await db.get('SELECT * FROM work_sessions WHERE employee_id = ? AND date = ? AND end_at IS NULL', a.employee_id, a.date);
     if (!s) continue;
-    const end = D.zonedIso(a.date, settings.workdayEnd || '18:30', settings.timezone);
+    const end = shiftEnd(a.date, settings);
+    if (end > now) continue;
     await db.run("UPDATE work_sessions SET end_at = ?, ended_by = 'auto' WHERE id = ?", end > s.start_at ? end : s.start_at, s.id);
     await syncAttendance(db, a.employee_id, a.date, null);
   }
@@ -159,14 +177,17 @@ export async function canDecideShortfall(db, user, employeeId) {
 
 // Creates short-hours rows for working days before `today` (looking back
 // `days` days). Idempotent. Notifies each employee once per new row.
-export async function generateShortfalls(db, { today, days = 7, employeeIds = null, notify = true, settings } = {}) {
+export async function generateShortfalls(db, options = {}) {
+  return workflow(db, () => generateShortfallsUnlocked(db, options));
+}
+async function generateShortfallsUnlocked(db, { today, days = 7, employeeIds = null, notify = true, settings } = {}) {
   settings ??= await getSettings(db);
   await closeStaleSessions(db, today, settings);
   const from = D.addDays(today, -days);
   const to = D.addDays(today, -1);
   const required = requiredMinutes(settings);
   const grace = Number(settings.shortHoursGraceMinutes || 0);
-  const where = ['a.date BETWEEN ? AND ?', 'a.check_in IS NOT NULL', "a.status IN ('P','WFH','HD')", 'NOT EXISTS (SELECT 1 FROM hour_shortfalls s WHERE s.employee_id = a.employee_id AND s.date = a.date)'];
+  const where = ['a.date BETWEEN ? AND ?', 'a.check_in IS NOT NULL', 'a.check_out IS NOT NULL', "a.status IN ('P','WFH','HD')", 'NOT EXISTS (SELECT 1 FROM hour_shortfalls s WHERE s.employee_id = a.employee_id AND s.date = a.date)'];
   const params = [from, to];
   if (employeeIds) {
     if (!employeeIds.length) return [];

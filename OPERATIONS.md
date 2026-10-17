@@ -26,6 +26,16 @@ Automatic scheduling, retention and an off-machine backup destination are deploy
 
 ## Role workflows
 
+Attendance → Corrections lets an employee request a status correction. Another authorised manager/HR reviews it. Approval is blocked while the day's clock runs, after the underlying record changed, or for an approved/paid payroll period. Existing work timestamps remain unchanged. Payroll adjustments in a later period handle locked historical corrections.
+
+Attendance/approved-leave/salary/policy changes mark a prepared payroll as stale and clear finance review. Re-run it before approving. Approved/paid snapshots remain frozen. F&F accepts either a finance-approved net amount or approved components whose net is calculated on the server; HR must verify statutory eligibility and tax inputs.
+
+Exit letters can be issued by HR only after completion. Issue first, then View/Print. Managers cannot access private settlement, exit-interview or letter contents. Reports offer workforce/date filters; candidate downloads use job vertical/department and payroll registers cover their full run.
+
+Production always hides demo account details and refuses the common demo password. Set real account passwords before production. `EXPOSE_DEMO_LOGINS=false` also hides the shortcuts locally. Mail, bank integration and native builds are deferred. Web writes require an online connection; no offline attendance queue is provided.
+
+See [REMEDIATION_STATUS.md](REMEDIATION_STATUS.md) for all 81 original items and [API_UI_MAP.md](API_UI_MAP.md) for the route/client reference inventory. Regenerate the inventory with `node scripts/audit-api-map.js`.
+
 Every account can change its profile photo from the top-right account menu → Change photo. Choose a JPG, PNG or WebP image up to 3 MB, preview it and save. HR/admin can also change an employee's photo from their employee profile. Uploaded photos appear in profile cards, the directory and account avatars; accounts without an uploaded image show a default profile illustration. Standalone administrator photos are supported without creating employee records. Replacing a photo refreshes avatars immediately and removes the previous stored image after commit.
 
 Administrators sign in with email; HR, managers and employees use first name + employee code usernames. New/reset credentials require a password change. Administrators appoint ICC members. An HR account outside ICC cannot access committee cases by appointing itself.

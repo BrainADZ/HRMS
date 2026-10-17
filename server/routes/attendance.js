@@ -2,20 +2,23 @@ import { asyncMap, asyncFilter } from "../database/async.js";import { today, isH
 import * as D from '../lib/dates.js';
 import { dayStatuses } from '../services/calendar.js';
 import {
-  GAP_REASONS, workdaySummary, startSession, endSession, generateShortfalls, shortfallRow, approverUserIds, canDecideShortfall, fmtMinutes, dayLabel } from
+  GAP_REASONS, workDate, workdaySummary, startSession, endSession, generateShortfalls, shortfallRow, approverUserIds, canDecideShortfall, fmtMinutes, dayLabel } from
 '../services/workday.js';
 import { checkLocation, logLocation, readCoords, geofencePolicy, fmtDistance } from '../services/geofence.js';
 import { destroySession } from '../auth.js';
+import { invalidatePayrollInputs } from '../services/payroll-inputs.js';
 
 const MARKS = ['P', 'WFH', 'HD', 'A'];
 
-async function scopedEmployees(db, user, { vertical, department, search, from, to }) {
+async function scopedEmployees(db, user, { vertical, department, location, employee, search, from, to }) {
   const scope = await scopeIds(db, user);
   const where = ['e.join_date <= ?', '(e.exit_date IS NULL OR e.exit_date >= ?)'];
   const params = [to, from];
   if (scope !== null) {where.push(scope.length ? `e.id IN (${scope.map(() => '?').join(',')})` : '0=1');params.push(...scope);}
   if (vertical) {where.push('e.vertical_id = ?');params.push(Number(vertical));}
   if (department) {where.push('e.department_id = ?');params.push(Number(department));}
+  if (location) {where.push('e.location_id = ?');params.push(id(location));}
+  if (employee) {where.push('e.id = ?');params.push(id(employee));}
   if (search) {
     const like = `%${String(search).replace(/[%_]/g, '')}%`;
     where.push("(e.first_name || ' ' || e.last_name LIKE ? OR e.code LIKE ?)");
@@ -47,21 +50,21 @@ export default function attendanceRoutes(r, { db }) {
   const timeLocal = async (iso) => new Intl.DateTimeFormat('en-GB', { timeZone: (await settings()).timezone, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
 
   r.get('/attendance/today', async (req, res) => {
-    const T = await today(db);
-    const out = { today: T, me: null, team: null };
     const s = await settings();
+    const T = workDate(await today(db), s);
+    const out = { today: T, me: null, team: null };
     if (req.user.employeeId) {
       const e = await db.get('SELECT * FROM employees WHERE id = ?', req.user.employeeId);
       const st = (await dayStatuses(db, [e], T, T, T, s)).get(e.id).get(T);
       const rec = await db.get('SELECT * FROM attendance WHERE employee_id = ? AND date = ?', e.id, T);
-      out.me = { status: st, record: rec, lateAfter: s.lateAfter, late: rec?.check_in ? (await timeLocal(rec.check_in)) > s.lateAfter : false };
+      out.me = { status: st, record: rec, lateAfter: s.lateAfter, late: D.isLateCheckIn(rec?.check_in, T, s) };
     }
     if (isHR(req.user) || req.user.role === 'manager') {
       const emps = await scopedEmployees(db, req.user, { from: T, to: T, vertical: req.query.vertical, department: req.query.department });
       const st = await dayStatuses(db, emps, T, T, T, s);
       const rows = await asyncMap(emps, async (e) => {
         const d = st.get(e.id).get(T);
-        return { id: e.id, name: fullName(e), code: e.code, designation: e.designation, department: e.department, vertical: e.vertical, has_photo: Boolean(e.photo), code_today: d.code, leave: d.leave?.name, checkIn: d.checkIn, checkOut: d.checkOut, late: d.checkIn ? (await timeLocal(d.checkIn)) > s.lateAfter : false, canMark: await canMark(db, req.user, e.id) };
+        return { id: e.id, name: fullName(e), code: e.code, designation: e.designation, department: e.department, vertical: e.vertical, has_photo: Boolean(e.photo), code_today: d.code, leave: d.leave?.name, checkIn: d.checkIn, checkOut: d.checkOut, late: D.isLateCheckIn(d.checkIn, T, s), canMark: await canMark(db, req.user, e.id) };
       });
       const count = (c) => rows.filter((x) => x.code_today === c).length;
       out.team = { rows, summary: { total: rows.length, present: count('P'), wfh: count('WFH'), halfDay: count('HD'), absent: count('A'), onLeave: count('L'), notMarked: count('F') + count('U'), off: count('H') + count('WO'), late: rows.filter((x) => x.late).length } };
@@ -73,11 +76,12 @@ export default function attendanceRoutes(r, { db }) {
   // Today's sessions for the signed-in employee, plus what needs their
   // attention (short days to explain) or their approval (team short days).
   r.get('/attendance/workday', async (req, res) => {
-    const T = await today(db);
     const s = await settings();
+    const calendarToday = await today(db);
+    const T = workDate(calendarToday, s);
     const out = { today: T, serverNow: new Date().toISOString(), gapReasons: GAP_REASONS, workday: null, toExplain: 0, toApprove: 0, workdayEnd: s.workdayEnd };
     if (req.user.employeeId) {
-      await generateShortfalls(db, { today: T, employeeIds: [req.user.employeeId], settings: s });
+      await generateShortfalls(db, { today: calendarToday, employeeIds: [req.user.employeeId], settings: s });
       out.workday = await workdaySummary(db, req.user.employeeId, T, s);
       out.dayStatus = (await dayStatuses(db, [await db.get('SELECT * FROM employees WHERE id = ?', req.user.employeeId)], T, T, T, s)).get(req.user.employeeId).get(T).code;
       out.toExplain = await db.value("SELECT COUNT(*) FROM hour_shortfalls WHERE employee_id = ? AND status = 'Awaiting explanation'", req.user.employeeId);
@@ -96,7 +100,7 @@ export default function attendanceRoutes(r, { db }) {
     const gapNote = str(req.body.gap_note, { max: 300 });
     if (gapReason === 'Other' && !gapNote) fail(400, 'Add a short note for "Other"');
     const s = await settings();
-    const T = await today(db);
+    const T = workDate(await today(db), s);
     if (geofencePolicy(s).mode !== 'off') {
       const coords = readCoords(req.body.location);
       const check = await checkLocation(db, { user: req.user, coords, ip: req.ip, today: T, settings: s });
@@ -122,7 +126,7 @@ export default function attendanceRoutes(r, { db }) {
   r.post('/attendance/check-out', async (req, res) => {
     if (!req.user.employeeId) fail(400, 'Your login is not linked to an employee record');
     const by = oneOf(req.body.action || 'checkout', ['checkout', 'break'], { name: 'Action' });
-    const out = await endSession(db, { employeeId: req.user.employeeId, date: await today(db), by, userId: req.user.id });
+    const out = await endSession(db, { employeeId: req.user.employeeId, date: workDate(await today(db), await settings()), by, userId: req.user.id });
     if (!out) fail(400, 'Your work clock is not running');
     res.json({ ok: true, at: out.at, workedMinutes: out.workedMinutes, worked: fmtMinutes(out.workedMinutes), hours: Math.round(out.workedMinutes / 60 * 10) / 10 });
   });
@@ -135,7 +139,7 @@ export default function attendanceRoutes(r, { db }) {
     const s = await settings();
     const policy = geofencePolicy(s);
     if (policy.mode === 'off') return res.json({ ok: true, tracking: false });
-    const T = await today(db);
+    const T = workDate(await today(db), s);
     const coords = readCoords(req.body);
     const check = await checkLocation(db, { user: req.user, coords, ip: req.ip, today: T, settings: s });
     if (check.method === 'exempt') return res.json({ ok: true, tracking: false, exempt: check.exempt });
@@ -233,6 +237,7 @@ export default function attendanceRoutes(r, { db }) {
     if (!(await canDecideShortfall(db, req.user, s.employee_id))) fail(403, 'Only the reporting manager or the CEO can approve this');
     if (!['Awaiting explanation', 'Pending approval'].includes(s.status)) fail(409, `This day is already ${s.status.toLowerCase()}`);
     const action = oneOf(req.body.action, ['approve', 'reject'], { required: true, name: 'Action' });
+    await invalidatePayrollInputs(db, s.date, s.date, { rejectLocked: true });
     const note = str(req.body.note, { max: 500 });
     const att = await db.get('SELECT * FROM attendance WHERE employee_id = ? AND date = ?', s.employee_id, s.date);
     await db.tx(async () => {
@@ -261,7 +266,7 @@ export default function attendanceRoutes(r, { db }) {
     const holidays = await db.all('SELECT * FROM holidays WHERE date BETWEEN ? AND ?', from, to);
     const rows = await asyncMap(emps, async (e) => {
       const days = st.get(e.id);
-      for (const d of days.values()) if (d.checkIn && (await timeLocal(d.checkIn)) > s.lateAfter) d.late = true;
+      for (const [day, d] of days) if (D.isLateCheckIn(d.checkIn, day, s)) d.late = true;
       return {
         id: e.id, name: fullName(e), code: e.code, designation: e.designation, department: e.department, vertical: e.vertical, has_photo: Boolean(e.photo),
         canMark: await canMark(db, req.user, e.id),
@@ -277,6 +282,10 @@ export default function attendanceRoutes(r, { db }) {
     if (!(await canMark(db, req.user, eid))) fail(403, 'You cannot change attendance for this employee');
     const d = date(req.body.date, { required: true });
     if (d > (await today(db))) fail(400, 'Attendance cannot be marked for a future date');
+    const employee = (await db.get('SELECT join_date, exit_date FROM employees WHERE id=?', eid)) || notFound('Employee');
+    if (d < employee.join_date || employee.exit_date && d > employee.exit_date) fail(400, 'Attendance must be within the employment dates');
+    if (await db.value('SELECT id FROM work_sessions WHERE employee_id=? AND date=? AND end_at IS NULL', eid, d)) fail(409, 'End the running work clock before correcting this day');
+    await invalidatePayrollInputs(db, d, d, { rejectLocked: true });
     const status = req.body.status ? oneOf(req.body.status, MARKS, { name: 'Status' }) : null;
     if (!status) await db.run('DELETE FROM attendance WHERE employee_id = ? AND date = ?', eid, d);else
     {
@@ -294,13 +303,19 @@ export default function attendanceRoutes(r, { db }) {
     const status = oneOf(req.body.status || 'P', MARKS, { name: 'Status' });
     const ids = await asyncFilter((Array.isArray(req.body.employee_ids) ? req.body.employee_ids : []).map(id), async (x) => await canMark(db, req.user, x));
     if (!ids.length) fail(400, 'Select at least one employee you can mark');
+    await invalidatePayrollInputs(db, d, d, { rejectLocked: true });
+    let count = 0;
     await db.tx(async () => {
       for (const eid of ids) {
+        const employee = (await db.get('SELECT join_date, exit_date FROM employees WHERE id=?', eid)) || notFound('Employee');
+        if (d < employee.join_date || employee.exit_date && d > employee.exit_date) fail(400, 'Attendance must be within the employment dates');
+        if (await db.value('SELECT id FROM attendance WHERE employee_id=? AND date=?', eid, d)) continue;
         await db.run(`INSERT INTO attendance (employee_id, date, status, updated_by) VALUES (?, ?, ?, ?)
           ON CONFLICT(employee_id, date) DO NOTHING`, eid, d, status, req.user.id);
+        count++;
       }
     });
-    res.json({ ok: true, count: ids.length });
+    res.json({ ok: true, count });
   });
 
   r.get('/attendance/export.csv', async (req, res) => {
@@ -309,7 +324,7 @@ export default function attendanceRoutes(r, { db }) {
     const month = D.isValidMonth(req.query.month) ? req.query.month : D.monthOf(T);
     const from = D.monthStart(month);
     const to = D.monthEnd(month);
-    const emps = await scopedEmployees(db, req.user, { from, to });
+    const emps = await scopedEmployees(db, req.user, { ...req.query, from, to });
     const st = await dayStatuses(db, emps, from, to, T);
     const days = D.eachDay(from, to);
     const rows = emps.map((e) => ({ e, days: st.get(e.id), sum: summarize(st.get(e.id)) }));

@@ -1,19 +1,20 @@
 import { createSession, destroySession, verifyPassword, hashPassword, checkPasswordStrength, loginThrottle, loadUser } from '../auth.js';
 import { getSettings, str, fail, audit, today } from '../core.js';
-import { endSession } from '../services/workday.js';
+import { endSession, workDate, shiftEnd } from '../services/workday.js';
 import { checkLocation, logLocation, readCoords, geofencePolicy } from '../services/geofence.js';
 import * as D from '../lib/dates.js';
 import { DEMO_ACCOUNTS, DEMO_PASSWORD } from '../seed.js';
 import { aiEnabled } from '../services/ai.js';
 
 export default function authRoutes(r, { db }) {
+  const exposeDemo = (settings) => Boolean(settings.demo) && process.env.NODE_ENV !== 'production' && process.env.EXPOSE_DEMO_LOGINS !== 'false';
   r.get('/auth/config', async (_req, res) => {
     const s = await getSettings(db);
     res.json({
       companyName: s.companyName,
       officeOnly: geofencePolicy(s).mode !== 'off',
-      demo: Boolean(s.demo),
-      demoAccounts: s.demo ? await Promise.all(DEMO_ACCOUNTS.map(async (a) => {
+      demo: exposeDemo(s),
+      demoAccounts: exposeDemo(s) ? await Promise.all(DEMO_ACCOUNTS.map(async (a) => {
         const user = await db.get('SELECT role, username FROM users WHERE email = ?', a.email);
         return { ...a, username: user?.username, loginType: user?.role === 'admin' ? 'admin' : 'employee', password: DEMO_PASSWORD };
       })) : []
@@ -37,7 +38,8 @@ export default function authRoutes(r, { db }) {
     guard.succeeded();
     // Location check after the password, so it reveals nothing to strangers.
     const settings = await getSettings(db);
-    const T = await today(db);
+    if (process.env.NODE_ENV === 'production' && password === DEMO_PASSWORD) fail(403, 'Replace the shared demo password before using this account in production');
+    const T = workDate(await today(db), settings);
     const who = await loadUser(db, user.id);
     const coords = readCoords(req.body?.location);
     const check = await checkLocation(db, { user: who, coords, ip: req.ip, today: T, settings });
@@ -48,14 +50,15 @@ export default function authRoutes(r, { db }) {
     if (geofencePolicy(settings).mode !== 'off') await logLocation(db, { user: who, event: 'sign-in', coords, ip: req.ip, check });
     await db.run('UPDATE users SET last_login = ? WHERE id = ?', new Date().toISOString(), user.id);
     // Office-only sign-ins last until midnight, so each workday starts in the office.
-    await createSession(db, req, res, user.id, check.dayBound ? { expiresAt: D.zonedIso(D.addDays(T, 1), '00:00', settings.timezone) } : {});
+    const expiresAt = settings.workdayEnd < settings.workdayStart ? shiftEnd(T, settings) : D.zonedIso(D.addDays(T, 1), '00:00', settings.timezone);
+    await createSession(db, req, res, user.id, check.dayBound ? { expiresAt } : {});
     res.json({ ok: true, location: check.method === 'exempt' ? { exempt: check.exempt } : { office: check.site?.name, method: check.method, distance: check.distance ?? null } });
   });
 
   // pause: true stops the work clock; the next sign-in asks why the employee was away.
   r.post('/auth/logout', async (req, res) => {
     let paused = null;
-    if (req.user?.employeeId && req.body?.pause) paused = await endSession(db, { employeeId: req.user.employeeId, date: await today(db), by: 'signout', userId: req.user.id });
+    if (req.user?.employeeId && req.body?.pause) paused = await endSession(db, { employeeId: req.user.employeeId, date: workDate(await today(db), await getSettings(db)), by: 'signout', userId: req.user.id });
     await destroySession(db, req, res);
     res.json({ ok: true, paused: Boolean(paused) });
   });
@@ -63,11 +66,12 @@ export default function authRoutes(r, { db }) {
   r.get('/auth/me', async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Please sign in' });
     const s = await getSettings(db);
-    res.json({ user: req.user, companyName: s.companyName, demo: Boolean(s.demo), ai: aiEnabled() });
+    res.json({ user: req.user, companyName: s.companyName, demo: exposeDemo(s), ai: aiEnabled(), sessionExpiresAt: req.sessionExpiresAt });
   });
 
   r.post('/auth/change-password', async (req, res) => {
     if (!req.user) fail(401, 'Please sign in');
+    if (String(req.body?.current || '').length > 200) fail(400, 'Password is too long');
     const row = await db.get('SELECT password_hash FROM users WHERE id = ?', req.user.id);
     if (!verifyPassword(String(req.body?.current || ''), row.password_hash)) fail(400, 'Current password is incorrect');
     const next = String(req.body?.next || '');

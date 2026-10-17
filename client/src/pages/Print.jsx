@@ -10,7 +10,7 @@ import CompanyLogo from '../components/CompanyLogo.jsx';
 // Print-friendly pages: /print/payslip/:id and /print/experience|relieving/:resignationId
 export default function Print() {
   const { kind, id } = useParams();
-  const path = kind === 'payslip' ? `/payroll/payslips/${id}` : `/resignations/${id}`;
+  const path = kind === 'payslip' ? `/payroll/payslips/${id}` : `/resignations/${id}/letters/${kind}`;
   const { data, error } = useApi(path);
   const navigate = useNavigate();
   useEffect(() => {
@@ -37,7 +37,7 @@ export default function Print() {
 }
 
 function Letter({ kind, r }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = r.issuedOn;
   return (
     <div style={{ lineHeight: 1.75, fontSize: 15 }}>
       <div className="row between" style={{ borderBottom: '2px solid var(--navy)', paddingBottom: 12, marginBottom: 28 }}>
@@ -46,11 +46,11 @@ function Letter({ kind, r }) {
       </div>
       <h2 style={{ textAlign: 'center', marginBottom: 24, fontSize: 20, textDecoration: 'underline' }}>{kind === 'experience' ? 'TO WHOMSOEVER IT MAY CONCERN' : 'RELIEVING LETTER'}</h2>
       {kind === 'experience' ? (
-        <p>This is to certify that <b>{r.name}</b> (Employee ID {r.code}) was employed with BrainADZ as <b>{r.designation}</b> in the {r.department} department from <b>{fmtDate(r.join_date)}</b> to <b>{fmtDate(r.last_working_day)}</b>.<br /><br />During this period we found {r.name.split(' ')[0]} sincere, hardworking and a valued member of the team. We wish them every success in their future endeavours.</p>
+        <p>This is to certify that <b>{r.name}</b> (Employee ID {r.code}) was employed with {r.companyName} as <b>{r.designation}</b> in the {r.department} department from <b>{fmtDate(r.join_date)}</b> to <b>{fmtDate(r.last_working_day)}</b>.<br /><br />During this period we found {r.name.split(' ')[0]} sincere, hardworking and a valued member of the team. We wish them every success in their future endeavours.</p>
       ) : (
         <p>Dear {r.name},<br /><br />This refers to your resignation submitted on {fmtDate(r.submitted_on)}. We confirm that your resignation has been accepted and you are relieved from your duties as <b>{r.designation}</b> at the close of business on <b>{fmtDate(r.last_working_day)}</b>.<br /><br />We confirm that you have completed all handover formalities and that your full and final settlement {r.settlement?.paidOn ? `was processed on ${fmtDate(r.settlement.paidOn)}` : 'will be processed as per company policy'}.<br /><br />We thank you for your contributions and wish you the very best.</p>
       )}
-      <div style={{ marginTop: 60 }}>For <b>BrainADZ</b><br /><br /><br />Authorised Signatory<br />Human Resources</div>
+      <div style={{ marginTop: 60 }}>For <b>{r.companyName}</b><br /><br /><br />Authorised Signatory<br />Human Resources</div>
     </div>
   );
 }

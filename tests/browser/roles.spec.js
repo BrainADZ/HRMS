@@ -56,6 +56,17 @@ for (const [role, email, routes] of [
       await expect(page.locator('main .alert.error')).toHaveCount(0);
       await expect(page.locator('.user-chip img')).toBeVisible();
     }
+    await page.goto(origin + '/attendance?tab=corrections');
+    await expect(page.getByRole('heading', { name: 'Request an attendance correction' })).toBeVisible();
+    await page.getByLabel('Correction reason', { exact: true }).fill(`${role} browser correction test`);
+    await page.getByRole('button', { name: 'Request correction', exact: true }).click();
+    await expect(page.locator('td', { hasText: `${role} browser correction test` })).toBeVisible();
+    if (role === 'admin' || role === 'hr') {
+      await page.goto(origin + '/reports');
+      await page.getByLabel('Report employee', { exact: true }).selectOption(String((await ctx.db.get('SELECT id FROM employees WHERE email=?', email)).id));
+      await expect(page.locator('main .alert.error')).toHaveCount(0);
+      await expect(page.getByLabel('Report date', { exact: true })).toBeVisible();
+    }
     if (role === 'employee' || role === 'manager') {
       await page.goto(origin + '/payroll');
       await expect(page).not.toHaveURL(/\/payroll$/);

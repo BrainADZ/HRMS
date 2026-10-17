@@ -13,6 +13,7 @@ import authRoutes from './routes/auth.js';
 import metaRoutes from './routes/meta.js';
 import dashboardRoutes from './routes/dashboard.js';
 import employeeRoutes from './routes/employees.js';
+import correctionRoutes from './routes/attendance-corrections.js';
 import leaveRoutes from './routes/leave.js';
 import attendanceRoutes from './routes/attendance.js';
 import policyRoutes from './routes/policies.js';
@@ -135,7 +136,7 @@ export async function createApp({ databaseUrl, database, dataDir = path.resolve(
   api.use((req, _res, next) => req.user ? next() : next(new HttpError(401, 'Please sign in')));
   api.use((req, _res, next) => req.user.mustChangePassword
     ? next(new HttpError(403, 'Change your temporary password before continuing')) : next());
-  for (const register of [metaRoutes, dashboardRoutes, employeeRoutes, leaveRoutes, attendanceRoutes, policyRoutes, payrollRoutes, hiringRoutes, screenerRoutes, resignationRoutes, performanceRoutes, reportRoutes, settingsRoutes]) {
+  for (const register of [metaRoutes, dashboardRoutes, employeeRoutes, leaveRoutes, attendanceRoutes, correctionRoutes, policyRoutes, payrollRoutes, hiringRoutes, screenerRoutes, resignationRoutes, performanceRoutes, reportRoutes, settingsRoutes]) {
     await register(atomicRouter(api, db, ctx.onClose), ctx);
   }
   api.use((_req, _res, next) => next(new HttpError(404, 'API route not found')));

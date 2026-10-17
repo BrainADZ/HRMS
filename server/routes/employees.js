@@ -12,6 +12,8 @@ import { salaryStructure, estimateMonthlyTds } from '../lib/payroll.js';
 import { balances } from '../services/leave.js';
 import { calendarCtx, dayStatuses } from '../services/calendar.js';
 import { IFSC_RE, ACCOUNT_RE } from '../services/payroll.js';
+import { invalidatePayrollInputs } from '../services/payroll-inputs.js';
+import { employeeFilter } from '../services/report-filters.js';
 
 const TYPES = ['Full-time', 'Part-time', 'Contract', 'Intern'];
 const STATUSES = ['Active', 'Notice', 'Exited'];
@@ -152,7 +154,8 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
 
   r.get('/employees/export.csv', async (req, res) => {
     requireHR(req);
-    const rows = await db.all(`${BASE_SELECT} ORDER BY e.code`);
+    const filter = employeeFilter(req.query);
+    const rows = await db.all(`${BASE_SELECT} WHERE ${filter.sql} ORDER BY e.code`, ...filter.params);
     sendCsv(res, 'employees.csv', rows, [
     { label: 'Employee ID', value: 'code' }, { label: 'Name', value: (e) => fullName(e) }, { label: 'Email', value: 'email' }, { label: 'Phone', value: 'phone' },
     { label: 'Gender', value: 'gender' }, { label: 'Vertical', value: 'vertical' }, { label: 'Department', value: 'department' }, { label: 'Designation', value: 'designation' },
@@ -192,7 +195,7 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
         emergency_contact: sensitive ? e.emergency_contact : null
       },
       manager, reports, peers,
-      documents: await db.all('SELECT id, name, category, mime, size, uploaded_at FROM documents WHERE employee_id = ? ORDER BY uploaded_at DESC', eid),
+      documents: sensitive ? await db.all('SELECT id, name, category, mime, size, uploaded_at FROM documents WHERE employee_id = ? ORDER BY uploaded_at DESC', eid) : [],
       assets: await db.all('SELECT * FROM assets WHERE employee_id = ? ORDER BY status, issued_on DESC', eid),
       acknowledgements: await db.all(`SELECT p.id, p.title, p.version, p.requires_ack, a.acked_at, a.version AS acked_version FROM policies p
         LEFT JOIN policy_acks a ON a.policy_id = p.id AND a.employee_id = ? WHERE p.requires_ack = 1 ORDER BY p.title`, eid),
@@ -228,17 +231,19 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
   r.post('/employees', async (req, res) => {
     requireHR(req);
     const data = await readEmployeeBody(db, req.body);
-    if (data.manager_id && !(await db.value('SELECT 1 FROM employees WHERE id = ?', data.manager_id))) fail(400, 'Unknown manager');
+    if (data.manager_id && !(await db.value("SELECT 1 FROM employees WHERE id = ? AND status != 'Exited'", data.manager_id))) fail(400, 'Choose an active manager');
     const createLogin = Boolean(req.body.create_login);
     const role = oneOf(req.body.role || 'employee', ['employee', 'manager', 'hr', 'admin'], { name: 'Role' });
     if (role === 'admin' && req.user.role !== 'admin') fail(403, 'Only an administrator can create admin logins');
     let temp = null;
     const eid = await db.tx(async () => {
       const newId = await db.insert('employees', { ...data, code: await nextCode(db), status: 'Active' });
+      await invalidatePayrollInputs(db, data.join_date);
       if (data.join_date >= D.addDays(await today(db), -30)) await asyncForEach(ONBOARDING, async (t, i) => await db.insert('onboarding_tasks', { employee_id: newId, title: t, sort: i }));
       // An existing login with this email and no employee record (e.g. the
       // first administrator) is linked instead of creating a second login.
-      const orphan = await db.get('SELECT id FROM users WHERE email = ? AND employee_id IS NULL', data.email);
+      const orphan = await db.get('SELECT id, role FROM users WHERE LOWER(email) = LOWER(?) AND employee_id IS NULL', data.email);
+      if (orphan?.role === 'admin' && req.user.role !== 'admin') fail(403, 'Only an administrator can link an administrator account to an employee');
       if (orphan) await db.run('UPDATE users SET employee_id = ? WHERE id = ?', newId, orphan.id);else
       if (createLogin) {
         if (await db.value('SELECT 1 FROM users WHERE email = ?', data.email)) fail(409, 'A login with this email already exists');
@@ -260,7 +265,7 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
       data = await readEmployeeBody(db, req.body, { partial: true });
       if ('manager_id' in data && data.manager_id) {
         if (data.manager_id === eid || (await reportIds(db, eid)).includes(data.manager_id)) fail(400, 'An employee cannot report to themselves or their own team');
-        if (!(await db.value('SELECT 1 FROM employees WHERE id = ?', data.manager_id))) fail(400, 'Unknown manager');
+        if (!(await db.value("SELECT 1 FROM employees WHERE id = ? AND status != 'Exited'", data.manager_id))) fail(400, 'Choose an active manager');
       }
       if ('status' in req.body) {
         data.status = oneOf(req.body.status, STATUSES, { name: 'Status' });
@@ -275,12 +280,15 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
       data = await readEmployeeBody(db, body, { partial: true });
     } else fail(403, 'You can only edit your own profile');
     const updated = { ...existing, ...data };
+    if (updated.exit_date && updated.exit_date < updated.join_date) fail(400, 'Exit date cannot be before joining date');
+    if (data.status === 'Exited' && updated.exit_date > await today(db)) fail(400, 'Use Notice status until the exit date is reached');
     if (updated.work_place === 'onsite' && !updated.location_id) fail(400, 'Select an assigned branch for On Site work');
     await db.tx(async () => {
     if (data.email && data.email !== existing.email) {
       await db.run('UPDATE users SET email = ? WHERE employee_id = ?', data.email, eid);
     }
     await db.update('employees', eid, data);
+    if (['ctc', 'monthly_tds', 'join_date', 'exit_date', 'status'].some((key) => key in data)) await invalidatePayrollInputs(db);
     if (data.status === 'Exited') await db.run('UPDATE users SET active = 0 WHERE employee_id = ?', eid);
     });
     await audit(db, req.user, 'employee.update', 'employee', eid, Object.keys(data));

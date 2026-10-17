@@ -33,7 +33,7 @@ export function AppProvider({ children }) {
     try {
       const me = await api.get('/auth/me');
       setUser(me.user);
-      setInfo({ companyName: me.companyName, demo: me.demo, ai: me.ai });
+      setInfo({ companyName: me.companyName, demo: me.demo, ai: me.ai, sessionExpiresAt: me.sessionExpiresAt });
       if (me.user.mustChangePassword) { setMeta(null); return; }
       const m = await api.get('/meta');
       setTimeZone(m.settings.timezone);
@@ -52,10 +52,21 @@ export function AppProvider({ children }) {
 
   useEffect(() => {
     loadMe();
-    const h = () => setUser(null);
+    const h = () => { clearWorkday(); setUser(null); setMeta(null); };
     window.addEventListener('hrms:unauthorized', h);
     return () => window.removeEventListener('hrms:unauthorized', h);
   }, [loadMe]);
+
+  useEffect(() => {
+    if (!user) return;
+    const expire = () => window.dispatchEvent(new Event('hrms:unauthorized'));
+    const expiry = Date.parse(info.sessionExpiresAt);
+    const timeout = Number.isFinite(expiry) ? setTimeout(expire, Math.max(0, Math.min(2147483647, expiry - Date.now()))) : null;
+    const timer = setInterval(() => {
+      api.get('/auth/me').catch((error) => { if (error.status === 401) expire(); });
+    }, 60000);
+    return () => { clearTimeout(timeout); clearInterval(timer); };
+  }, [user?.id, info.sessionExpiresAt]);
 
   const setVertical = useCallback((v) => {
     setVerticalState(v);

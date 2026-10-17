@@ -3,6 +3,7 @@ import { json } from '../db.js';
 import * as D from '../lib/dates.js';
 import { headcountOn } from './dashboard.js';
 import { protectEmployeeAccount } from '../auth.js';
+import { calculateSettlement } from '../lib/settlement.js';
 
 export const REASONS = ['Better Opportunities', 'Career Growth', 'Compensation', 'Personal Reasons', 'Work-Life Balance', 'Relocation', 'Higher Studies', 'Health', 'Other'];
 export const CHECKLIST = [
@@ -31,6 +32,15 @@ export default function resignationRoutes(r, { db }) {
   const load = async (rid) => (await db.get(`${SELECT} WHERE r.id = ?`, id(rid))) || notFound('Resignation');
   const canManagerAct = async (user, row) => isHR(user) || user.role === 'manager' && (await scopeIds(db, user)).includes(row.employee_id) && row.employee_id !== user.employeeId;
   const canView = async (user, row) => isHR(user) || row.employee_id === user.employeeId || (await canManagerAct(user, row));
+  const visible = (row, user) => {
+    const result = shape(row);
+    if (!isHR(user) && row.employee_id !== user.employeeId) {
+      result.settlement = null;
+      result.exit_interview = null;
+      result.rehire_eligible = null;
+    }
+    return result;
+  };
 
   r.get('/resignations', async (req, res) => {
     const T = await today(db);
@@ -39,7 +49,7 @@ export default function resignationRoutes(r, { db }) {
     const params = [];
     if (scope !== null) {where.push(scope.length ? `r.employee_id IN (${scope.map(() => '?').join(',')})` : '0=1');params.push(...scope);}
     if (req.query.status) {where.push('r.status = ?');params.push(req.query.status);}
-    const rows = (await db.all(`${SELECT} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY r.submitted_on DESC`, ...params)).map(shape);
+    const rows = (await db.all(`${SELECT} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY r.submitted_on DESC`, ...params)).map((row) => visible(row, req.user));
     const year = T.slice(0, 4);
     const thisYear = rows.filter((x) => x.submitted_on.slice(0, 4) === year);
     const month = D.monthOf(T);
@@ -77,7 +87,16 @@ export default function resignationRoutes(r, { db }) {
     const row = await load(req.params.id);
     if (!(await canView(req.user, row))) fail(403, 'You cannot view this resignation');
     const assets = await db.all('SELECT * FROM assets WHERE employee_id = ?', row.employee_id);
-    res.json({ ...shape(row), assets, checklistLabels: CHECKLIST, clearanceLabels: CLEARANCE, canManage: isHR(req.user), canManagerAct: await canManagerAct(req.user, row) });
+    res.json({ ...visible(row, req.user), assets, checklistLabels: CHECKLIST, clearanceLabels: CLEARANCE, canManage: isHR(req.user), canManagerAct: await canManagerAct(req.user, row) });
+  });
+
+  r.get('/resignations/:id/letters/:kind', async (req, res) => {
+    const row = await load(req.params.id);
+    if (!isHR(req.user) && row.employee_id !== req.user.employeeId) fail(403, 'Only HR and the employee can view this letter');
+    const kind = oneOf(req.params.kind, ['experience', 'relieving'], { required: true, name: 'Letter' });
+    const letters = json(row.letters, {});
+    if (row.status !== 'Completed' || !letters[kind]) fail(409, 'Complete offboarding and issue this letter first');
+    res.json({ name: fullName(row), code: row.code, designation: row.designation, department: row.department, join_date: row.join_date, last_working_day: row.last_working_day, submitted_on: row.submitted_on, settlement: { paidOn: json(row.settlement, {})?.paidOn }, companyName: (await getSettings(db)).companyName, issuedOn: letters[`${kind}IssuedOn`] || row.last_working_day });
   });
 
   r.post('/resignations', async (req, res) => {
@@ -217,12 +236,17 @@ export default function resignationRoutes(r, { db }) {
   r.post('/resignations/:id/settlement', async (req, res) => {
     requireHR(req);
     const row = await load(req.params.id);
-    const data = { amount: num(req.body.amount, { required: true, min: 0, max: 100000000, name: 'Amount' }), paidOn: date(req.body.paid_on, { name: 'Paid on' }), notes: str(req.body.notes, { max: 500 }) };
+    const data = { amount: num(req.body.amount, { required: !req.body.components, min: 0, max: 100000000, name: 'Amount' }), paidOn: date(req.body.paid_on, { name: 'Paid on' }), notes: str(req.body.notes, { max: 500 }) };
+    if (req.body.components) {
+      try { Object.assign(data, calculateSettlement(req.body.components)); }
+      catch (error) { fail(400, error.message); }
+    }
     if (row.status !== 'In Progress') fail(409, 'Settlement can only be updated during offboarding');
     if (data.paidOn && data.paidOn > await today(db)) fail(400, 'Settlement paid date cannot be in the future');
     const checklist = json(row.checklist, {});
     checklist.fnf = data.paidOn ? { status: 'Completed', at: new Date().toISOString(), by: req.user.name } : { status: 'Pending' };
     await save(row, { settlement: data, checklist, steps: data.paidOn ? { ...json(row.steps, {}), settlement: new Date().toISOString() } : json(row.steps, {}) });
+    await audit(db, req.user, 'resignation.settlement', 'resignation', row.id, { before: json(row.settlement, null), after: data });
     res.json({ ok: true });
   });
 
@@ -230,6 +254,10 @@ export default function resignationRoutes(r, { db }) {
     requireHR(req);
     const row = await load(req.params.id);
     const letters = { ...json(row.letters, {}) };
+    if ((req.body.experience || req.body.relieving) && row.status !== 'Completed') fail(409, 'Complete offboarding before issuing letters');
+    for (const kind of ['experience', 'relieving']) {
+      if (req.body[kind] && !letters[kind]) letters[`${kind}IssuedOn`] = await today(db);
+    }
     if ('experience' in req.body) letters.experience = Boolean(req.body.experience);
     if ('relieving' in req.body) letters.relieving = Boolean(req.body.relieving);
     await save(row, { rehire_eligible: req.body.rehire_eligible == null ? row.rehire_eligible : req.body.rehire_eligible ? 1 : 0, letters });

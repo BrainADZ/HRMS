@@ -13,7 +13,7 @@ export function hashPassword(password) {
 
 export function verifyPassword(password, stored) {
   const [alg, saltHex, hashHex] = String(stored).split('$');
-  if (alg !== 'scrypt' || !saltHex || !hashHex) return false;
+  if (alg !== 'scrypt' || !/^[a-f0-9]{32}$/i.test(saltHex || '') || !/^[a-f0-9]{128}$/i.test(hashHex || '')) return false;
   const expected = Buffer.from(hashHex, 'hex');
   const actual = crypto.scryptSync(String(password), Buffer.from(saltHex, 'hex'), expected.length);
   return crypto.timingSafeEqual(actual, expected);

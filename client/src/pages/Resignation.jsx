@@ -81,7 +81,7 @@ function Manage() {
 const ICON = { Completed: <Check size={13} strokeWidth={3} />, 'In Progress': <CircleDot size={13} />, Pending: <Circle size={13} /> };
 
 function Detail({ id, onChanged, labels, isHR }) {
-  const { toast } = useApp();
+  const { toast, user } = useApp();
   const { data, error, reload } = useApi(`/resignations/${id}`);
   const [run, busy] = useAction(toast);
   const [confirm, confirmEl] = useConfirm();
@@ -175,7 +175,7 @@ function Detail({ id, onChanged, labels, isHR }) {
           {[['experience', 'Experience Letter'], ['relieving', 'Relieving Letter']].map(([k, l]) => (
             <div key={k} className="list-item"><FileText size={18} className="blue" /><span className="grow small">{l}</span>
               {r.letters[k] ? <Badge tone="green">Issued</Badge> : <Badge tone="amber">Pending</Badge>}
-              <a className="btn xs" href={`/print/${k}/${r.id}`} target="_blank" rel="noreferrer" onClick={() => isHR && !r.letters[k] && api.put(`/resignations/${r.id}/rehire`, { [k]: true }).then(reload)}><Printer size={13} />{r.letters[k] ? 'View' : 'Issue'}</a>
+              {r.letters[k] && (isHR || r.employee_id === user.employeeId) ? <a className="btn xs" href={`/print/${k}/${r.id}`} target="_blank" rel="noreferrer"><Printer size={13} />View</a> : isHR && r.status === 'Completed' ? <Button size="xs" onClick={() => act(() => api.put(`/resignations/${r.id}/rehire`, { [k]: true }), 'Letter issued')}>Issue</Button> : null}
             </div>
           ))}
           {r.settlement && <div className="small mt-12"><span className="muted">F&F settlement:</span> <b>{inr(r.settlement.amount)}</b> {r.settlement.paidOn ? `paid ${fmtDate(r.settlement.paidOn)}` : '(not paid yet)'}</div>}
@@ -244,12 +244,14 @@ function ExitInterview({ r, onClose, onDone }) {
 function Settlement({ r, onClose, onDone }) {
   const { toast } = useApp();
   const s = r.settlement || {};
-  const [f, setF] = useState({ amount: s.amount ?? '', paid_on: s.paidOn || '', notes: s.notes || '' });
+  const [f, setF] = useState({ amount: s.amount ?? '', paid_on: s.paidOn || '', notes: s.notes || '', ...(s.components ? { components: s.components } : {}) });
   const [run, busy] = useAction(toast);
   return (
     <Modal title={`Full & final settlement · ${r.name}`} onClose={onClose} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={async () => { if (await run(() => api.post(`/resignations/${r.id}/settlement`, f), 'Settlement saved')) { onDone(); onClose(); } }}>Save</Button></>}>
       <div className="col" style={{ gap: 12 }}>
-        <Field label="Net settlement amount (₹)" hint="Pro-rata salary + leave encashment + gratuity (if 5+ years) − recoveries"><Input type="number" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
+        <label className="small"><input type="checkbox" checked={Boolean(f.components)} onChange={(e) => setF({ ...f, components: e.target.checked ? {} : undefined })} /> Calculate from approved components</label>
+        {f.components && [['earnedSalary', 'Earned salary'], ['leaveEncashment', 'Leave encashment'], ['gratuity', 'Approved gratuity'], ['otherEarnings', 'Other earnings'], ['recoveries', 'Recoveries']].map(([key, label]) => <Field key={key} label={label}><Input type="number" min="0" step="0.01" value={f.components[key] ?? ''} onChange={(e) => setF({ ...f, components: { ...f.components, [key]: e.target.value } })} /></Field>)}
+        {f.components ? <div className="small">Net: {inr(['earnedSalary', 'leaveEncashment', 'gratuity', 'otherEarnings'].reduce((sum, key) => sum + Number(f.components[key] || 0), 0) - Number(f.components.recoveries || 0))}. HR must verify eligibility, tax and recoveries before saving.</div> : <Field label="Net settlement amount (₹)" hint="Enter the amount approved by HR and finance"><Input type="number" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>}
         <Field label="Paid on" hint="Leave blank until paid; setting it completes the F&F checklist item"><Input type="date" value={f.paid_on} onChange={(e) => setF({ ...f, paid_on: e.target.value })} /></Field>
         <Field label="Notes"><Textarea value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} /></Field>
       </div>

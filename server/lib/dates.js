@@ -48,6 +48,14 @@ export function nowTimeIn(timeZone = 'Asia/Kolkata') {
   }).format(new Date());
 }
 
+export function isLateCheckIn(iso, workday, settings) {
+  if (!iso) return false;
+  const cutoff = settings.lateAfter || '10:00';
+  const overnight = (settings.workdayEnd || '18:30') < (settings.workdayStart || '09:30');
+  const cutoffDay = overnight && cutoff < (settings.workdayStart || '09:30') ? addDays(workday, 1) : workday;
+  return Date.parse(iso) > Date.parse(zonedIso(cutoffDay, cutoff, settings.timezone));
+}
+
 // ISO timestamp for a wall-clock time ("18:30") on a date in a time zone.
 export function zonedIso(date, hm, timeZone = 'Asia/Kolkata') {
   const guess = Date.parse(`${date}T${hm}:00Z`);

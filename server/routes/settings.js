@@ -4,6 +4,7 @@ import { hashPassword, tempPassword, checkPasswordStrength, loginDetails, create
 import { seedDemo, LEAVE_TYPES, holidaysFor, policyLibrary } from '../seed.js';
 import * as D from '../lib/dates.js';
 import { GEOFENCE_MODES, geofencePolicy } from '../services/geofence.js';
+import { invalidatePayrollInputs } from '../services/payroll-inputs.js';
 
 const MASTERS = { verticals: ['name', 'short', 'tagline', 'color'], departments: ['name'], locations: ['name'] };
 const MASTER_REFS = { verticals: ['employees.vertical_id', 'jobs.vertical_id'], departments: ['employees.department_id', 'jobs.department_id'], locations: ['employees.location_id', 'jobs.location_id'] };
@@ -77,6 +78,7 @@ export default function settingsRoutes(r, { db, saveFile }) {
       });
     }
     validatePayrollRules((await getSettings(db)).payroll);
+    if (['weeklyOffs', 'timezone', 'payroll'].some((key) => key in b)) await invalidatePayrollInputs(db);
     await audit(db, req.user, 'settings.update', 'settings', null, Object.keys(b));
     res.json({ ok: true, settings: await getSettings(db) });
   });

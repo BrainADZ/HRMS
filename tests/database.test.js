@@ -24,7 +24,7 @@ test('PostgreSQL configuration supports raw passwords and validates pool/TLS opt
 test('PostgreSQL schema, identities, case-insensitive uniqueness, rollback and foreign keys', async () => {
   const db = await openDb({ queryClient: await createTestClient() });
   try {
-    assert.equal(await db.value('SELECT MAX(version) FROM schema_migrations'), 3);
+    assert.equal(await db.value('SELECT MAX(version) FROM schema_migrations'), 4);
     const employee = await db.insert('employees', { code: 'TEST001', first_name: 'Test', email: 'Mixed@Example.com', join_date: '2026-01-01' });
     assert.equal(typeof employee, 'number');
     await db.insert('work_sessions', { employee_id: employee, date: '2026-01-01', start_at: '2026-01-01T09:00:00Z' });
@@ -94,7 +94,7 @@ test('username migration backfills existing accounts, preserves passwords and is
     assert.deepEqual(await db.get('SELECT username, password_hash FROM users WHERE id = ?', user), { username: 'aaravbz777', password_hash: 'preserved-hash' });
     assert.equal(await db.value("SELECT username FROM users WHERE role = 'admin'"), null);
     db = await openDb({ queryClient: engine });
-    assert.equal(await db.value('SELECT COUNT(*) FROM schema_migrations'), 3);
+    assert.equal(await db.value('SELECT COUNT(*) FROM schema_migrations'), 4);
   } finally { await db.close(); }
 });
 

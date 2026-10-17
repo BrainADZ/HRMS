@@ -1,6 +1,21 @@
 # HRMS status after fixes — 17 October 2026
 
-The previously reproduced application defects have been fixed. The local PostgreSQL application is ready for role-based testing and a controlled pilot. Public production use still needs the external configuration and acceptance work listed below.
+Latest web remediation and the disposition of all 81 requested items: [REMEDIATION_STATUS.md](REMEDIATION_STATUS.md). This supersedes historical scope and test figures below. EXE/APK, mail and actual payment integrations are deferred by the user. Offline writes remain unsupported; live AI, office GPS/IP and statutory payroll acceptance remain conditional.
+
+## Latest verification
+
+| Check | Result |
+|---|---|
+| Actual PostgreSQL full regression suite | **91 passed, 0 failed, 0 skipped**, 220 seconds |
+| Chrome role/photo/correction-form/report checks | **5 passed**, admin, HR, manager, employee and standalone admin |
+| Production frontend build | Passed |
+| Dependency audit | 0 reported vulnerabilities |
+| Mixed-role local smoke load | 48 concurrent reads, 351 ms total, no HTTP errors; not a production capacity benchmark |
+| PostgreSQL upgrade | Migration 4 applied to local `hrms`; original company counts retained |
+| Backup and real restore | Passed; 105 employees, 24 users, 10997 attendance, 115 candidates, 603 payslips, 682 documents; all 682 document files present |
+| Source inventory | [API_UI_MAP.md](API_UI_MAP.md): 167 route registrations and 172 literal client API references; not exhaustive interaction acceptance |
+
+Logs: `.test-results/final-postgres.txt`, `final-browser.txt`, `final-build.txt`, `final-audit.json`, `final-db-setup.txt`, `final-backup.txt`, `final-restore.txt`. Later sections retain the preceding audit for history.
 
 This report covers the local working tree, including uncommitted changes. It replaces the previous open-defect status. `AUDIT.md` is historical. Remote GitHub parity and a hosted deployment were not assessed.
 

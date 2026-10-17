@@ -79,6 +79,7 @@ export default function Payroll() {
         <Card className="span-6" title={`Payroll Run Status (${fmtMonth(month)})`} action={r ? <Badge lg>{status}</Badge> : <Badge lg tone="gray">Not run</Badge>}>
           <div className="small muted right" style={{ marginTop: -8, marginBottom: 12 }}>Run ID: {data.ref}</div>
           <Steps steps={stepper} />
+          {steps.inputsChanged && <div className="alert info mt-16">Attendance, leave or salary inputs changed. Re-run payroll before finance approval.</div>}
           {!r && <div className="alert info mt-16"><Info size={16} />Preview below uses live attendance and leave. Click <b>Run Payroll</b> to create payslips for review.</div>}
         </Card>
         <Card className="span-3" title="Payroll Calendar">
@@ -331,7 +332,7 @@ function Approval({ run, busy, isAdmin, onApprove, onSendBack, onTransfer, onCom
     <div>
       <Steps steps={flow.map((f, i) => ({ label: f.label, state: f.a ? 'done' : i === firstOpen ? 'current' : 'todo', sub: f.a ? `${f.a.by ? `${f.a.by.split(' ')[0]} · ` : ''}${fmtShort(f.a.at)}` : '' }))} />
       <div className="row wrap mt-16" style={{ gap: 8 }}>
-        {s === 'In Review' && <Button variant="primary" icon={CircleCheck} loading={busy} onClick={() => onApprove('finance')}>Approve (Finance)</Button>}
+        {s === 'In Review' && <Button variant="primary" icon={CircleCheck} disabled={Boolean(run.steps.inputsChanged)} loading={busy} onClick={() => onApprove('finance')}>Approve (Finance)</Button>}
         {s === 'Finance Reviewed' && (isAdmin ? <Button variant="primary" icon={CircleCheck} loading={busy} onClick={() => onApprove('management')}>Approve (Management)</Button> : <span className="small muted">Waiting for an administrator to approve.</span>)}
         {['Finance Reviewed', 'Approved'].includes(s) && <Button icon={Undo2} loading={busy} onClick={onSendBack}>Send back</Button>}
         {s === 'Approved' && <Button variant="primary" icon={Send} loading={busy} onClick={onTransfer}>Prepare bank payment CSV</Button>}

@@ -6,6 +6,7 @@ import * as D from '../lib/dates.js';
 import { leaveDaysByYear, isWorkingDay } from '../lib/leave.js';
 import { balances, leaveTypesFor } from '../services/leave.js';
 import { calendarCtx } from '../services/calendar.js';
+import { invalidatePayrollInputs } from '../services/payroll-inputs.js';
 
 const LIST_SELECT = `
   SELECT r.*, t.name AS type, t.code, t.color, t.kind, e.first_name, e.last_name, e.code AS emp_code, e.designation,
@@ -140,6 +141,7 @@ export default function leaveRoutes(r, { db }) {
     const reason = str(req.body.reason, { max: 500 });
     const onBehalf = v.emp.id !== req.user.employeeId;
     const autoApprove = onBehalf && isHR(req.user) && req.body.approve === true;
+    if (autoApprove) await invalidatePayrollInputs(db, v.from, v.to, { rejectLocked: true });
     const rid = await db.insert('leave_requests', {
       employee_id: v.emp.id, leave_type_id: v.type.id, from_date: v.from, to_date: v.to, half_day: v.halfDay, days: v.days, reason,
       status: autoApprove ? 'Approved' : 'Pending', decided_by: autoApprove ? req.user.id : null, decided_at: autoApprove ? new Date().toISOString() : null
@@ -165,6 +167,7 @@ export default function leaveRoutes(r, { db }) {
     const note = str(req.body.note, { max: 300 });
     if (action === 'reject' && !note && req.body.requireNote) fail(400, 'Add a reason for rejecting');
     const status = action === 'approve' ? 'Approved' : 'Rejected';
+    if (action === 'approve') await invalidatePayrollInputs(db, lr.from_date, lr.to_date, { rejectLocked: true });
     await db.update('leave_requests', rid, { status, decided_by: req.user.id, decided_at: new Date().toISOString(), decision_note: note });
     await notifyUsers(db, [await userIdForEmployee(db, lr.employee_id)], `Your ${lr.type} request (${lr.from_date}${lr.to_date !== lr.from_date ? ` to ${lr.to_date}` : ''}) was ${status.toLowerCase()}${note ? `: ${note}` : ''}`, '/leave');
     await audit(db, req.user, `leave.${action}`, 'leave_request', rid);
@@ -178,6 +181,7 @@ export default function leaveRoutes(r, { db }) {
     if (!own && !isHR(req.user)) fail(403, 'You cannot cancel this request');
     if (!['Pending', 'Approved'].includes(lr.status)) fail(409, 'Only pending or approved leave can be cancelled');
     if (own && !isHR(req.user) && lr.status === 'Approved' && lr.from_date <= (await today(db))) fail(400, 'Leave that has already started can only be cancelled by HR');
+    if (lr.status === 'Approved') await invalidatePayrollInputs(db, lr.from_date, lr.to_date, { rejectLocked: true });
     await db.update('leave_requests', rid, { status: 'Cancelled', decision_note: str(req.body.note, { max: 300 }) || (own ? 'Cancelled by employee' : 'Cancelled by HR'), decided_at: new Date().toISOString() });
     if (!own) await notifyUsers(db, [await userIdForEmployee(db, lr.employee_id)], `Your leave from ${lr.from_date} was cancelled by HR`, '/leave');
     res.json({ ok: true });
@@ -260,10 +264,14 @@ export default function leaveRoutes(r, { db }) {
       name: str(req.body.name, { required: true, max: 80, name: 'Holiday name' }),
       type: oneOf(req.body.type || 'Company', ['Company', 'Restricted'], { name: 'Type' })
     });
+    const holidayDate = await db.value('SELECT date FROM holidays WHERE id=?', hid);
+    await invalidatePayrollInputs(db, holidayDate, holidayDate);
     res.json({ id: hid });
   });
   r.delete('/holidays/:id', async (req, res) => {
     requireHR(req);
+    const holidayDate = (await db.value('SELECT date FROM holidays WHERE id=?', id(req.params.id))) || notFound('Holiday');
+    await invalidatePayrollInputs(db, holidayDate, holidayDate);
     await db.run('DELETE FROM holidays WHERE id = ?', id(req.params.id));
     res.json({ ok: true });
   });
@@ -300,6 +308,7 @@ export default function leaveRoutes(r, { db }) {
     const tid = id(req.params.id);
     (await db.get('SELECT 1 FROM leave_types WHERE id = ?', tid)) || notFound('Leave type');
     await db.update('leave_types', tid, readType(req.body));
+    await invalidatePayrollInputs(db);
     await audit(db, req.user, 'leave_type.update', 'leave_type', tid);
     res.json({ ok: true });
   });

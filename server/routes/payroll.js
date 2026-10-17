@@ -127,6 +127,7 @@ export default function payrollRoutes(r, { db }) {
     const steps = json(run.steps, {});
     const now = new Date().toISOString();
     if (stage === 'finance') {
+      if (steps.inputsChanged) fail(409, 'Payroll inputs have changed. Re-run payroll before finance review.');
       if (run.status !== 'In Review') fail(409, 'This run is not waiting for finance review');
       approvals.push({ stage: 'Review by Finance', by: req.user.name, at: now });
       await db.update('payroll_runs', run.id, { status: 'Finance Reviewed', approvals, updated_at: now });

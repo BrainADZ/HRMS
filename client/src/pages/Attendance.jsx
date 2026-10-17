@@ -26,13 +26,41 @@ export default function Attendance() {
       <div className="page-head">
         <div><h1>Attendance</h1><div className="sub">Check-ins, work from home and the monthly register that feeds payroll. <VerticalFilterNote /></div></div>
       </div>
-      <Tabs value={tab} onChange={(t) => setSp({ tab: t })} tabs={[{ value: 'today', label: 'Today' }, { value: 'month', label: team ? 'Monthly Register' : 'My Attendance' }, { value: 'short', label: shortCount ? `Short hours (${shortCount})` : 'Short hours' }, { value: 'locations', label: 'Location log' }]} />
+      <Tabs value={tab} onChange={(t) => setSp({ tab: t })} tabs={[{ value: 'today', label: 'Today' }, { value: 'month', label: team ? 'Monthly Register' : 'My Attendance' }, { value: 'short', label: shortCount ? `Short hours (${shortCount})` : 'Short hours' }, { value: 'corrections', label: 'Corrections' }, { value: 'locations', label: 'Location log' }]} />
       {tab === 'today' && <Today />}
       {tab === 'month' && <Register />}
       {tab === 'short' && <ShortHours team={team || isAdmin} />}
       {tab === 'locations' && <LocationLog team={team || isAdmin} />}
+      {tab === 'corrections' && <Corrections />}
     </div>
   );
+}
+
+function Corrections() {
+  const { user, meta, toast } = useApp();
+  const { data, error, reload } = useApi('/attendance/corrections');
+  const [day, setDay] = useState(meta.today);
+  const [status, setStatus] = useState('P');
+  const [reason, setReason] = useState('');
+  const [run, busy] = useAction(toast);
+  const decide = async (row, action) => {
+    if (await run(() => api.post(`/attendance/corrections/${row.id}/decision`, { action }), 'Decision recorded')) { reload(); refreshWorkday(); }
+  };
+  return <div>
+    {user.employeeId && <Card title="Request an attendance correction">
+      <form className="row wrap" style={{ gap: 12 }} onSubmit={async (event) => { event.preventDefault(); if (await run(() => api.post('/attendance/corrections', { date: day, status, reason }), 'Correction requested')) { setReason(''); reload(); } }}>
+        <input aria-label="Correction date" type="date" className="input" required max={meta.today} value={day} onChange={(e) => setDay(e.target.value)} />
+        <select aria-label="Requested attendance" className="input" value={status} onChange={(e) => setStatus(e.target.value)}>{['P', 'WFH', 'HD', 'A'].map((code) => <option key={code} value={code}>{LABEL[code]}</option>)}</select>
+        <input aria-label="Correction reason" className="input grow" required maxLength={1000} placeholder="Reason for correction" value={reason} onChange={(e) => setReason(e.target.value)} />
+        <Button type="submit" variant="primary" loading={busy}>Request correction</Button>
+      </form>
+      <p className="small muted">Requests correct the attendance status. Recorded work-clock times remain in the audit history. Approved or paid payroll periods require a later-period payroll adjustment.</p>
+    </Card>}
+    {error && <ErrorBox error={error} onRetry={reload} />}
+    <Card title="Correction requests">{!data ? <Loading /> : !data.items.length ? <Empty text="No correction requests" /> : <table className="table"><thead><tr><th>Employee / date</th><th>Requested</th><th>Reason</th><th>Status</th><th>Decision</th></tr></thead><tbody>{data.items.map((row) => <tr key={row.id}>
+      <td>{row.name}<div className="small muted">{row.code} · {row.date}</div></td><td>{LABEL[row.requested_status]}</td><td>{row.reason}</td><td><Badge>{row.status}</Badge></td><td>{row.canDecide ? <div className="row gap-6"><Button size="xs" loading={busy} onClick={() => decide(row, 'approve')}>Approve</Button><Button size="xs" loading={busy} onClick={() => decide(row, 'reject')}>Reject</Button></div> : row.decision_note || '—'}</td>
+    </tr>)}</tbody></table>}</Card>
+  </div>;
 }
 
 function Today() {

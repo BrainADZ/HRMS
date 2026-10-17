@@ -4,6 +4,8 @@ People operations for **BrainADZ Live, BrainADZ Marketing and BrainADZ Exhibits*
 
 It is a complete application: a Node.js server with a PostgreSQL database, real logins with roles, file uploads, and a React interface that follows the BrainADZ HRMS designs.
 
+Current verification: 91 PostgreSQL regressions and five Chrome role/workflow tests pass. See [REMEDIATION_STATUS.md](REMEDIATION_STATUS.md) for every item in the latest 81-point checklist, including remaining acceptance conditions. EXE/APK, mail and bank integrations are deferred; offline writes are not available.
+
 ## What's inside
 
 | Module | What it does |
