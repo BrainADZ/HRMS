@@ -93,14 +93,16 @@ export function ClaimModal({ onClose, onDone, hr }) {
   );
 }
 
-export function TempPasswordModal({ email, password, onClose, note }) {
+export function TempPasswordModal({ email, username, role, password, onClose, note }) {
   const { toast } = useApp();
+  const loginLabel = username && role !== 'admin' ? 'Username' : 'Admin email';
+  const login = username && role !== 'admin' ? username : email;
   return (
     <Modal title="Login details" size="narrow" onClose={onClose} footer={<Button variant="primary" onClick={onClose}>Done</Button>}>
       <div className="col" style={{ gap: 12 }}>
         <div className="alert warn">This temporary password is shown only once. Share it privately; the employee must change it at first sign-in.</div>
-        <div className="kv"><dt>Email</dt><dd>{email}</dd><dt>Temporary password</dt><dd><code style={{ fontSize: 15 }}>{password}</code></dd></div>
-        <Button size="sm" icon={Copy} onClick={() => { navigator.clipboard?.writeText(`Email: ${email}\nTemporary password: ${password}`); toast('Copied', 'success'); }}>Copy</Button>
+        <div className="kv"><dt>{loginLabel}</dt><dd>{login}</dd><dt>Temporary password</dt><dd><code style={{ fontSize: 15 }}>{password}</code></dd></div>
+        <Button size="sm" icon={Copy} onClick={() => { navigator.clipboard?.writeText(`${loginLabel}: ${login}\nTemporary password: ${password}`); toast('Copied', 'success'); }}>Copy</Button>
         {note && <div className="small muted">{note}</div>}
       </div>
     </Modal>

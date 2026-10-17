@@ -39,7 +39,7 @@ export default function Posh({ embedded }) {
           : <Kpi icon={Lock} tone="purple" label="My Concerns" value={data.mine.length} />}
       </div>
       <div className="grid">
-        <Card className="span-4" title="Internal Committee (ICC)" action={isHR && <Button size="sm" variant="ghost" icon={Pencil} onClick={() => setModal('icc')}>Edit</Button>}>
+        <Card className="span-4" title="Internal Committee (ICC)" action={data.canManageIcc && <Button size="sm" variant="ghost" icon={Pencil} onClick={() => setModal('icc')}>Edit</Button>}>
           {data.icc.members.map((m) => <div key={m.id} className="list-item"><Person name={m.name} sub={m.designation} id={m.id} hasPhoto={m.has_photo} size={34} /><span className="grow" /><Badge tone={m.role === 'Presiding Officer' ? 'purple' : 'blue'}>{m.role}</Badge></div>)}
           {data.icc.externalMember && <div className="list-item"><Users size={20} className="muted" /><span className="grow small">{data.icc.externalMember}</span><Badge tone="gray">External</Badge></div>}
           <div className="xs muted mt-8">At least half the members are women; the external member is from an NGO or has legal expertise.</div>

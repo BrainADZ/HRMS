@@ -14,7 +14,7 @@ export function aiEnabled() {
   return Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || process.env.HRMS_AI === 'on');
 }
 function getClient() {
-  if (!client) client = new Anthropic();
+  if (!client) client = new Anthropic({ timeout: 60000, maxRetries: 1 });
   return client;
 }
 

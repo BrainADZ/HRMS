@@ -21,6 +21,7 @@ export function AppProvider({ children }) {
   const [meta, setMeta] = useState(null);
   const [vertical, setVerticalState] = useState(readVertical);
   const [toasts, setToasts] = useState([]);
+  const [photoVersion, setPhotoVersion] = useState(0);
 
   const toast = useCallback((text, kind = 'info') => {
     const tid = Math.random().toString(36).slice(2);
@@ -33,6 +34,7 @@ export function AppProvider({ children }) {
       const me = await api.get('/auth/me');
       setUser(me.user);
       setInfo({ companyName: me.companyName, demo: me.demo, ai: me.ai });
+      if (me.user.mustChangePassword) { setMeta(null); return; }
       const m = await api.get('/meta');
       setTimeZone(m.settings.timezone);
       setMeta(m);
@@ -43,6 +45,10 @@ export function AppProvider({ children }) {
   }, []);
 
   const refreshMeta = useCallback(async () => setMeta(await api.get('/meta')), []);
+  const refreshPhotos = useCallback(async () => {
+    await loadMe();
+    setPhotoVersion(Date.now());
+  }, [loadMe]);
 
   useEffect(() => {
     loadMe();
@@ -70,7 +76,7 @@ export function AppProvider({ children }) {
   const value = useMemo(() => {
     const role = user?.role;
     return {
-      user, info, meta, vertical, setVertical, toast, loadMe, refreshMeta, logout,
+      user, info, meta, vertical, setVertical, toast, loadMe, refreshMeta, refreshPhotos, photoVersion, logout,
       isHR: role === 'admin' || role === 'hr',
       isAdmin: role === 'admin',
       isManager: role === 'manager',
@@ -78,7 +84,7 @@ export function AppProvider({ children }) {
       employeeName: (eid) => meta?.employees.find((e) => e.id === eid)?.name || '',
       verticalById: (vid) => meta?.verticals.find((v) => v.id === vid),
     };
-  }, [user, info, meta, vertical, setVertical, toast, loadMe, refreshMeta, logout]);
+  }, [user, info, meta, vertical, setVertical, toast, loadMe, refreshMeta, refreshPhotos, photoVersion, logout]);
 
   return (
     <AppCtx.Provider value={value}>

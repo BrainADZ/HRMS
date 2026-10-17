@@ -5,8 +5,8 @@ import { syncAttendance } from '../server/services/workday.js';
 import { zonedIso } from '../server/lib/dates.js';
 
 let ctx;
-before(async () => { ctx = await boot(); });
-after(async () => { await ctx.close(); });
+before(async () => {ctx = await boot();});
+after(async () => {await ctx.close();});
 
 const EMP = 'aarav.mehta@brainadz.com';
 const MGR_OF_EMP = 'nandini.joshi@brainadz.com';
@@ -47,9 +47,9 @@ test('stepping out and coming back asks the reason for the gap', async () => {
 test('breaks persist, resume without a gap prompt and exclude break time from work', async () => {
   const emp = await as(ctx.base, EMP);
   let w = (await emp.get('/attendance/workday')).body.workday;
-  const employee = ctx.db.get('SELECT id FROM employees WHERE email = ?', EMP);
-  ctx.db.run('DELETE FROM work_sessions WHERE employee_id = ? AND date = ?', employee.id, w.date);
-  ctx.db.run('DELETE FROM attendance WHERE employee_id = ? AND date = ?', employee.id, w.date);
+  const employee = await ctx.db.get('SELECT id FROM employees WHERE email = ?', EMP);
+  await ctx.db.run('DELETE FROM work_sessions WHERE employee_id = ? AND date = ?', employee.id, w.date);
+  await ctx.db.run('DELETE FROM attendance WHERE employee_id = ? AND date = ?', employee.id, w.date);
   w = (await emp.get('/attendance/workday')).body.workday;
   if (!w.openSince) await emp.post('/attendance/check-in', { gap_reason: 'Personal work' });
   assert.equal((await emp.post('/attendance/check-out', { action: 'break' })).status, 200);
@@ -59,7 +59,7 @@ test('breaks persist, resume without a gap prompt and exclude break time from wo
   assert.ok(w.breakSince);
   const start = new Date(Date.now() - 10 * 60000).toISOString();
   const end = new Date(Date.now() - 5 * 60000).toISOString();
-  ctx.db.run("UPDATE work_sessions SET start_at = ?, end_at = ? WHERE employee_id = ? AND date = ? AND ended_by = 'break'", start, end, employee.id, w.date);
+  await ctx.db.run("UPDATE work_sessions SET start_at = ?, end_at = ? WHERE employee_id = ? AND date = ? AND ended_by = 'break'", start, end, employee.id, w.date);
   const back = await as(ctx.base, EMP);
   w = (await back.get('/attendance/workday')).body.workday;
   assert.equal(w.breakSince, end);
@@ -75,17 +75,17 @@ test('breaks persist, resume without a gap prompt and exclude break time from wo
 
 test('a short day is explained by the employee and decided by their manager or the CEO', async () => {
   const { db } = ctx;
-  const emp = db.get("SELECT * FROM employees WHERE email = ?", EMP);
-  const T = db.value("SELECT MAX(date) FROM attendance WHERE employee_id = ?", emp.id);
+  const emp = await db.get("SELECT * FROM employees WHERE email = ?", EMP);
+  const T = await db.value("SELECT MAX(date) FROM attendance WHERE employee_id = ?", emp.id);
   // Two recent full-attendance days for this employee, made short.
-  const days = db.all(`SELECT a.date FROM attendance a WHERE a.employee_id = ? AND a.date < ? AND a.date >= date(?, '-7 day') AND a.status = 'P'
-    AND NOT EXISTS (SELECT 1 FROM hour_shortfalls s WHERE s.employee_id = a.employee_id AND s.date = a.date) ORDER BY a.date DESC LIMIT 2`, emp.id, T, T).map((r) => r.date);
+  const days = (await db.all(`SELECT a.date FROM attendance a WHERE a.employee_id = ? AND a.date < ? AND a.date >= to_char(CAST(? AS date) - INTERVAL '7 days', 'YYYY-MM-DD') AND a.status = 'P'
+    AND NOT EXISTS (SELECT 1 FROM hour_shortfalls s WHERE s.employee_id = a.employee_id AND s.date = a.date) ORDER BY a.date DESC LIMIT 2`, emp.id, T, T)).map((r) => r.date);
   assert.equal(days.length, 2, 'need two recent working days');
   for (const d of days) {
-    db.run('DELETE FROM work_sessions WHERE employee_id = ? AND date = ?', emp.id, d);
-    db.insert('work_sessions', { employee_id: emp.id, date: d, start_at: zonedIso(d, '09:30'), end_at: zonedIso(d, '12:30'), mode: 'office', ended_by: 'signout' });
-    db.insert('work_sessions', { employee_id: emp.id, date: d, start_at: zonedIso(d, '14:30'), end_at: zonedIso(d, '17:30'), mode: 'office', ended_by: 'checkout', gap_reason: 'Client meeting' });
-    syncAttendance(db, emp.id, d, null);
+    await db.run('DELETE FROM work_sessions WHERE employee_id = ? AND date = ?', emp.id, d);
+    await db.insert('work_sessions', { employee_id: emp.id, date: d, start_at: zonedIso(d, '09:30'), end_at: zonedIso(d, '12:30'), mode: 'office', ended_by: 'signout' });
+    await db.insert('work_sessions', { employee_id: emp.id, date: d, start_at: zonedIso(d, '14:30'), end_at: zonedIso(d, '17:30'), mode: 'office', ended_by: 'checkout', gap_reason: 'Client meeting' });
+    await syncAttendance(db, emp.id, d, null);
   }
 
   const me = await as(ctx.base, EMP);
@@ -117,12 +117,12 @@ test('a short day is explained by the employee and decided by their manager or t
   assert.equal(row.reason, 'Client meeting at Thane ran late.');
   assert.ok((await mgr.get('/attendance/workday')).body.toApprove >= 2);
   assert.equal((await mgr.post(`/attendance/short-hours/${a.id}/decide`, { action: 'reject', note: 'Please plan client visits with the team.' })).status, 200);
-  assert.equal(db.value('SELECT status FROM attendance WHERE employee_id = ? AND date = ?', emp.id, a.date), 'HD');
+  assert.equal(await db.value('SELECT status FROM attendance WHERE employee_id = ? AND date = ?', emp.id, a.date), 'HD');
   assert.equal((await mgr.post(`/attendance/short-hours/${a.id}/decide`, { action: 'approve' })).status, 409);
 
   const ceo = await as(ctx.base, CEO);
   assert.equal((await ceo.post(`/attendance/short-hours/${b.id}/decide`, { action: 'approve' })).status, 200);
-  assert.equal(db.value('SELECT status FROM attendance WHERE employee_id = ? AND date = ?', emp.id, b.date), 'P');
+  assert.equal(await db.value('SELECT status FROM attendance WHERE employee_id = ? AND date = ?', emp.id, b.date), 'P');
   const after = (await me.get('/attendance/short-hours?view=mine')).body.items;
   assert.equal(after.find((x) => x.id === a.id).status, 'Rejected');
   assert.equal(after.find((x) => x.id === b.id).status, 'Approved');
@@ -131,18 +131,18 @@ test('a short day is explained by the employee and decided by their manager or t
 
 test('a clock left running overnight is closed at the end of that workday', async () => {
   const { db } = ctx;
-  const emp = db.get("SELECT * FROM employees WHERE email = ?", 'kavya.singh@brainadz.com');
-  const d = db.value("SELECT MAX(date) FROM attendance WHERE employee_id = ? AND status = 'P' AND date < (SELECT MAX(date) FROM attendance)", emp.id);
-  db.run('DELETE FROM work_sessions WHERE employee_id = ? AND date = ?', emp.id, d);
-  db.run('DELETE FROM hour_shortfalls WHERE employee_id = ? AND date = ?', emp.id, d);
-  db.insert('work_sessions', { employee_id: emp.id, date: d, start_at: zonedIso(d, '09:45'), mode: 'office' });
-  syncAttendance(db, emp.id, d, null);
+  const emp = await db.get("SELECT * FROM employees WHERE email = ?", 'kavya.singh@brainadz.com');
+  const d = await db.value("SELECT MAX(date) FROM attendance WHERE employee_id = ? AND status = 'P' AND date < (SELECT MAX(date) FROM attendance)", emp.id);
+  await db.run('DELETE FROM work_sessions WHERE employee_id = ? AND date = ?', emp.id, d);
+  await db.run('DELETE FROM hour_shortfalls WHERE employee_id = ? AND date = ?', emp.id, d);
+  await db.insert('work_sessions', { employee_id: emp.id, date: d, start_at: zonedIso(d, '09:45'), mode: 'office' });
+  await syncAttendance(db, emp.id, d, null);
   const c = await as(ctx.base, 'kavya.singh@brainadz.com');
   await c.get('/attendance/workday');
-  const s = db.get('SELECT * FROM work_sessions WHERE employee_id = ? AND date = ?', emp.id, d);
+  const s = await db.get('SELECT * FROM work_sessions WHERE employee_id = ? AND date = ?', emp.id, d);
   assert.equal(s.end_at, zonedIso(d, '18:30'));
   assert.equal(s.ended_by, 'auto');
-  assert.equal(db.value('SELECT check_out FROM attendance WHERE employee_id = ? AND date = ?', emp.id, d), zonedIso(d, '18:30'));
+  assert.equal(await db.value('SELECT check_out FROM attendance WHERE employee_id = ? AND date = ?', emp.id, d), zonedIso(d, '18:30'));
 });
 
 test('anonymous users cannot reach the work clock', async () => {

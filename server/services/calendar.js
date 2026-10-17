@@ -4,14 +4,15 @@ import { getSettings } from '../core.js';
 import { dow, eachDay, monthStart, monthEnd } from '../lib/dates.js';
 import { isWorkingDay } from '../lib/leave.js';
 
-export function calendarCtx(db, settings = getSettings(db)) {
-  const holidays = new Set(db.all("SELECT date FROM holidays WHERE type = 'Company'").map((r) => r.date));
+export async function calendarCtx(db, settings) {
+  settings ??= await getSettings(db);
+  const holidays = new Set((await db.all("SELECT date FROM holidays WHERE type = 'Company'")).map((r) => r.date));
   return { weeklyOffs: settings.weeklyOffs, holidays };
 }
 
-export function holidayNames(db, from, to) {
+export async function holidayNames(db, from, to) {
   const map = new Map();
-  for (const h of db.all('SELECT date, name, type FROM holidays WHERE date BETWEEN ? AND ?', from, to)) {
+  for (const h of await db.all('SELECT date, name, type FROM holidays WHERE date BETWEEN ? AND ?', from, to)) {
     if (h.type === 'Company' || !map.has(h.date)) map.set(h.date, h);
   }
   return map;
@@ -19,17 +20,17 @@ export function holidayNames(db, from, to) {
 
 // Approved leave for the given employees over [from, to], expanded per day.
 // Returns Map(employeeId -> Map(date -> { code, name, paid, kind, half }))
-export function approvedLeaveDays(db, employeeIds, from, to, ctx) {
+export async function approvedLeaveDays(db, employeeIds, from, to, ctx) {
   const out = new Map();
   if (!employeeIds.length) return out;
-  const rows = db.all(`
+  const rows = await db.all(`
     SELECT r.employee_id, r.from_date, r.to_date, r.half_day, t.code, t.name, t.paid, t.kind, t.calendar_days, t.color
     FROM leave_requests r JOIN leave_types t ON t.id = r.leave_type_id
     WHERE r.status = 'Approved' AND r.from_date <= ? AND r.to_date >= ?
       AND r.employee_id IN (${employeeIds.map(() => '?').join(',')})`, to, from, ...employeeIds);
   for (const r of rows) {
     let m = out.get(r.employee_id);
-    if (!m) out.set(r.employee_id, (m = new Map()));
+    if (!m) out.set(r.employee_id, m = new Map());
     const start = r.from_date > from ? r.from_date : from;
     const end = r.to_date < to ? r.to_date : to;
     for (const d of eachDay(start, end)) {
@@ -44,15 +45,16 @@ export function approvedLeaveDays(db, employeeIds, from, to, ctx) {
 //   NA not employed · H holiday · WO weekly off · P present · WFH work from home
 //   HD half day · A absent · U unmarked (past working day) · F upcoming working day
 //   L  approved leave (leave.code holds CL/SL/EL/...)
-export function dayStatuses(db, employees, from, to, today, settings = getSettings(db)) {
-  const ctx = calendarCtx(db, settings);
+export async function dayStatuses(db, employees, from, to, today, settings) {
+  settings ??= await getSettings(db);
+  const ctx = await calendarCtx(db, settings);
   const ids = employees.map((e) => e.id);
-  const leaves = approvedLeaveDays(db, ids, from, to, ctx);
+  const leaves = await approvedLeaveDays(db, ids, from, to, ctx);
   const records = new Map();
   if (ids.length) {
-    for (const r of db.all(`SELECT * FROM attendance WHERE date BETWEEN ? AND ? AND employee_id IN (${ids.map(() => '?').join(',')})`, from, to, ...ids)) {
+    for (const r of await db.all(`SELECT * FROM attendance WHERE date BETWEEN ? AND ? AND employee_id IN (${ids.map(() => '?').join(',')})`, from, to, ...ids)) {
       let m = records.get(r.employee_id);
-      if (!m) records.set(r.employee_id, (m = new Map()));
+      if (!m) records.set(r.employee_id, m = new Map());
       m.set(r.date, r);
     }
   }
@@ -68,12 +70,12 @@ export function dayStatuses(db, employees, from, to, today, settings = getSettin
       const r = rec?.get(d);
       const leave = lv?.get(d);
       let s;
-      if (!employed) s = { code: 'NA', lop: 0 };
-      else if (leave && leave.calendar) s = { code: 'L', lop: leave.paid ? 0 : 1, leave };
-      else if (ctx.holidays.has(d)) s = { code: 'H', lop: 0 };
-      else if (ctx.weeklyOffs.includes(dow(d))) s = { code: 'WO', lop: 0 };
-      else if (leave && leave.kind === 'wfh') s = { code: 'WFH', lop: 0, leave };
-      else if (leave) {
+      if (!employed) s = { code: 'NA', lop: 0 };else
+      if (leave && leave.calendar) s = { code: 'L', lop: leave.paid ? 0 : 1, leave };else
+      if (ctx.holidays.has(d)) s = { code: 'H', lop: 0 };else
+      if (ctx.weeklyOffs.includes(dow(d))) s = { code: 'WO', lop: 0 };else
+      if (leave && leave.kind === 'wfh') s = { code: 'WFH', lop: 0, leave };else
+      if (leave) {
         let lop = leave.paid ? 0 : leave.half ? 0.5 : 1;
         // Half-day leave: the other half follows the attendance mark.
         if (leave.half && r && r.status === 'A') lop += 0.5;

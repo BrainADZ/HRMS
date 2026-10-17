@@ -15,7 +15,7 @@ export function geofencePolicy(settings) {
   return { mode: 'off', exemptEmployeeIds: [], allowWfhAndLeave: true, maxAccuracyM: 1500, ...(settings.geofence || {}) };
 }
 
-const toRad = (d) => (d * Math.PI) / 180;
+const toRad = (d) => d * Math.PI / 180;
 export function distanceM(a, b) {
   const dLat = toRad(b.lat - a.lat);
   const dLng = toRad(b.lng - a.lng);
@@ -23,12 +23,12 @@ export function distanceM(a, b) {
   return 2 * 6371000 * Math.asin(Math.sqrt(h));
 }
 
-export const fmtDistance = (m) => (m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`);
+export const fmtDistance = (m) => m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
 
 function ipToInt(ip) {
   const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(ip);
   if (!m || m.slice(1).some((x) => Number(x) > 255)) return null;
-  return ((Number(m[1]) << 24) | (Number(m[2]) << 16) | (Number(m[3]) << 8) | Number(m[4])) >>> 0;
+  return (Number(m[1]) << 24 | Number(m[2]) << 16 | Number(m[3]) << 8 | Number(m[4])) >>> 0;
 }
 
 // True if `ip` is one of the comma/space separated addresses or IPv4 CIDR
@@ -43,7 +43,7 @@ export function ipMatches(ip, ranges) {
     const c = ipToInt(clean);
     const n = Number(bits);
     if (b == null || c == null || !Number.isInteger(n) || n < 0 || n > 32) continue;
-    const mask = n === 0 ? 0 : (0xffffffff << (32 - n)) >>> 0;
+    const mask = n === 0 ? 0 : 0xffffffff << 32 - n >>> 0;
     if ((b & mask) === (c & mask)) return true;
   }
   return false;
@@ -60,15 +60,15 @@ export function readCoords(v) {
 
 // Why this user may skip the check today, or null. `dayOnly` exemptions
 // (approved WFH or leave) last only for today.
-export function exemption(db, user, settings, today) {
+export async function exemption(db, user, settings, today) {
   const p = geofencePolicy(settings);
   if (p.mode === 'off') return { reason: 'Location check is off' };
   if (user.role === 'admin') return { reason: 'Administrator' };
-  if (user.employeeId && db.value('SELECT work_place FROM employees WHERE id = ?', user.employeeId) === 'wfh') return { reason: 'Assigned work from home' };
+  if (user.employeeId && (await db.value('SELECT work_place FROM employees WHERE id = ?', user.employeeId)) === 'wfh') return { reason: 'Assigned work from home' };
   if (user.employeeId && p.exemptEmployeeIds.includes(user.employeeId)) return { reason: 'Allowed to work from anywhere' };
   if (p.allowWfhAndLeave && user.employeeId) {
-    const e = db.get('SELECT * FROM employees WHERE id = ?', user.employeeId);
-    const st = e && dayStatuses(db, [e], today, today, today, settings).get(e.id).get(today);
+    const e = await db.get('SELECT * FROM employees WHERE id = ?', user.employeeId);
+    const st = e && (await dayStatuses(db, [e], today, today, today, settings)).get(e.id).get(today);
     if (st?.code === 'WFH' && st.leave) return { reason: 'Approved work from home today', dayOnly: true };
     if (st?.code === 'L') return { reason: `On ${st.leave?.name || 'leave'} today`, dayOnly: true };
   }
@@ -77,17 +77,18 @@ export function exemption(db, user, settings, today) {
 
 // Decides whether the user may sign in (or check in at the office) from
 // where they are. Returns { ok, method, code?, message?, site?, distance? }.
-export function checkLocation(db, { user, coords, ip, today, settings = getSettings(db) }) {
-  const ex = exemption(db, user, settings, today);
+export async function checkLocation(db, { user, coords, ip, today, settings }) {
+  settings ??= await getSettings(db);
+  const ex = await exemption(db, user, settings, today);
   if (ex) return { ok: true, method: 'exempt', exempt: ex.reason, dayBound: Boolean(ex.dayOnly) };
-  const employee = user.employeeId ? db.get('SELECT work_place, location_id FROM employees WHERE id = ?', user.employeeId) : null;
+  const employee = user.employeeId ? await db.get('SELECT work_place, location_id FROM employees WHERE id = ?', user.employeeId) : null;
   const assigned = employee?.work_place === 'onsite';
-  const sites = assigned
-    ? db.all('SELECT * FROM office_sites WHERE active = 1 AND location_id = ?', employee.location_id)
-    : db.all('SELECT * FROM office_sites WHERE active = 1');
-  if (!sites.length) return assigned
-    ? { ok: false, code: 'office_not_configured', message: 'Your assigned branch has no active office location. Ask HR to configure it in Settings > Office Locations.' }
-    : { ok: true, method: 'exempt', exempt: 'No office locations set up' };
+  const sites = assigned ? await
+  db.all('SELECT * FROM office_sites WHERE active = 1 AND location_id = ?', employee.location_id) : await
+  db.all('SELECT * FROM office_sites WHERE active = 1');
+  if (!sites.length) return assigned ?
+  { ok: false, code: 'office_not_configured', message: 'Your assigned branch has no active office location. Ask HR to configure it in Settings > Office Locations.' } :
+  { ok: true, method: 'exempt', exempt: 'No office locations set up' };
   const net = sites.find((s) => ipMatches(ip, s.ip_ranges));
   if (net) return { ok: true, method: 'network', site: net, dayBound: true };
   if (!coords) return { ok: false, code: 'location_required', message: 'Share your location to continue. Sign-in is only allowed from the office.' };
@@ -108,8 +109,8 @@ export function checkLocation(db, { user, coords, ip, today, settings = getSetti
 
 const RESULT = { gps: 'in-office', network: 'office-network', exempt: 'exempt', outside_office: 'outside', location_required: 'no-location', location_imprecise: 'imprecise' };
 
-export function logLocation(db, { user, event, coords, ip, check }) {
-  return db.insert('location_log', {
+export async function logLocation(db, { user, event, coords, ip, check }) {
+  return await db.insert('location_log', {
     user_id: user?.id ?? null,
     employee_id: user?.employeeId ?? null,
     at: new Date().toISOString(),
@@ -122,6 +123,6 @@ export function logLocation(db, { user, event, coords, ip, check }) {
     lng: coords?.lng ?? null,
     accuracy_m: coords ? coords.accuracy : null,
     ip: String(ip || '').replace(/^::ffff:/, '').slice(0, 64) || null,
-    note: check.exempt || null,
+    note: check.exempt || null
   });
 }

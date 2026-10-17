@@ -3,9 +3,9 @@ import { calendarCtx } from './calendar.js';
 import { entitlement, leaveDaysByYear } from '../lib/leave.js';
 import { yearOf } from '../lib/dates.js';
 
-export function leaveTypesFor(db, employee) {
-  return db.all('SELECT * FROM leave_types WHERE active = 1 ORDER BY sort, id')
-    .filter((t) => !t.gender || !employee?.gender || t.gender === employee.gender);
+export async function leaveTypesFor(db, employee) {
+  return (await db.all('SELECT * FROM leave_types WHERE active = 1 ORDER BY sort, id')).
+  filter((t) => !t.gender || !employee?.gender || t.gender === employee.gender);
 }
 
 function chargedDays(req, year, ctx) {
@@ -13,8 +13,8 @@ function chargedDays(req, year, ctx) {
   return leaveDaysByYear({ from: req.from_date, to: req.to_date, halfDay: Boolean(req.half_day), calendarDays: Boolean(req.calendar_days) }, ctx).get(year) || 0;
 }
 
-function usage(db, employeeId, year, ctx) {
-  const rows = db.all(`
+async function usage(db, employeeId, year, ctx) {
+  const rows = await db.all(`
     SELECT r.*, t.calendar_days FROM leave_requests r JOIN leave_types t ON t.id = r.leave_type_id
     WHERE r.employee_id = ? AND r.status IN ('Approved','Pending') AND r.from_date <= ? AND r.to_date >= ?`,
   employeeId, `${year}-12-31`, `${year}-01-01`);
@@ -29,13 +29,14 @@ function usage(db, employeeId, year, ctx) {
 
 // Per-type balance for one employee. Carry-forward looks back one year at a
 // time (bounded) so EL left over last year is credited up to the type's cap.
-export function balances(db, employee, year, asOf, ctx = calendarCtx(db), depth = 0) {
-  const types = leaveTypesFor(db, employee);
-  const { used, pending } = usage(db, employee.id, year, ctx);
+export async function balances(db, employee, year, asOf, ctx, depth = 0) {
+  ctx ??= await calendarCtx(db);
+  const types = await leaveTypesFor(db, employee);
+  const { used, pending } = await usage(db, employee.id, year, ctx);
   const joinYear = yearOf(employee.join_date);
   let prev = null;
   if (depth < 4 && year > joinYear && types.some((t) => t.carry_forward_max > 0)) {
-    prev = new Map(balances(db, employee, year - 1, `${year - 1}-12-31`, ctx, depth + 1).map((b) => [b.typeId, b]));
+    prev = new Map((await balances(db, employee, year - 1, `${year - 1}-12-31`, ctx, depth + 1)).map((b) => [b.typeId, b]));
   }
   return types.map((t) => {
     const ent = entitlement(t, employee.join_date, year, asOf);
@@ -59,7 +60,7 @@ export function balances(db, employee, year, asOf, ctx = calendarCtx(db), depth 
       carried,
       used: u,
       pending: pe,
-      available: ent == null ? null : ent + carried - u - pe,
+      available: ent == null ? null : ent + carried - u - pe
     };
   });
 }

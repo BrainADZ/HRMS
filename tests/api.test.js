@@ -1,10 +1,10 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { boot, client, as } from './helpers.js';
+import { boot, client, as, credentials } from './helpers.js';
 
 let ctx;
-before(async () => { ctx = await boot(); });
-after(async () => { await ctx.close(); });
+before(async () => {ctx = await boot();});
+after(async () => {await ctx.close();});
 
 const HR = 'priya.sharma@brainadz.com';
 const ADMIN = 'rajiv.malhotra@brainadz.com';
@@ -32,12 +32,12 @@ test('logout clears the cookie and invalidates the saved session token', async (
   const login = await fetch(`${ctx.base}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'hrms' },
-    body: JSON.stringify({ email: HR, password: 'Brainadz@2026' }),
+    body: JSON.stringify({ ...credentials(ctx.base, HR), password: 'Brainadz@2026' })
   });
   assert.equal(login.status, 200);
   const cookie = login.headers.get('set-cookie').split(';')[0];
   const out = await fetch(`${ctx.base}/auth/logout`, {
-    method: 'POST', headers: { Cookie: cookie, 'X-Requested-With': 'hrms' },
+    method: 'POST', headers: { Cookie: cookie, 'X-Requested-With': 'hrms' }
   });
   assert.equal(out.status, 200);
   assert.match(out.headers.get('set-cookie'), /hrms_session=;/);
@@ -106,7 +106,8 @@ test('payroll: run, finance review, management approval by admin only, transfer,
   const t = await hr.post(`/payroll/runs/${run.body.id}/transfer`);
   assert.equal(t.body.status, 'Transfer Scheduled');
   assert.ok(t.body.bankBatch.amount > 0);
-  assert.equal((await hr.post(`/payroll/runs/${run.body.id}/complete`)).body.status, 'Completed');
+  assert.equal((await hr.post(`/payroll/runs/${run.body.id}/complete`)).status, 400);
+  assert.equal((await hr.post(`/payroll/runs/${run.body.id}/complete`, { payment_reference: 'TEST-BANK-BATCH-2026' })).body.status, 'Completed');
   const emp = await as(ctx.base, EMP);
   const mine = (await emp.get('/payroll/my')).body.items;
   assert.ok(mine.some((p) => p.month === month));
@@ -125,8 +126,11 @@ test('HR adds an employee with a login; the new hire changes password and checks
   assert.ok(created.body.tempPassword);
   const bad = await hr.post('/employees', { first_name: 'X', email: 'bad', join_date: meta.today });
   assert.equal(bad.status, 400);
-  const me = await as(ctx.base, 'test.joiner@brainadz.com', created.body.tempPassword);
+  assert.match(created.body.username, /^testbz\d+$/);
+  const me = await as(ctx.base, created.body.username, created.body.tempPassword);
   assert.equal((await me.get('/auth/me')).body.user.mustChangePassword, true);
+  assert.equal((await me.get('/meta')).status, 403);
+  assert.equal((await me.post('/attendance/check-in', { mode: 'wfh' })).status, 403);
   assert.equal((await me.post('/auth/change-password', { current: created.body.tempPassword, next: 'short' })).status, 400);
   assert.equal((await me.post('/auth/change-password', { current: created.body.tempPassword, next: 'BetterPass123' })).status, 200);
   assert.equal((await me.post('/attendance/check-in', { mode: 'wfh' })).status, 200);
@@ -155,6 +159,19 @@ test('resume upload is screened in the background', async () => {
   assert.equal(cand.name, 'Kiran Shah');
   assert.ok(cand.ai_score >= 80, `score ${cand.ai_score}`);
   assert.equal(cand.stage, 'AI Screened');
+  // Bulk screening must await PostgreSQL queue updates before acknowledging.
+  await ctx.db.run('UPDATE candidates SET screen_status = NULL WHERE id = ?', up.body.created[0]);
+  const expectedQueued = await ctx.db.value("SELECT COUNT(*) FROM candidates WHERE job_id = ? AND (screen_status IS NULL OR screen_status = 'error') AND (resume_text IS NOT NULL OR resume_file IS NOT NULL)", job.id);
+  const bulk = await hr.post(`/screener/jobs/${job.id}/screen-all`);
+  assert.equal(bulk.status, 200);
+  assert.equal(bulk.body.queued, expectedQueued);
+  let bulkStatus;
+  for (let i = 0; i < 40; i++) {
+    bulkStatus = await ctx.db.value('SELECT screen_status FROM candidates WHERE id = ?', up.body.created[0]);
+    if (bulkStatus === 'done') break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal(bulkStatus, 'done');
   const bad = new FormData();
   bad.append('files', new Blob(['x']), 'virus.exe');
   assert.equal((await hr.post(`/screener/jobs/${job.id}/upload`, undefined, { form: bad })).status, 400);
@@ -189,10 +206,12 @@ test('removing demo data requires the administrator to set their own login', asy
   const { base, close } = await boot();
   try {
     const admin = await as(base, ADMIN);
+    const oldDemoSession = await as(base, ADMIN);
     assert.equal((await admin.post('/settings/start-fresh', { confirm: 'START FRESH' })).status, 400);
     assert.equal((await admin.post('/settings/start-fresh', { confirm: 'START FRESH', email: 'owner@brainadz.com', password: 'short' })).status, 400);
     const ok = await admin.post('/settings/start-fresh', { confirm: 'START FRESH', email: 'Owner@BrainADZ.com', password: 'RealPass2026' });
     assert.equal(ok.status, 200, JSON.stringify(ok.body));
+    assert.equal((await oldDemoSession.get('/auth/me')).status, 401);
     assert.equal((await admin.get('/auth/me')).body.user.email, 'owner@brainadz.com');
     assert.equal((await client(base).post('/auth/login', { email: ADMIN, password: 'Brainadz@2026' })).status, 401);
     await client(base).login('owner@brainadz.com', 'RealPass2026');

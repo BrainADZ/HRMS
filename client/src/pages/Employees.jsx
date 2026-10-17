@@ -127,7 +127,7 @@ function MiniStat({ icon: Icon, tone, label, value, dot }) {
 
 // ---------------------------------------------------------------- profile
 export function EmployeeProfile({ id, onChanged, isSelf }) {
-  const { isHR, toast, refreshMeta } = useApp();
+  const { isHR, toast, refreshMeta, refreshPhotos } = useApp();
   const [month, setMonth] = useState(null);
   const { data, error, reload } = useApi(`/employees/${id}${month ? `?month=${month}` : ''}`);
   const [tab, setTab] = useState('Overview');
@@ -144,7 +144,7 @@ export function EmployeeProfile({ id, onChanged, isSelf }) {
   const uploadPhoto = async (file) => {
     const form = new FormData();
     form.append('photo', file);
-    if (await run(() => api.upload(`/employees/${id}/photo`, form), 'Photo updated')) { refresh(); refreshMeta(); }
+    if (await run(() => api.upload(`/employees/${id}/photo`, form), 'Photo updated')) { refresh(); await refreshPhotos(); }
   };
   const menu = [
     canEdit && { label: 'Change photo', icon: Camera, onClick: () => photoRef.current?.click() },
@@ -159,6 +159,7 @@ export function EmployeeProfile({ id, onChanged, isSelf }) {
       <div className="row wrap" style={{ gap: 22, padding: 22, alignItems: 'flex-start' }}>
         <div style={{ position: 'relative' }}>
           <Avatar name={e.name} id={e.id} hasPhoto={e.has_photo} size={112} online={e.status === 'Active'} />
+          {canEdit && <Button size="sm" icon={Camera} className="mt-8" onClick={() => photoRef.current?.click()}>Change photo</Button>}
         </div>
         <div className="grow" style={{ minWidth: 240 }}>
           <div className="row between wrap" style={{ alignItems: 'flex-start' }}>
@@ -282,7 +283,7 @@ function Overview({ data, isSelf, onAction, reload }) {
         {isHR && !isSelf && data.login !== undefined && (
           <div className="card tight small">
             <h3 className="mb-8" style={{ fontSize: 15 }}>Login</h3>
-            {data.login ? <div className="col gap-4"><span>{data.login.email} · <Badge tone="blue">{data.login.role}</Badge> {!data.login.active && <Badge tone="red">Inactive</Badge>}</span><span className="muted">Last sign-in: {data.login.last_login ? fmtDate(data.login.last_login) : 'never'}</span></div>
+            {data.login ? <div className="col gap-4"><span>{data.login.role === 'admin' ? data.login.email : data.login.username} · <Badge tone="blue">{data.login.role}</Badge> {!data.login.active && <Badge tone="red">Inactive</Badge>}</span><span className="muted">Last sign-in: {data.login.last_login ? fmtDate(data.login.last_login) : 'never'}</span></div>
               : <div className="row between"><span className="muted">No login yet</span><Button size="sm" icon={KeyRound} onClick={() => onAction('login')}>Create login</Button></div>}
           </div>
         )}
@@ -553,7 +554,7 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly }) {
       const out = await run(() => api.post('/employees', body), 'Employee added');
       if (out) {
         onSaved?.(out.id);
-        if (out.tempPassword) setTemp({ email: f.email, password: out.tempPassword });
+        if (out.tempPassword) setTemp({ ...out, email: f.email, password: out.tempPassword });
         else onClose();
       }
     } else if (await run(() => api.put(`/employees/${e.id}`, body), 'Profile saved')) {
@@ -561,7 +562,7 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly }) {
       onClose();
     }
   };
-  if (temp) return <TempPasswordModal email={temp.email} password={temp.password} onClose={onClose} />;
+  if (temp) return <TempPasswordModal username={temp.username} role={temp.role} email={temp.email} password={temp.password} onClose={onClose} />;
   const opts = (list) => list.map((x) => ({ value: x.id, label: x.name }));
   return (
     <Modal title={e ? (selfOnly ? 'Update my profile' : `Edit ${e.name}`) : 'Add employee'} size="wide" onClose={onClose}
@@ -616,7 +617,7 @@ function LoginModal({ employee, login, onClose, onDone }) {
   const [role, setRole] = useState(login?.role || 'employee');
   const [run, busy] = useAction(toast);
   const [temp, setTemp] = useState(null);
-  if (temp) return <TempPasswordModal email={temp.email} password={temp.tempPassword} onClose={() => { onDone(); onClose(); }} />;
+  if (temp) return <TempPasswordModal username={temp.username} role={temp.role} email={temp.email} password={temp.tempPassword} onClose={() => { onDone(); onClose(); }} />;
   return (
     <Modal title={login ? 'Reset login' : 'Create login'} size="narrow" onClose={onClose}
       footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={async () => { const out = await run(() => api.post(`/employees/${employee.id}/login`, { role })); if (out) setTemp(out); }}>{login ? 'Reset password' : 'Create login'}</Button></>}>

@@ -5,3 +5,5 @@ data
 *.log
 .env
 demo/dist
+.test-results
+.github

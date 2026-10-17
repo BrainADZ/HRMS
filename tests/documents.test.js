@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { boot, as } from './helpers.js';
 
 let ctx;
-before(async () => { ctx = await boot(); });
-after(async () => { await ctx.close(); });
+before(async () => {ctx = await boot();});
+after(async () => {await ctx.close();});
 
 const EMP = 'aarav.mehta@brainadz.com';
 const HR = 'priya.sharma@brainadz.com';

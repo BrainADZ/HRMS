@@ -9,8 +9,8 @@ import { dayStatuses } from './calendar.js';
 export const IFSC_RE = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 export const ACCOUNT_RE = /^\d{9,18}$/;
 
-export function eligibleEmployees(db, month) {
-  return db.all(`
+export async function eligibleEmployees(db, month) {
+  return await db.all(`
     SELECT e.*, d.name AS department, v.name AS vertical, v.short AS vertical_short, l.name AS location
     FROM employees e
     LEFT JOIN departments d ON d.id = e.department_id
@@ -20,13 +20,14 @@ export function eligibleEmployees(db, month) {
     ORDER BY e.code`, monthEnd(month), monthStart(month));
 }
 
-export function buildPayroll(db, month, { today, settings = getSettings(db) } = {}) {
+export async function buildPayroll(db, month, { today, settings } = {}) {
+  settings ??= await getSettings(db);
   const now = today || todayIn(settings.timezone);
   const from = monthStart(month);
   const to = monthEnd(month);
-  const employees = eligibleEmployees(db, month);
-  const statuses = dayStatuses(db, employees, from, to, now, settings);
-  const adjustments = db.all('SELECT * FROM payroll_adjustments WHERE month = ?', month);
+  const employees = await eligibleEmployees(db, month);
+  const statuses = await dayStatuses(db, employees, from, to, now, settings);
+  const adjustments = await db.all('SELECT * FROM payroll_adjustments WHERE month = ?', month);
   const lines = [];
   for (const e of employees) {
     const days = statuses.get(e.id);
@@ -59,7 +60,7 @@ export function buildPayroll(db, month, { today, settings = getSettings(db) } = 
       employedDays,
       lopDays: lop,
       adjustments: approved,
-      rules: settings.payroll,
+      rules: settings.payroll
     });
     lines.push({ employee: e, payslip, exceptions, unmarked });
   }
@@ -79,31 +80,31 @@ function snapshot(e) {
     uan: e.uan,
     bankName: e.bank_name,
     bankAccount: e.bank_account ? `XXXX${String(e.bank_account).slice(-4)}` : null,
-    ifsc: e.ifsc,
+    ifsc: e.ifsc
   };
 }
 
 // Creates (or recomputes) the run for `month`, marking the first three
 // workflow steps complete. Existing approvals are cleared on recompute.
-export function processRun(db, user, month, { today } = {}) {
-  const settings = getSettings(db);
-  const lines = buildPayroll(db, month, { today, settings });
+export async function processRun(db, user, month, { today } = {}) {
+  const settings = await getSettings(db);
+  const lines = await buildPayroll(db, month, { today, settings });
   const now = new Date().toISOString();
-  return db.tx(() => {
-    let run = db.get('SELECT * FROM payroll_runs WHERE month = ?', month);
+  return await db.tx(async () => {
+    let run = await db.get('SELECT * FROM payroll_runs WHERE month = ?', month);
     const steps = { collation: now, sync: now, processing: now };
     const approvals = [{ stage: 'Prepared by HR', by: user?.name || 'System', at: now }];
     if (run) {
-      db.run('DELETE FROM payslips WHERE run_id = ?', run.id);
-      db.update('payroll_runs', run.id, { status: 'In Review', steps, approvals, bank_batch: null, updated_at: now });
+      await db.run('DELETE FROM payslips WHERE run_id = ?', run.id);
+      await db.update('payroll_runs', run.id, { status: 'In Review', steps, approvals, bank_batch: null, updated_at: now });
     } else {
-      const id = db.insert('payroll_runs', { month, status: 'In Review', steps, approvals, created_by: user?.id ?? null, created_at: now, updated_at: now });
+      const id = await db.insert('payroll_runs', { month, status: 'In Review', steps, approvals, created_by: user?.id ?? null, created_at: now, updated_at: now });
       run = { id };
     }
     for (const l of lines) {
       if (!l.payslip) continue;
       const hold = l.exceptions.some((x) => x.type === 'bank');
-      db.insert('payslips', {
+      await db.insert('payslips', {
         run_id: run.id,
         employee_id: l.employee.id,
         data: { ...l.payslip, employee: snapshot(l.employee), exceptions: l.exceptions },
@@ -111,19 +112,19 @@ export function processRun(db, user, month, { today } = {}) {
         deductions: l.payslip.totalDeductions,
         net: l.payslip.net,
         employer_cost: l.payslip.employerCost,
-        status: hold ? 'On Hold' : 'Processed',
+        status: hold ? 'On Hold' : 'Processed'
       });
     }
-    return db.get('SELECT * FROM payroll_runs WHERE id = ?', run.id);
+    return await db.get('SELECT * FROM payroll_runs WHERE id = ?', run.id);
   });
 }
 
-export function runSummary(db, run) {
+export async function runSummary(db, run) {
   if (!run) return null;
-  const totals = db.get(`
+  const totals = await db.get(`
     SELECT COUNT(*) AS count, COALESCE(SUM(gross),0) AS gross, COALESCE(SUM(net),0) AS net,
            COALESCE(SUM(deductions),0) AS deductions, COALESCE(SUM(employer_cost),0) AS cost,
-           SUM(status = 'On Hold') AS on_hold, SUM(status = 'Paid') AS paid
+           SUM(CASE WHEN status = 'On Hold' THEN 1 ELSE 0 END) AS on_hold, SUM(CASE WHEN status = 'Paid' THEN 1 ELSE 0 END) AS paid
     FROM payslips WHERE run_id = ?`, run.id);
   return {
     id: run.id,
@@ -134,7 +135,7 @@ export function runSummary(db, run) {
     approvals: json(run.approvals, []),
     bankBatch: json(run.bank_batch, null),
     createdAt: run.created_at,
-    totals,
+    totals
   };
 }
 

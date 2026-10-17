@@ -2,7 +2,7 @@
 
 People operations for **BrainADZ Live, BrainADZ Marketing and BrainADZ Exhibits** in one web app: hiring, AI resume screening, employee records, attendance, leave, Indian payroll, performance, POSH, resignations and reports.
 
-It is a complete application: a Node.js server with a SQLite database, real logins with roles, file uploads, and a React interface that follows the BrainADZ HRMS designs.
+It is a complete application: a Node.js server with a PostgreSQL database, real logins with roles, file uploads, and a React interface that follows the BrainADZ HRMS designs.
 
 ## What's inside
 
@@ -35,28 +35,29 @@ It is a complete application: a Node.js server with a SQLite database, real logi
 
 ## Run it on your computer
 
-You need **Node.js 22.13 or newer** ([download](https://nodejs.org)).
+You need **Node.js 22.13 or newer** ([download](https://nodejs.org)) and **PostgreSQL 16+**. Configure `.env` using [DATABASE_SETUP.md](DATABASE_SETUP.md); then create the database and schema with `npm run db:setup`. The server uses PostgreSQL only.
 
 ```bash
 npm install
+npm run db:setup
 npm run build
 npm start
 ```
 
-Open the URL printed in the terminal. The server tries port 3000 (or `PORT` from `.env`); if occupied, it automatically binds a free port. The first start creates a demo company with about 100 fictional employees, six months of attendance and payroll, candidates, reviews and resignations.
+Open the URL printed in the terminal. The server tries port 3000 (or `PORT` from `.env`); if occupied, it automatically binds a free port. With `SEED=demo`, the first start creates a demo company with about 100 fictional employees, six months of attendance and payroll, candidates, reviews and resignations.
 
-Demo logins (password `Brainadz@2026` for all):
+Demo logins (password `Brainadz@2026` for all). Only the administrator signs in by email; HR, managers and employees use the first-name + employee-ID username shown on the demo sign-in screen. See [LOGIN_SETUP.md](LOGIN_SETUP.md).
 
-| Email | Role |
+| Account email (contact) | Role |
 |---|---|
 | priya.sharma@brainadz.com | HR Manager |
 | rajiv.malhotra@brainadz.com | CEO, Administrator |
 | vikram.patel@brainadz.com | Sales Manager |
 | aarav.mehta@brainadz.com | Employee |
 
-Every team lead and vertical head also has a manager login with the same password (for example `nandini.joshi@brainadz.com`).
+Every team lead and vertical head also has a manager login with the same password; they use their generated username rather than their email.
 
-To start the demo again from scratch: stop the server, run `npm run reset-demo`, and start it again.
+To start a demo again from scratch: stop the server, run `npm run reset-demo -- --confirm-reset`, and start it again. This refuses databases that are not marked as demo data.
 
 ## Turn on Claude for resume screening
 
@@ -85,7 +86,7 @@ One computer in the office runs the HRMS; everyone on the same Wi-Fi or LAN open
 
 1. On that computer, install **Node.js** (LTS version from [nodejs.org](https://nodejs.org)).
 2. Copy this project folder onto it (download the ZIP from GitHub and unzip it).
-3. Double-click **`start-office.bat`** (Windows) or **`start-office.command`** (Mac; the first time, right-click → Open). The first run installs and builds, which takes a few minutes.
+3. Configure PostgreSQL in `.env` and run `npm run db:setup` once (see [DATABASE_SETUP.md](DATABASE_SETUP.md)), then double-click **`start-office.bat`** (Windows) or **`start-office.command`** (Mac; the first time, right-click → Open). The first run installs and builds, which takes a few minutes.
 4. The window prints the address to share, for example:
 
    ```
@@ -100,19 +101,18 @@ Things to know:
 - **Keep the computer on** and stop it from sleeping (Settings → Power → Sleep: Never). If it is off, nobody can use the HRMS.
 - **Same address every day:** routers can hand the computer a new address after a restart. Ask whoever manages the router to reserve its address (DHCP reservation).
 - **Working from home:** the address only works inside the office network. For remote access, use the office VPN, or a tunnel such as Tailscale or Cloudflare Tunnel, rather than opening a port on the router.
-- **Backups:** the `data` folder inside the project holds everything. Copy it somewhere safe regularly (stop the HRMS with Ctrl+C first for a clean copy).
+- **Backups:** back up PostgreSQL using `pg_dump` or provider backups, and back up the `data/uploads` folder separately. Restore them from a consistent point.
 
 ## Put it online
 
-The app is one Node.js process plus a data folder. Any host that runs Docker or Node 22 and gives you a **persistent disk** works (Render with a disk, Railway with a volume, a VPS, AWS Lightsail, an office server).
+The app is one Node.js process, a PostgreSQL database, and an uploads folder. Any host that runs Docker or Node 22 and gives you a **persistent disk** works (Render with a disk, Railway with a volume, a VPS, AWS Lightsail, an office server).
 
 ### On Render (recommended, about 10 minutes)
 
-The repository includes `render.yaml`, which sets up everything: the web service, a 1 GB persistent disk for the database and uploads, HTTPS, and health checks. It runs in Render's Singapore region on the Starter instance (about US$7 a month plus US$0.25 for the disk; the free instance has no disk, so data would be lost on every restart).
-
+The repository includes `render.yaml` for the web service, persistent uploads, HTTPS and health checks. Provision a PostgreSQL database separately and supply its connection URL. The blueprint starts with `SEED=empty`.
 1. Sign up at [render.com](https://render.com) with GitHub, and add a payment card under Billing.
 2. Click **New → Blueprint**, connect GitHub if asked, and pick this repository and the branch to deploy.
-3. Render asks for `ANTHROPIC_API_KEY`. Paste a key to turn on Claude resume screening, or leave it blank (you can add it later under the service's Environment tab).
+3. Set `DATABASE_URL`, `ADMIN_EMAIL` and `ADMIN_PASSWORD`. Render also asks for `ANTHROPIC_API_KEY`. Paste a key to turn on Claude resume screening, or leave it blank (you can add it later under the service's Environment tab).
 4. Click **Apply**. The first build takes about 5 minutes. Your HRMS is then live at `https://brainadz-hrms.onrender.com` (or a similar address shown on the service page). Share that link.
 
 Every push to that branch redeploys automatically; the data on the disk is kept. To use your own address such as `hr.brainadz.com`, add it under the service's **Settings → Custom Domains** and create the DNS record Render shows.
@@ -124,12 +124,12 @@ Every push to that branch redeploys automatically; the data on the disk is kept.
 ```bash
 docker build -t brainadz-hrms .
 docker run -d -p 3000:3000 -v hrms-data:/app/data \
-  -e ANTHROPIC_API_KEY=sk-ant-... -e COOKIE_SECURE=true brainadz-hrms
+  --env-file .env brainadz-hrms
 ```
 
 ### Other hosts
 
-Build command `npm install && npm run build`, start command `npm start`, and mount the persistent disk at the folder named in `DATA_DIR`.
+Build command `npm install && npm run build`, start command `npm start`, provide PostgreSQL connection settings, and mount the persistent uploads disk at the folder named in `DATA_DIR`.
 
 Environment variables:
 
@@ -137,7 +137,10 @@ Environment variables:
 |---|---|---|
 | `PORT` | `3000` | Preferred port; automatically uses a free port if occupied. Set `0` to always ask the OS for a free port. |
 | `HOST` | `0.0.0.0` | Network interface; `127.0.0.1` keeps it to this computer only |
-| `DATA_DIR` | `./data` | Database (`hrms.db`) and uploads. **Must be on a persistent disk.** |
+| `DATABASE_URL` | | PostgreSQL connection URL (or use `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`) |
+| `PGSSLMODE` | `disable` | Set to `require` for TLS with certificate verification |
+| `PGPOOL_MAX` | `10` | Maximum pooled PostgreSQL connections |
+| `DATA_DIR` | `./data` | Uploaded resumes, documents and photos. **Must be on a persistent disk.** |
 | `SEED` | `demo` | `demo` or `empty` for the first start |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | | First administrator when `SEED=empty` |
 | `ANTHROPIC_API_KEY` | | Enables Claude resume screening |
@@ -145,7 +148,7 @@ Environment variables:
 | `TRUST_PROXY` | | Set to `1` behind a load balancer / HTTPS proxy |
 | `COOKIE_SECURE` | | Set to `true` when served over HTTPS |
 
-**Backups:** copy the whole `DATA_DIR` folder (it holds the database and every uploaded resume, document and photo). A nightly copy is enough for most teams.
+**Backups:** back up PostgreSQL and the `DATA_DIR/uploads` folder separately. Test restoring both before using real company data.
 
 ## Turn on office-only sign-in
 
@@ -171,16 +174,18 @@ Things to know:
 
 ## For developers
 
+See [CURRENT_AUDIT.md](CURRENT_AUDIT.md) for verified status and [OPERATIONS.md](OPERATIONS.md) for PostgreSQL tests, browser checks, backups and recovery.
+
 ```bash
 npm run dev     # API + Vite select free ports automatically; open the Vite URL printed
 npm test        # unit and API tests (node:test)
 ```
 
-- `server/`: Express 5 API on Node's built-in SQLite (`node:sqlite`, no native build step)
+- `server/`: Express 5 API using PostgreSQL through an async `pg` connection pool
   - `lib/`: pure rules (payroll, leave, dates, resume scoring), covered by tests
   - `services/`: calendar/attendance derivation, payroll runs, leave balances, Claude client, resume text extraction
   - `routes/`: one file per module
   - `seed.js`: demo company
 - `client/`: React 19 + Vite. `src/pages/` has one file per module; `src/components/` holds the UI kit and hand-drawn SVG charts.
-- `tests/`: payroll, leave and screener rules; end-to-end API flows across roles; the Claude request format against a local stand-in for the API.
-- `demo/`: the interactive claude.ai demo. `npm run build:demo` bundles the client and the server into one page (`demo/dist/brainadz-hrms.html`) that runs entirely in the browser: SQLite via sql.js, uploads kept in memory, and Claude screening through the viewer's own claude.ai access. Node built-ins and the Anthropic SDK are swapped for the browser versions in `demo/shims/`; the route modules, payroll and leave rules, and seed are the same code. Data resets when the page reloads.
+- `tests/`: isolated PostgreSQL (PGlite) database tests; payroll, leave and screener rules; end-to-end API flows across roles; the Claude request format against a local stand-in for the API.
+- `demo/`: the interactive claude.ai demo. `npm run build:demo` bundles the client and the server into one page (`demo/dist/brainadz-hrms.html`) that runs entirely in the browser: PostgreSQL via PGlite, uploads kept in memory, and Claude screening through the viewer's own claude.ai access. Node built-ins and the Anthropic SDK are swapped for the browser versions in `demo/shims/`; the route modules, payroll and leave rules, and seed are the same code. Data resets when the page reloads.

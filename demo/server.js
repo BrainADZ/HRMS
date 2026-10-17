@@ -30,17 +30,17 @@ const mimeOf = (name) => MIME[path.extname(name).toLowerCase()] || 'application/
 
 // Express-style router: r.get('/employees/:id', ...handlers).
 class Router {
-  constructor() { this.routes = []; }
+  constructor() {this.routes = [];}
   add(method, pattern, fns) {
     const keys = [];
-    const re = new RegExp(`^${pattern.replace(/[.]/g, '\\.').replace(/:([A-Za-z_]\w*)/g, (_, k) => { keys.push(k); return '([^/]+)'; })}/?$`, 'i');
+    const re = new RegExp(`^${pattern.replace(/[.]/g, '\\.').replace(/:([A-Za-z_]\w*)/g, (_, k) => {keys.push(k);return '([^/]+)';})}/?$`, 'i');
     this.routes.push({ method, re, keys, fns });
   }
-  get(p, ...fns) { this.add('GET', p, fns); }
-  post(p, ...fns) { this.add('POST', p, fns); }
-  put(p, ...fns) { this.add('PUT', p, fns); }
-  patch(p, ...fns) { this.add('PATCH', p, fns); }
-  delete(p, ...fns) { this.add('DELETE', p, fns); }
+  get(p, ...fns) {this.add('GET', p, fns);}
+  post(p, ...fns) {this.add('POST', p, fns);}
+  put(p, ...fns) {this.add('PUT', p, fns);}
+  patch(p, ...fns) {this.add('PATCH', p, fns);}
+  delete(p, ...fns) {this.add('DELETE', p, fns);}
   match(method, p) {
     for (const r of this.routes) {
       if (r.method !== method) continue;
@@ -56,7 +56,7 @@ async function runChain(fns, req, res) {
   for (const fn of fns) {
     let advanced = false;
     let error = null;
-    const out = fn(req, res, (err) => { advanced = true; error = err || null; });
+    const out = fn(req, res, (err) => {advanced = true;error = err || null;});
     if (out && typeof out.then === 'function') await out;
     if (error) throw error;
     if (!advanced || res.finished) return;
@@ -69,10 +69,10 @@ function makeRes() {
     headers: {},
     body: null,
     finished: false,
-    status(code) { this.statusCode = code; return this; },
-    setHeader(k, v) { this.headers[k.toLowerCase()] = String(v); },
-    getHeader(k) { return this.headers[k.toLowerCase()]; },
-    json(obj) { this.setHeader('Content-Type', 'application/json'); this.body = JSON.stringify(obj); this.finished = true; return this; },
+    status(code) {this.statusCode = code;return this;},
+    setHeader(k, v) {this.headers[k.toLowerCase()] = String(v);},
+    getHeader(k) {return this.headers[k.toLowerCase()];},
+    json(obj) {this.setHeader('Content-Type', 'application/json');this.body = JSON.stringify(obj);this.finished = true;return this;},
     send(b) {
       if (b !== null && typeof b === 'object' && !(b instanceof Uint8Array)) return this.json(b);
       if (!this.headers['content-type']) this.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -80,14 +80,14 @@ function makeRes() {
       this.finished = true;
       return this;
     },
-    sendFile(file) { this.setHeader('Content-Type', mimeOf(file)); this.body = fs.readFileSync(file); this.finished = true; },
+    sendFile(file) {this.setHeader('Content-Type', mimeOf(file));this.body = fs.readFileSync(file);this.finished = true;},
     download(file, name) {
       this.setHeader('Content-Type', mimeOf(name || file));
       this.setHeader('Content-Disposition', `attachment; filename="${String(name || path.basename(file)).replace(/"/g, '')}"`);
       this.body = fs.readFileSync(file);
       this.finished = true;
     },
-    end() { this.finished = true; },
+    end() {this.finished = true;}
   };
 }
 
@@ -101,9 +101,9 @@ function makeUpload(uploads) {
       const files = [];
       if (req.formData) {
         for (const [k, v] of req.formData.entries()) {
-          if (typeof v === 'string') body[k] = v;
-          else if (k === field) files.push(v);
-          else fail(400, 'Unexpected file field');
+          if (typeof v === 'string') body[k] = v;else
+          if (k === field) files.push(v);else
+          fail(400, 'Unexpected file field');
         }
       }
       if (files.length > max) fail(400, 'Too many files');
@@ -117,28 +117,28 @@ function makeUpload(uploads) {
         saved.push({ fieldname: field, originalname: f.name, filename, size: f.size, mimetype: f.type, destination: dir, path: path.join(dir, filename) });
       }
       req.body = body;
-      if (max > 1) req.files = saved;
-      else req.file = saved[0];
+      if (max > 1) req.files = saved;else
+      req.file = saved[0];
       next();
     };
     return { single: (field) => middleware(field, 1), array: (field, n = 25) => middleware(field, n) };
   };
 }
 
-export function createDemoServer() {
-  const db = openDb(':memory:');
+export async function createDemoServer() {
+  const db = await openDb();
   const uploads = '/data/uploads';
   const saveFile = (kind, name, bytes) => fs.writeFileSync(path.join(uploads, kind, path.basename(name)), bytes);
-  seedDemo(db, { saveFile });
+  await seedDemo(db, { saveFile });
   // The demo shows office-only sign-in; the corner switcher sets where you are.
-  setSetting(db, 'geofence', { ...getSettings(db).geofence, mode: 'login' });
+  await setSetting(db, 'geofence', { ...(await getSettings(db)).geofence, mode: 'login' });
   const ctx = { db, uploads, upload: makeUpload(uploads), here: '/server', saveFile };
 
   const pub = new Router();
   authRoutes(pub, ctx);
   const api = new Router();
   for (const register of [metaRoutes, dashboardRoutes, employeeRoutes, leaveRoutes, attendanceRoutes, policyRoutes, payrollRoutes, hiringRoutes, screenerRoutes, resignationRoutes, performanceRoutes, reportRoutes, settingsRoutes]) {
-    register(api, ctx);
+    await register(api, ctx);
   }
   const session = sessionMiddleware(db);
 
@@ -150,11 +150,12 @@ export function createDemoServer() {
     req.secure = false;
     req.get = (h) => req.headers[h.toLowerCase()];
     try {
-      session(req, res, () => {});
+      await session(req, res, () => {});
       if (!['GET', 'HEAD'].includes(req.method) && req.get('x-requested-with') !== 'hrms') throw new HttpError(403, 'Request blocked (missing X-Requested-With header)');
       let hit = pub.match(req.method, req.path);
       if (!hit) {
         if (!req.user) throw new HttpError(401, 'Please sign in');
+        if (req.user.mustChangePassword) throw new HttpError(403, 'Change your temporary password before continuing');
         hit = api.match(req.method, req.path);
         if (!hit) throw new HttpError(404, 'API route not found');
       }
@@ -179,8 +180,8 @@ export function createDemoServer() {
 
   // Synchronous lookup of an uploaded photo for <img> tags: the stored file
   // name (changes when the photo is replaced) and its contents.
-  function photo(employeeId) {
-    const row = db.get('SELECT photo FROM employees WHERE id = ?', Number(employeeId));
+  async function photo(employeeId) {
+    const row = await db.get('SELECT photo FROM employees WHERE id = ?', Number(employeeId));
     const file = row?.photo ? path.join(uploads, 'photos', path.basename(row.photo)) : null;
     return file && fs.existsSync(file) ? { key: row.photo, blob: new Blob([fs.readFileSync(file)], { type: mimeOf(file) }) } : null;
   }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   House, UserPlus, Sparkles, Users, CalendarDays, CreditCard, ChartColumnIncreasing, Clock, ShieldCheck, FileText, ChartNoAxesColumn,
-  Settings, Bell, Search, ChevronDown, Menu as MenuIcon, LogOut, KeyRound, User, LayoutGrid, CheckCheck, FolderOpen, CalendarRange,
+  Settings, Bell, Search, ChevronDown, Menu as MenuIcon, LogOut, KeyRound, User, LayoutGrid, CheckCheck, FolderOpen, CalendarRange, Camera,
 } from 'lucide-react';
 import { useApp } from '../context.jsx';
 import { api } from '../lib/api.js';
@@ -12,6 +12,7 @@ import { Avatar, Button, Field, Input, Modal } from './ui.jsx';
 import WorkClock, { SignInPrompts, SignOutModal, LocationGuard } from './WorkClock.jsx';
 import { useWorkday } from '../lib/workday.js';
 import CompanyLogo from './CompanyLogo.jsx';
+import ProfilePhoto from './ProfilePhoto.jsx';
 
 export function Logo({ size = '', showHrms = true }) {
   return (
@@ -253,6 +254,7 @@ function UserMenu() {
   const workday = useWorkday();
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState(false);
+  const [photo, setPhoto] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const signOut = () => {
     setOpen(false);
@@ -264,7 +266,7 @@ function UserMenu() {
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <button type="button" className="user-chip" onClick={() => setOpen((o) => !o)} aria-label="Account menu">
-        <Avatar name={user.name} id={user.employeeId} hasPhoto={user.hasPhoto} size={46} />
+        <Avatar name={user.name} id={user.employeeId} hasPhoto={user.hasPhoto} src={!user.employeeId ? user.photoUrl : undefined} size={46} />
         <div className="who"><div className="nm">{user.name}</div><div className="rl">{user.designation}</div></div>
         <ChevronDown size={18} className="muted" />
       </button>
@@ -273,11 +275,13 @@ function UserMenu() {
           <div className="head" style={{ display: 'block' }}><div>{user.name}</div><div className="small muted" style={{ fontWeight: 400 }}>{user.email} · {user.role}</div></div>
           <div className="item" onClick={() => { setOpen(false); nav('/my'); }}><LayoutGrid size={16} />My Space</div>
           {user.employeeId && <div className="item" onClick={() => { setOpen(false); nav(`/employees/${user.employeeId}`); }}><User size={16} />My profile</div>}
+          <button type="button" className="item" style={{ width: '100%', border: 0, background: 'transparent', textAlign: 'left' }} onClick={() => { setOpen(false); setPhoto(true); }}><Camera size={16} />Change photo</button>
           <div className="item" onClick={() => { setOpen(false); setPw(true); }}><KeyRound size={16} />Change password</div>
           <div className="item" style={{ color: 'var(--red)' }} onClick={signOut}><LogOut size={16} />Sign out</div>
         </div>
       )}
       {pw && <ChangePassword onClose={() => setPw(false)} />}
+      {photo && <ProfilePhoto onClose={() => setPhoto(false)} />}
       {leaving && <SignOutModal onClose={() => setLeaving(false)} />}
     </div>
   );

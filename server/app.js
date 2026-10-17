@@ -23,54 +23,74 @@ import resignationRoutes from './routes/resignations.js';
 import performanceRoutes from './routes/performance.js';
 import reportRoutes from './routes/reports.js';
 import settingsRoutes from './routes/settings.js';
+import { atomicRouter, workflow } from './database/workflows.js';
+import { cleanUploads, validateUploads } from './services/uploads.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-export function createApp({ dbFile, dataDir, seed = 'demo', serveClient = true, today } = {}) {
-  const db = openDb(dbFile);
+export async function createApp({ databaseUrl, database, dataDir = path.resolve('data'), seed = 'demo', serveClient = true, today } = {}) {
+  const db = database || (await openDb({ connectionString: databaseUrl }));
   const uploads = path.join(dataDir, 'uploads');
   // Lets the demo seed store sample files (employee documents).
   const saveFile = (kind, name, bytes) => {
     fs.mkdirSync(path.join(uploads, kind), { recursive: true });
     fs.writeFileSync(path.join(uploads, kind, path.basename(name)), bytes);
   };
-  if (!hasData(db) && !db.value('SELECT COUNT(*) FROM users')) {
-    if (seed === 'demo') seedDemo(db, { today, saveFile });
-    else {
-      const adminEmail = (process.env.ADMIN_EMAIL || 'admin@brainadz.com').toLowerCase();
-      const adminPassword = process.env.ADMIN_PASSWORD || crypto.randomBytes(9).toString('base64url');
-      seedEmpty(db, { adminEmail, adminPassword });
-      if (!process.env.ADMIN_PASSWORD) console.log(`\n  First admin login: ${adminEmail} / ${adminPassword}\n  (you will be asked to change it)\n`);
-    }
-  }
+  try {
+    await db.tx(async () => {
+      await db.exec('SELECT pg_advisory_xact_lock(7264182027)');
+      if (!(await hasData(db)) && !(await db.value('SELECT COUNT(*) FROM users'))) {
+        if (seed === 'demo') await seedDemo(db, { today, saveFile });
+        else {
+          const adminEmail = (process.env.ADMIN_EMAIL || 'admin@brainadz.com').toLowerCase();
+          const adminPassword = process.env.ADMIN_PASSWORD || crypto.randomBytes(9).toString('base64url');
+          await seedEmpty(db, { adminEmail, adminPassword });
+          if (!process.env.ADMIN_PASSWORD) console.log(`\n  First admin login: ${adminEmail} / ${adminPassword}\n  (you will be asked to change it)\n`);
+        }
+      }
+    });
+  } catch (error) { if (!database) await db.close(); throw error; }
 
   // Closes work clocks left running overnight and raises short-hours alerts
   // for earlier days. Runs at start and every 30 minutes.
-  const shortHoursCheck = () => {
-    try { generateShortfalls(db, { today: companyToday(db) }); } catch (e) { console.error('Short-hours check failed', e); }
+  const shortHoursCheck = async () => {
+    try {await workflow(db, async () => generateShortfalls(db, { today: await companyToday(db) }));} catch (e) {console.error('Short-hours check failed', e);}
   };
-  shortHoursCheck();
-  setInterval(shortHoursCheck, 30 * 60000).unref();
+  await shortHoursCheck();
+  const interval = setInterval(shortHoursCheck, 30 * 60000);
+  interval.unref();
+  const closeHooks = [];
 
   fs.mkdirSync(uploads, { recursive: true });
   // Multer instance per upload kind; files land in data/uploads/<kind>/ with random names.
   const upload = (kind, { maxMb = 10, exts = null } = {}) => {
     const dir = path.join(uploads, kind);
     fs.mkdirSync(dir, { recursive: true });
-    return multer({
+    const instance = multer({
       storage: multer.diskStorage({
         destination: dir,
-        filename: (_req, file, cb) => cb(null, `${crypto.randomBytes(12).toString('hex')}${path.extname(file.originalname).toLowerCase().slice(0, 8)}`),
+        filename: (_req, file, cb) => cb(null, `${crypto.randomBytes(12).toString('hex')}${path.extname(file.originalname).toLowerCase().slice(0, 8)}`)
       }),
       limits: { fileSize: maxMb * 1024 * 1024, files: 25 },
       fileFilter: (_req, file, cb) => {
         const ext = path.extname(file.originalname).toLowerCase();
-        if (exts && !exts.includes(ext)) cb(new HttpError(400, `Unsupported file type ${ext || ''}. Allowed: ${exts.join(', ')}`));
-        else cb(null, true);
-      },
+        if (exts && !exts.includes(ext)) cb(new HttpError(400, `Unsupported file type ${ext || ''}. Allowed: ${exts.join(', ')}`));else
+        cb(null, true);
+      }
     });
+    return Object.fromEntries(['single', 'array', 'fields'].map((method) => [method, (...args) => {
+      const middleware = instance[method](...args);
+      return (req, res, next) => {
+        res.on('finish', () => { if (res.statusCode >= 400) cleanUploads(req); });
+        res.on('close', () => { if (!res.writableFinished) cleanUploads(req); });
+        middleware(req, res, (error) => {
+          try { if (error) throw error; if (req.aborted) throw new HttpError(400, 'Upload cancelled'); validateUploads(req); next(); }
+          catch (failure) { cleanUploads(req); next(failure); }
+        });
+      };
+    }]));
   };
-  const ctx = { db, uploads, upload, here, saveFile };
+  const ctx = { db, uploads, upload, here, saveFile, onClose: (fn) => closeHooks.push(fn) };
 
   const app = express();
   app.disable('x-powered-by');
@@ -95,13 +115,15 @@ export function createApp({ dbFile, dataDir, seed = 'demo', serveClient = true, 
   });
 
   const pub = express.Router();
-  authRoutes(pub, ctx);
+  authRoutes(atomicRouter(pub, db, ctx.onClose), ctx);
   app.use('/api', pub);
 
   const api = express.Router();
-  api.use((req, _res, next) => (req.user ? next() : next(new HttpError(401, 'Please sign in'))));
+  api.use((req, _res, next) => req.user ? next() : next(new HttpError(401, 'Please sign in')));
+  api.use((req, _res, next) => req.user.mustChangePassword
+    ? next(new HttpError(403, 'Change your temporary password before continuing')) : next());
   for (const register of [metaRoutes, dashboardRoutes, employeeRoutes, leaveRoutes, attendanceRoutes, policyRoutes, payrollRoutes, hiringRoutes, screenerRoutes, resignationRoutes, performanceRoutes, reportRoutes, settingsRoutes]) {
-    register(api, ctx);
+    await register(atomicRouter(api, db, ctx.onClose), ctx);
   }
   api.use((_req, _res, next) => next(new HttpError(404, 'API route not found')));
   app.use('/api', api);
@@ -128,7 +150,7 @@ export function createApp({ dbFile, dataDir, seed = 'demo', serveClient = true, 
     } else if (err.type === 'entity.parse.failed') {
       status = 400;
       message = 'Invalid JSON body';
-    } else if (/UNIQUE constraint failed/.test(message)) {
+    } else if (err.code === '23505') {
       status = 409;
       message = 'A record with these details already exists';
     } else if (!(err instanceof HttpError) && status === 500) {
@@ -138,7 +160,11 @@ export function createApp({ dbFile, dataDir, seed = 'demo', serveClient = true, 
     res.status(status).json({ error: message });
   });
 
-  return { app, db };
+  return { app, db, async close() {
+    clearInterval(interval);
+    for (const hook of closeHooks) await hook();
+    await db.close();
+  } };
 }
 
 export { fail };

@@ -236,7 +236,7 @@ function Users() {
   const [run, busy] = useAction(toast);
   const [confirm, confirmEl] = useConfirm();
   if (!data) return <Loading />;
-  const items = data.users.filter((u) => !q || `${u.name} ${u.email}`.toLowerCase().includes(q.toLowerCase()));
+  const items = data.users.filter((u) => !q || `${u.name} ${u.email} ${u.username || ''}`.toLowerCase().includes(q.toLowerCase()));
   const roles = [{ value: 'employee', label: 'Employee' }, { value: 'manager', label: 'Manager' }, { value: 'hr', label: 'HR' }, ...(isAdmin ? [{ value: 'admin', label: 'Administrator' }] : [])];
   return (
     <div>
@@ -253,7 +253,7 @@ function Users() {
             <thead><tr><th style={{ paddingLeft: 18 }}>User</th><th>Role</th><th>Status</th><th>Last sign-in</th><th /></tr></thead>
             <tbody>{items.map((u) => (
               <tr key={u.id}>
-                <td style={{ paddingLeft: 18 }}><b>{u.name}</b><div className="small muted">{u.email}{u.code ? ` · ${u.code}` : ''}{u.must_change_password ? ' · must change password' : ''}</div></td>
+                <td style={{ paddingLeft: 18 }}><b>{u.name}</b><div className="small muted">{u.role === 'admin' ? u.email : u.username}{u.code ? ` · ${u.code}` : ''}{u.must_change_password ? ' · must change password' : ''}</div></td>
                 <td><select className="select sm" style={{ width: 150 }} value={u.role} disabled={u.id === user.id || (u.role === 'admin' && !isAdmin)} onChange={(e) => run(() => api.put(`/users/${u.id}`, { role: e.target.value }), 'Role updated').then(reload)}>{roles.concat(u.role === 'admin' && !isAdmin ? [{ value: 'admin', label: 'Administrator' }] : []).map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}</select></td>
                 <td><Toggle on={Boolean(u.active)} disabled={u.id === user.id} label="Active" onChange={(v) => run(() => api.put(`/users/${u.id}`, { active: v }), v ? 'Login enabled' : 'Login disabled').then(reload)} /></td>
                 <td className="small muted">{u.last_login ? fmtDateTime(u.last_login) : 'Never'}</td>
@@ -263,7 +263,7 @@ function Users() {
           </table>
         </div>
       </Card>
-      {temp && <TempPasswordModal email={temp.email} password={temp.tempPassword} onClose={() => { setTemp(null); reload(); }} />}
+      {temp && <TempPasswordModal username={temp.username} role={temp.role} email={temp.email} password={temp.tempPassword} onClose={() => { setTemp(null); reload(); }} />}
       {confirmEl}
     </div>
   );

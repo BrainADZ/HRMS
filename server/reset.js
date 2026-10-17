@@ -1,10 +1,32 @@
-// Deletes the local database so the next start re-creates it.
+// This command deliberately resets DEMO data only, never an unmarked company.
+import { openDb } from './db.js';
+import { getSettings } from './core.js';
+import { seedDemo } from './seed.js';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const dataDir = process.env.DATA_DIR || path.join(here, '..', 'data');
-const dbFile = process.env.DB_FILE || path.join(dataDir, 'hrms.db');
-for (const f of [dbFile, `${dbFile}-wal`, `${dbFile}-shm`]) fs.rmSync(f, { force: true });
-console.log(`Removed ${dbFile}. Start the server to create fresh demo data.`);
+if (!process.argv.includes('--confirm-reset')) {
+  console.error('To reset a demo PostgreSQL database, run: npm run reset-demo -- --confirm-reset');
+  process.exitCode = 1;
+} else {
+  let db;
+  try {
+    db = await openDb();
+    if (!(await getSettings(db)).demo) throw new Error('Reset refused: this database is not marked as demo data');
+    const tables = await db.all("SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND tablename != 'schema_migrations'");
+    const dataDir = path.resolve(process.env.DATA_DIR || 'data');
+    const saveFile = (kind, name, bytes) => {
+      const dir = path.join(dataDir, 'uploads', kind);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, path.basename(name)), bytes);
+    };
+    await db.tx(async () => {
+      await db.exec(`TRUNCATE ${tables.map(({ tablename }) => `"${tablename.replaceAll('"', '""')}"`).join(', ')} RESTART IDENTITY`);
+      await seedDemo(db, { saveFile });
+    });
+    console.log('PostgreSQL demo data reset. Existing uploaded files were retained.');
+  } catch (error) {
+    console.error(`Demo reset failed: ${error.message}`);
+    process.exitCode = 1;
+  } finally { await db?.close(); }
+}

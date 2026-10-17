@@ -1,0 +1,39 @@
+name: Verify HRMS
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: hrms_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGDATABASE: hrms_ci
+      PGUSER: postgres
+      PGPASSWORD: ci-only-password
+      HRMS_TEST_POSTGRES: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run test:postgres
+      - run: npm run build
+      - run: npm run build:demo
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+      - run: npm audit --omit=dev --audit-level=moderate

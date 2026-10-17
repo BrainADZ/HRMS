@@ -21,11 +21,21 @@ export const DEFAULT_PAYROLL_RULES = {
 
 const r = Math.round;
 
+export function validatePayrollRules(rules) {
+  const basic = Number(rules.basicPct), hra = Number(rules.hraPct), pf = rules.pfEnabled ? Number(rules.pfRate) : 0;
+  if (![basic, hra, pf].every(Number.isFinite) || basic < 0 || hra < 0 || pf < 0 || basic * (1 + (hra + pf) / 100) > 100 + 1e-9) {
+    const error = new Error('Basic, HRA and employer PF together must fit within the CTC budget. Reduce the configured percentages.');
+    error.status = 400;
+    throw error;
+  }
+}
+
 export function salaryStructure(ctcAnnual, rules = DEFAULT_PAYROLL_RULES) {
+  validatePayrollRules(rules);
   const monthlyCtc = r((Number(ctcAnnual) || 0) / 12);
   const basic = r((monthlyCtc * rules.basicPct) / 100);
-  const hra = r((basic * rules.hraPct) / 100);
-  const employerPf = rules.pfEnabled ? r((Math.min(basic, rules.pfWageCeiling) * rules.pfRate) / 100) : 0;
+  const hra = Math.min(Math.max(0, monthlyCtc - basic), r((basic * rules.hraPct) / 100));
+  const employerPf = Math.min(Math.max(0, monthlyCtc - basic - hra), rules.pfEnabled ? r((Math.min(basic, rules.pfWageCeiling) * rules.pfRate) / 100) : 0);
   const special = Math.max(0, monthlyCtc - basic - hra - employerPf);
   return { monthlyCtc, basic, hra, special, employerPf, gross: basic + hra + special };
 }

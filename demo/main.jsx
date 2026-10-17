@@ -1,12 +1,10 @@
-// Entry point of the claude.ai demo: starts SQLite and the HRMS server inside
+// Entry point of the claude.ai demo: starts PostgreSQL (PGlite) and the HRMS server inside
 // the page, routes the app's /api requests to it, and renders the normal app.
 import './shims/env.js';
-import initSqlJs from 'sql.js/dist/sql-asm-memory-growth.js';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { useEffect } from 'react';
-import { setSqlJs } from './shims/sqlite.js';
 import { setSample } from './shims/anthropic.js';
 import { createDemoServer } from './server.js';
 import { AppProvider } from '../client/src/context.jsx';
@@ -79,9 +77,7 @@ const PLACES = {
 };
 let place = 'office';
 
-async function boot() {
-  setSqlJs(await initSqlJs());
-  const server = createDemoServer();
+async function boot() {  const server = await createDemoServer();
   installFetch(server);
 
   let downloads = null;

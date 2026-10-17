@@ -18,7 +18,7 @@ export default defineConfig({
   define: { 'process.env': 'globalThis.process.env' },
   resolve: {
     alias: [
-      { find: /^node:sqlite$/, replacement: shim('sqlite.js') },
+      { find: /^(?:\.\.\/server\/|\.\.\/|\.\/)db\.js$/, replacement: shim('db.js') },
       { find: /^(node:)?fs\/promises$/, replacement: shim('fs-promises.js') },
       { find: /^(node:)?fs$/, replacement: shim('fs.js') },
       { find: /^(node:)?path$/, replacement: shim('path.js') },
@@ -30,10 +30,16 @@ export default defineConfig({
   build: {
     outDir: path.join(here, 'dist'),
     emptyOutDir: true,
-    target: 'es2022',
+    // The demo targets current browsers and includes an already-built WASM
+    // runtime. Avoid retranspiling/minifying that runtime with esbuild.
+    target: 'esnext',
+    minify: false,
+    reportCompressedSize: false,
     modulePreload: false,
     cssCodeSplit: false,
-    assetsInlineLimit: Number.MAX_SAFE_INTEGER,
+    // Inline binaries after bundling so esbuild never has to parse enormous
+    // base64 WASM/data literals. inline.js still produces one standalone HTML.
+    assetsInlineLimit: 0,
     chunkSizeWarningLimit: 20000,
     rollupOptions: { output: { inlineDynamicImports: true } },
   },

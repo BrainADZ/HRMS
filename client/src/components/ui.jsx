@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Inbox, LoaderCircle, Ellipsis, X } from 'lucide-react';
-import { colorFor, initials } from '../lib/format.js';
+import { colorFor } from '../lib/format.js';
 import { photoUrl } from '../lib/api.js';
 import { useClickOutside } from '../lib/hooks.js';
 import { useApp } from '../context.jsx';
@@ -68,13 +68,22 @@ export function StatusDot({ status }) {
   return <span className="status-dot"><span className="dot" style={{ background: color }} />{status}</span>;
 }
 
-export function Avatar({ name = '', id, hasPhoto, size = 36, online, square }) {
-  const [broken, setBroken] = useState(false);
-  const src = hasPhoto && id ? photoUrl(id) : null;
+export function Avatar({ name = '', id, hasPhoto, src: suppliedSrc, size = 36, online, square }) {
+  const app = useApp();
+  const [failedSrc, setFailedSrc] = useState(null);
+  const knownPhoto = hasPhoto || app?.meta?.employees?.find((employee) => employee.id === Number(id))?.has_photo;
+  const source = suppliedSrc || (id && knownPhoto ? photoUrl(id) : null);
+  const src = source && !window.hrmsDemo && !/^(blob:|data:)/.test(source) ? `${source}${source.includes('?') ? '&' : '?'}rev=${app?.photoVersion || 0}` : source;
   const style = { width: size, height: size, fontSize: Math.max(11, size * 0.38), background: colorFor(name), borderRadius: square ? 12 : '50%' };
   return (
     <span className="avatar" style={style}>
-      {src && !broken ? <img src={src} alt="" onError={() => setBroken(true)} /> : initials(name)}
+      {src && failedSrc !== src ? <img src={src} alt={`${name || 'User'} profile photo`} onError={() => setFailedSrc(src)} /> : (
+        <svg viewBox="0 0 64 64" width="100%" height="100%" role="img" aria-label={`${name || 'User'} default profile image`}>
+          <circle cx="32" cy="32" r="32" fill="currentColor" opacity=".08" />
+          <circle cx="32" cy="24" r="12" fill="currentColor" opacity=".75" />
+          <path d="M10 61v-5a22 22 0 0 1 44 0v5Z" fill="currentColor" opacity=".75" />
+        </svg>
+      )}
       {online && <span className="online" />}
     </span>
   );

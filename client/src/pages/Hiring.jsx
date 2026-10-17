@@ -376,7 +376,8 @@ function Offer({ c, canManage, onChanged, onHire }) {
         <div className="col" style={{ gap: 10 }}>
           <Field label="Offer CTC (LPA)"><Input type="number" step="0.1" value={f.offer_ctc} onChange={(e) => setF({ ...f, offer_ctc: e.target.value })} /></Field>
           <Field label="Joining date"><Input type="date" min={meta.today} value={f.joining_date} onChange={(e) => setF({ ...f, joining_date: e.target.value })} /></Field>
-          <Button variant="primary" loading={busy} onClick={async () => { if (await run(() => api.post(`/candidates/${c.id}/offer`, f), 'Offer recorded as sent')) onChanged(); }}>{c.offer_status ? 'Revise offer' : 'Send offer'}</Button>
+          <div className="small muted">Share the offer with the candidate externally, then record it here.</div>
+          <Button variant="primary" loading={busy} onClick={async () => { if (await run(() => api.post(`/candidates/${c.id}/offer`, f), 'Offer recorded as sent')) onChanged(); }}>{c.offer_status ? 'Revise recorded offer' : 'Record sent offer'}</Button>
         </div>
       )}
       {!canManage && !c.offer_status && <Empty text="No offer yet" />}
@@ -390,7 +391,7 @@ function HireModal({ c, onClose, onDone }) {
   const [f, setF] = useState({ join_date: c.joining_date || '', email: '', create_login: true });
   const [run, busy] = useAction(toast);
   const [temp, setTemp] = useState(null);
-  if (temp) return <TempPasswordModal email={temp.email} password={temp.tempPassword} onClose={() => { onClose(); nav(`/employees/${temp.employeeId}`); }} note="Onboarding tasks were created on the employee record." />;
+  if (temp) return <TempPasswordModal username={temp.username} role={temp.role} email={temp.email} password={temp.tempPassword} onClose={() => { onClose(); nav(`/employees/${temp.employeeId}`); }} note="Onboarding tasks were created on the employee record." />;
   return (
     <Modal title={`Convert ${c.name} to employee`} onClose={onClose}
       footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={async () => {

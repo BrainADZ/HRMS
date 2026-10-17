@@ -25,6 +25,7 @@ export default function Payroll() {
   const [confirm, confirmEl] = useConfirm();
   const [sel, setSel] = useState(null);
   const [modal, setModal] = useState(null);
+  const [paymentReference, setPaymentReference] = useState('');
   useEffect(() => setSel(null), [month]);
   if (error && !data) return <ErrorBox error={error} onRetry={reload} />;
   if (!data) return <Loading />;
@@ -116,8 +117,8 @@ export default function Payroll() {
           <Approval run={r} busy={busy} isAdmin={isAdmin}
             onApprove={(stage) => act(() => api.post(`/payroll/runs/${r.id}/approve`, { stage }), stage === 'finance' ? 'Finance review recorded' : 'Payroll approved')}
             onSendBack={() => act(() => api.post(`/payroll/runs/${r.id}/send-back`), 'Sent back for corrections')}
-            onTransfer={() => act(() => api.post(`/payroll/runs/${r.id}/transfer`), 'Bank transfer scheduled')}
-            onComplete={async () => { if (await confirm({ title: 'Mark salaries as paid?', text: 'Employees are notified that their payslips are available. This cannot be undone.', confirmLabel: 'Mark as paid' })) act(() => api.post(`/payroll/runs/${r.id}/complete`), 'Payroll completed. Employees notified.'); }}
+            onTransfer={() => act(() => api.post(`/payroll/runs/${r.id}/transfer`), 'Manual bank batch prepared. Download the CSV to pay through your bank.')}
+            onComplete={() => { setPaymentReference(''); setModal({ type: 'payment' }); }}
             onDelete={async () => { if (await confirm({ title: 'Delete this payroll run?', text: 'Payslips for this month are removed. You can run payroll again.', danger: true, confirmLabel: 'Delete run' })) act(() => api.del(`/payroll/runs/${r.id}`), 'Payroll run deleted'); }}
           />
         </Card>
@@ -133,6 +134,8 @@ export default function Payroll() {
                 <tbody><tr><td className="small">{r.bankBatch.id}</td><td>{r.bankBatch.bank}</td><td>{r.bankBatch.count}</td><td className="num">{inr(r.bankBatch.amount)}</td></tr></tbody></table>
               <div className="row between mt-12"><span className="small muted">Initiated {fmtDate(r.bankBatch.initiatedAt)} · pay date {fmtDate(r.bankBatch.payDate)}</span><Badge tone={r.bankBatch.status === 'Completed' ? 'green' : 'blue'}>{r.bankBatch.status}</Badge></div>
               <Button size="sm" icon={Download} className="mt-12" onClick={() => download(`/payroll/runs/${r.id}/bank-file.csv`)}>Bank file (CSV)</Button>
+              <div className="small muted mt-12">Manual bank payment. Upload the CSV through your bank, then record its payment reference here.</div>
+              {r.bankBatch.paymentReference && <div className="small mt-12">Payment reference: {r.bankBatch.paymentReference}</div>}
             </div>
           ) : <Empty text={r ? 'Created once the run is approved' : 'No run yet'} />}
         </Card>
@@ -149,6 +152,10 @@ export default function Payroll() {
         </Modal>
       )}
       {modal?.type === 'claim' && <ClaimModal hr onClose={() => setModal(null)} onDone={reload} />}
+      {modal?.type === 'payment' && <Modal title="Record bank payment" onClose={() => setModal(null)} footer={<><Button onClick={() => setModal(null)}>Cancel</Button><Button variant="primary" disabled={!paymentReference.trim()} loading={busy} onClick={async () => { if (await run(() => api.post(`/payroll/runs/${r.id}/complete`, { payment_reference: paymentReference }), 'Payment recorded. Employees notified.')) { setModal(null); reload(); } }}>Confirm payment</Button></>}>
+        <p>Confirm that the bank has paid this batch. Recording payment releases payslips and cannot be undone.</p>
+        <label>Bank payment reference<input className="input mt-12" value={paymentReference} maxLength={150} onChange={(e) => setPaymentReference(e.target.value)} /></label>
+      </Modal>}
       {confirmEl}
     </div>
   );
@@ -327,7 +334,7 @@ function Approval({ run, busy, isAdmin, onApprove, onSendBack, onTransfer, onCom
         {s === 'In Review' && <Button variant="primary" icon={CircleCheck} loading={busy} onClick={() => onApprove('finance')}>Approve (Finance)</Button>}
         {s === 'Finance Reviewed' && (isAdmin ? <Button variant="primary" icon={CircleCheck} loading={busy} onClick={() => onApprove('management')}>Approve (Management)</Button> : <span className="small muted">Waiting for an administrator to approve.</span>)}
         {['Finance Reviewed', 'Approved'].includes(s) && <Button icon={Undo2} loading={busy} onClick={onSendBack}>Send back</Button>}
-        {s === 'Approved' && <Button variant="primary" icon={Send} loading={busy} onClick={onTransfer}>Schedule bank transfer</Button>}
+        {s === 'Approved' && <Button variant="primary" icon={Send} loading={busy} onClick={onTransfer}>Prepare bank payment CSV</Button>}
         {s === 'Transfer Scheduled' && <Button variant="primary" icon={CircleCheck} loading={busy} onClick={onComplete}>Mark salaries paid</Button>}
         {['In Review', 'Finance Reviewed'].includes(s) && <Button variant="ghost" icon={Trash2} onClick={onDelete}>Delete run</Button>}
         {s === 'Completed' && <span className="row gap-6 green b6"><CircleCheck size={18} />Salaries paid</span>}

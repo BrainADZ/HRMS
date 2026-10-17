@@ -1,11 +1,11 @@
-import test, { before, after } from 'node:test';
+import { asyncEvery } from "../server/database/async.js";import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { boot, client, as } from './helpers.js';
+import { boot, client, as, credentials } from './helpers.js';
 import { distanceM, ipMatches } from '../server/services/geofence.js';
 
 let ctx;
-before(async () => { ctx = await boot(); });
-after(async () => { await ctx.close(); });
+before(async () => {ctx = await boot();});
+after(async () => {await ctx.close();});
 
 const PW = 'Brainadz@2026';
 const EMP = 'aarav.mehta@brainadz.com';
@@ -16,7 +16,7 @@ const OFFICE = { lat: 12.9784, lng: 77.6408 };
 const INSIDE = { lat: 12.9786, lng: 77.6411, accuracy: 25 }; // about 40 m away
 const HOME = { lat: 12.9352, lng: 77.6245, accuracy: 30 }; // Koramangala, about 5 km away
 
-const signIn = (body) => client(ctx.base).post('/auth/login', body);
+const signIn = ({ email, ...body }) => client(ctx.base).post('/auth/login', { ...credentials(ctx.base, email), ...body });
 
 test('distance and network helpers', () => {
   assert.ok(Math.abs(distanceM(OFFICE, INSIDE) - 40) < 10);
@@ -43,37 +43,37 @@ test('HR sets up offices and turns on office-only sign-in', async () => {
 
 test('sign-in needs a location inside an office; the password is checked first', async () => {
   assert.equal((await signIn({ email: EMP, password: 'wrong' })).status, 401);
-  const none = await signIn({ email: EMP, password: PW });
+  const none = await signIn({ ...credentials(ctx.base, EMP), password: PW });
   assert.equal(none.status, 403);
   assert.equal(none.body.code, 'location_required');
-  const home = await signIn({ email: EMP, password: PW, location: HOME });
+  const home = await signIn({ ...credentials(ctx.base, EMP), password: PW, location: HOME });
   assert.equal(home.body.code, 'outside_office');
   assert.equal(home.body.office, 'Bengaluru office');
   assert.match(home.body.error, /km from the nearest office/);
-  const rough = await signIn({ email: EMP, password: PW, location: { ...HOME, accuracy: 5000 } });
+  const rough = await signIn({ ...credentials(ctx.base, EMP), password: PW, location: { ...HOME, accuracy: 5000 } });
   assert.equal(rough.body.code, 'location_imprecise');
-  const ok = await signIn({ email: EMP, password: PW, location: INSIDE });
+  const ok = await signIn({ ...credentials(ctx.base, EMP), password: PW, location: INSIDE });
   assert.equal(ok.status, 200);
   assert.equal(ok.body.location.office, 'Bengaluru office');
 
   // The session ends at midnight so the next day starts with an office sign-in.
   const { db } = ctx;
-  const uid = db.value('SELECT id FROM users WHERE email = ?', EMP);
-  const exp = db.value('SELECT expires_at FROM sessions WHERE user_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1', uid);
+  const uid = await db.value('SELECT id FROM users WHERE email = ?', EMP);
+  const exp = await db.value('SELECT expires_at FROM sessions WHERE user_id = ? ORDER BY created_at DESC, expires_at DESC LIMIT 1', uid);
   assert.ok(Date.parse(exp) - Date.now() <= 24 * 3600000);
-  const blocked = db.all("SELECT * FROM location_log WHERE user_id = ? AND event = 'sign-in blocked'", uid);
+  const blocked = await db.all("SELECT * FROM location_log WHERE user_id = ? AND event = 'sign-in blocked'", uid);
   assert.ok(blocked.some((b) => b.result === 'outside' && b.distance_m > 4500));
 });
 
 test('administrators, people allowed anywhere, and office networks skip the GPS check', async () => {
-  assert.equal((await signIn({ email: CEO, password: PW })).status, 200, 'admins can always sign in');
+  assert.equal((await signIn({ ...credentials(ctx.base, CEO), password: PW })).status, 200, 'admins can always sign in');
   const hr = await as(ctx.base, CEO);
-  const mgrId = ctx.db.value('SELECT employee_id FROM users WHERE email = ?', MGR);
+  const mgrId = await ctx.db.value('SELECT employee_id FROM users WHERE email = ?', MGR);
   assert.equal((await signIn({ email: MGR, password: PW, location: HOME })).status, 403);
   assert.equal((await hr.put('/settings', { geofence: { exemptEmployeeIds: [mgrId] } })).status, 200);
   assert.equal((await signIn({ email: MGR, password: PW })).status, 200, 'field staff sign in from anywhere');
 
-  const office = ctx.db.get("SELECT * FROM office_sites WHERE name = 'Bengaluru office'");
+  const office = await ctx.db.get("SELECT * FROM office_sites WHERE name = 'Bengaluru office'");
   assert.equal((await hr.put(`/settings/offices/${office.id}`, { ip_ranges: '127.0.0.1' })).status, 200);
   assert.equal((await signIn({ email: HR, password: PW })).status, 200, 'office network counts as in the office');
   assert.equal((await hr.put(`/settings/offices/${office.id}`, { ip_ranges: '' })).status, 200);
@@ -82,7 +82,7 @@ test('administrators, people allowed anywhere, and office networks skip the GPS 
 
 test('office check-in needs the office; work from home needs an approved WFH day', async () => {
   const c = client(ctx.base);
-  assert.equal((await c.post('/auth/login', { email: EMP, password: PW, location: INSIDE })).status, 200);
+  assert.equal((await c.post('/auth/login', { ...credentials(ctx.base, EMP), password: PW, location: INSIDE })).status, 200);
   let w = (await c.get('/attendance/workday')).body.workday;
   if (w.openSince) assert.equal((await c.post('/attendance/check-out')).status, 200);
   w = (await c.get('/attendance/workday')).body.workday;
@@ -93,15 +93,15 @@ test('office check-in needs the office; work from home needs an approved WFH day
   const mine = (await c.get('/attendance/locations?view=mine')).body.items;
   assert.ok(mine.some((x) => x.event === 'check-in' && x.result === 'in-office'));
   assert.ok(mine.some((x) => x.event === 'check-in blocked' && x.result === 'outside'));
-  assert.ok(mine.every((x) => x.user_id === ctx.db.value('SELECT id FROM users WHERE email = ?', EMP)));
+  assert.ok(await asyncEvery(mine, async (x) => x.user_id === (await ctx.db.value('SELECT id FROM users WHERE email = ?', EMP))));
 });
 
 test('strict mode signs you out after leaving the office and pauses the clock', async () => {
   const ceo = client(ctx.base);
-  await ceo.post('/auth/login', { email: CEO, password: PW });
+  await ceo.post('/auth/login', { ...credentials(ctx.base, CEO), password: PW });
   assert.equal((await ceo.put('/settings', { geofence: { mode: 'strict' } })).status, 200);
   const c = client(ctx.base);
-  await c.post('/auth/login', { email: EMP, password: PW, location: INSIDE });
+  await c.post('/auth/login', { ...credentials(ctx.base, EMP), password: PW, location: INSIDE });
   assert.ok((await c.get('/attendance/workday')).body.workday.openSince, 'clock running from the previous test');
   const inside = await c.post('/attendance/location', INSIDE);
   assert.equal(inside.body.ok, true);
@@ -113,14 +113,14 @@ test('strict mode signs you out after leaving the office and pauses the clock', 
   assert.match(second.body.message, /left the office/);
   assert.equal((await c.get('/auth/me')).status, 401);
   const back = client(ctx.base);
-  await back.post('/auth/login', { email: EMP, password: PW, location: INSIDE });
+  await back.post('/auth/login', { ...credentials(ctx.base, EMP), password: PW, location: INSIDE });
   const w = (await back.get('/attendance/workday')).body.workday;
   assert.equal(w.openSince, null);
   assert.equal(w.signedOutAway, true, 'coming back asks the reason for the gap');
 
   // HR sees the team log; an employee cannot.
   const hr = client(ctx.base);
-  await hr.post('/auth/login', { email: CEO, password: PW });
+  await hr.post('/auth/login', { ...credentials(ctx.base, CEO), password: PW });
   const team = (await hr.get('/attendance/locations?view=team&issues=1')).body;
   assert.ok(team.items.some((x) => x.event === 'signed out (left office)'));
   assert.ok(team.items.every((x) => ['outside', 'imprecise', 'no-location'].includes(x.result)));
@@ -131,12 +131,12 @@ test('strict mode signs you out after leaving the office and pauses the clock', 
 
 test('employee working place controls assigned-branch access and remote attendance', async () => {
   const admin = await as(ctx.base, CEO);
-  const eid = ctx.db.value('SELECT employee_id FROM users WHERE email = ?', EMP);
-  const branch = ctx.db.insert('locations', { name: 'Assigned test branch' });
-  const otherBranch = ctx.db.insert('locations', { name: 'Other test branch' });
-  const officeId = ctx.db.insert('office_sites', { name: 'Assigned test office', location_id: branch, ...OFFICE, radius_m: 200, active: 1 });
-  const otherId = ctx.db.insert('office_sites', { name: 'Other test office', location_id: otherBranch, lat: HOME.lat, lng: HOME.lng, radius_m: 200, ip_ranges: '127.0.0.1', active: 1 });
-  const before = ctx.db.get('SELECT work_place, location_id FROM employees WHERE id = ?', eid);
+  const eid = await ctx.db.value('SELECT employee_id FROM users WHERE email = ?', EMP);
+  const branch = await ctx.db.insert('locations', { name: 'Assigned test branch' });
+  const otherBranch = await ctx.db.insert('locations', { name: 'Other test branch' });
+  const officeId = await ctx.db.insert('office_sites', { name: 'Assigned test office', location_id: branch, ...OFFICE, radius_m: 200, active: 1 });
+  const otherId = await ctx.db.insert('office_sites', { name: 'Other test office', location_id: otherBranch, lat: HOME.lat, lng: HOME.lng, radius_m: 200, ip_ranges: '127.0.0.1', active: 1 });
+  const before = await ctx.db.get('SELECT work_place, location_id FROM employees WHERE id = ?', eid);
   try {
     assert.equal((await admin.put(`/employees/${eid}`, { work_place: 'elsewhere' })).status, 400);
     assert.equal((await admin.put(`/employees/${eid}`, { work_place: 'onsite', location_id: '' })).status, 400);
@@ -144,16 +144,16 @@ test('employee working place controls assigned-branch access and remote attendan
     assert.equal((await admin.get(`/employees/${eid}`)).body.employee.work_place, 'onsite');
     assert.equal((await admin.put('/settings', { geofence: { mode: 'login' } })).status, 200);
     // The other branch's network must not bypass the assigned branch check.
-    assert.equal((await signIn({ email: EMP, password: PW, location: HOME })).status, 403);
-    assert.equal((await signIn({ email: EMP, password: PW })).body.code, 'location_required');
-    assert.equal((await signIn({ email: EMP, password: PW, location: INSIDE })).status, 200);
-    ctx.db.update('office_sites', officeId, { active: 0 });
-    assert.equal((await signIn({ email: EMP, password: PW, location: INSIDE })).body.code, 'office_not_configured');
+    assert.equal((await signIn({ ...credentials(ctx.base, EMP), password: PW, location: HOME })).status, 403);
+    assert.equal((await signIn({ ...credentials(ctx.base, EMP), password: PW })).body.code, 'location_required');
+    assert.equal((await signIn({ ...credentials(ctx.base, EMP), password: PW, location: INSIDE })).status, 200);
+    await ctx.db.update('office_sites', officeId, { active: 0 });
+    assert.equal((await signIn({ ...credentials(ctx.base, EMP), password: PW, location: INSIDE })).body.code, 'office_not_configured');
     assert.equal((await admin.put(`/employees/${eid}`, { work_place: 'wfh' })).status, 200);
     const remote = await as(ctx.base, EMP);
     const w = (await remote.get('/attendance/workday')).body.workday;
-    ctx.db.run('DELETE FROM work_sessions WHERE employee_id = ? AND date = ?', eid, w.date);
-    ctx.db.run('DELETE FROM attendance WHERE employee_id = ? AND date = ?', eid, w.date);
+    await ctx.db.run('DELETE FROM work_sessions WHERE employee_id = ? AND date = ?', eid, w.date);
+    await ctx.db.run('DELETE FROM attendance WHERE employee_id = ? AND date = ?', eid, w.date);
     assert.equal((await remote.post('/attendance/check-in')).status, 200);
     assert.equal((await remote.get('/attendance/workday')).body.workday.mode, 'wfh');
     assert.equal((await remote.put(`/employees/${eid}`, { work_place: 'onsite', location_id: otherBranch })).status, 200);
@@ -161,9 +161,8 @@ test('employee working place controls assigned-branch access and remote attendan
     assert.equal((await remote.post('/attendance/check-out', { action: 'break' })).status, 200);
     assert.equal((await remote.post('/attendance/check-in')).status, 200);
   } finally {
-    ctx.db.update('employees', eid, before);
-    ctx.db.run('DELETE FROM office_sites WHERE id IN (?, ?)', officeId, otherId);
+    await ctx.db.update('employees', eid, before);
+    await ctx.db.run('DELETE FROM office_sites WHERE id IN (?, ?)', officeId, otherId);
     await admin.put('/settings', { geofence: { mode: 'off' } });
   }
 });
-
