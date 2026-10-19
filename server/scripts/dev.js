@@ -16,6 +16,18 @@ function backendEnvironment() {
 }
 // Vite starts only after the API reports the port it actually bound.
 // Backend file secrets are passed to the API process only, never to Vite.
+function frontendEnvironment(port) {
+  const env = {
+    ...process.env,
+    HRMS_API_PROXY_TARGET: `http://127.0.0.1:${port}`,
+    VITE_API_BASE_URL: '/api',
+  };
+  for (const key of [
+    'DATABASE_URL', 'DATABASE_ADMIN_URL', 'PGPASSWORD', 'PGSSLROOTCERT',
+    'ADMIN_PASSWORD', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN',
+  ]) delete env[key];
+  return env;
+}
 const options = { cwd: root, stdio: 'inherit', env: { ...process.env } };
 let apiPort;
 
@@ -62,7 +74,7 @@ const startApi = () => {
       await new Promise((resolve) => { old.once('exit', resolve); old.kill(); });
     }
     if (!serverOnly && !vite && !stopping) vite = launch(['node_modules/vite/bin/vite.js', '--config', 'client/vite.config.js'], 'Vite', {
-      env: { ...process.env, HRMS_API_PROXY_TARGET: `http://127.0.0.1:${apiPort}` },
+      env: frontendEnvironment(apiPort),
     });
   });
   return child;

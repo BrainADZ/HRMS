@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { openDb, postgresConfig } from '../db.js';
 import { importSqlite } from '../database/import-sqlite.js';
 
-if (!process.argv.includes('--confirm-import')) throw new Error('Run npm run db:import-sqlite -- --confirm-import to replace the initial empty company with SQLite data.');
+if (!process.argv.includes('--confirm-import')) throw new Error('Run node --env-file=server/.env server/scripts/import-sqlite.js --confirm-import to replace the initial empty company with SQLite data.');
 const sourceFile = path.resolve(process.env.SQLITE_IMPORT_FILE || path.join(process.env.DATA_DIR || 'data', 'hrms.db'));
 const backupDir = path.resolve(process.env.DATA_DIR || 'data', 'backups', `sqlite-import-${new Date().toISOString().replace(/[:.]/g, '-')}`);
 let source;

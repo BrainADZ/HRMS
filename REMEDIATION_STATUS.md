@@ -92,7 +92,7 @@ Tested means the named local regression passed, not universal production accepta
 | 70 | Backup/restore | Real pg_dump/upload backup restored in a generated temporary DB; all six main counts and 682 document files match. |
 | 71 | Concurrency/load | Concurrent creation/overlap/approval tests and 48-request mixed-role local smoke load. Production capacity testing remains conditional. |
 | 72 | Errors | Auth, validation, conflicts, not-found and transaction rollback responses covered. |
-| 73 | Automated tests | Final outcomes in CURRENT_AUDIT.md; rerun with `npm run test:postgres`. |
+| 73 | Automated tests | Final outcomes in CURRENT_AUDIT.md; rerun with `node server/scripts/test-postgres.js`. |
 | 74 | UI/API mapping | Chrome covers role pages/photos and correction forms/report filters. Every button/form combination is not exhaustively browser-tested. |
 | 75 | Environment | Separate server/client env, ignored secrets, CORS and production build checks. Production hosting/TLS still require configuration. |
 | 76 | Documentation | Environment/database/operations documentation and this checklist updated. |

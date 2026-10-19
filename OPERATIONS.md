@@ -1,16 +1,16 @@
 # Local operation and verification
 
-The imported company uses local PostgreSQL. Run `npm start` after `npm run build`, or use `npm run dev` while editing. Preserve the current `server/.env`; it contains the local connection credentials.
+Configure PostgreSQL in `server/.env`. Run `npm start` after `npm run build`, or use `npm run dev` while editing.
 
 ## Verification commands
 
-- `npm run test:postgres` runs every automated regression against disposable schemas in the configured PostgreSQL database. It needs permission to create/drop schemas. It does not reset the imported company's public tables.
-- `npm test` runs the same suite using embedded PostgreSQL by default. On a Windows machine under memory pressure, use `test:postgres` instead.
+- `node server/scripts/test-postgres.js` runs every automated regression against disposable schemas in the configured PostgreSQL database. It needs permission to create/drop schemas. It does not reset the imported company's public tables.
+- `npm test` runs the same suite using embedded PostgreSQL by default. On a Windows machine under memory pressure, use `node server/scripts/test-postgres.js` instead.
 - `npm run build` builds the normal web client.
 - `npm run demo` starts a local demo backed by a temporary embedded database. Press `q` and Enter to stop and discard its data.
 - `npm run test:browser` runs Playwright role checks. First install Chromium with `npx playwright install chromium`. To use an existing Chrome installation on Windows, set `HRMS_BROWSER_PATH` to its executable path. Set `HRMS_TEST_POSTGRES=1` to use disposable PostgreSQL schemas for browser checks.
 
-GitHub Actions runs the PostgreSQL suite, the client build, browser checks and the dependency scan. The workflow has been added locally; its first remote run is pending.
+GitHub Actions runs the embedded database suite, the client build, browser checks and the dependency scan. Run the optional real-PostgreSQL suite locally when a database is configured. The workflow has been added locally; its first remote run is pending.
 
 ## Backup and recovery verification
 
@@ -54,4 +54,4 @@ Before public hosting, disable demo credential exposure without deleting records
 
 Login throttling is bounded in memory per process. A multi-instance public deployment needs a shared gateway/rate limiter. The global workflow lock favors correctness for a small HRMS; representative load testing is needed before scaling.
 
-Bank payments and offer sharing are explicit manual workflows. In-app notifications work; SMTP/SMS delivery is not configured. Live AI credentials/provider acceptance, deployed HTTPS, device GPS accuracy and finance acceptance of current-year/state payroll rules require the respective external configuration or review. Docker runs as `node`; the image and hosted deployment have not been exercised here.
+Bank payments and offer sharing are explicit manual workflows. In-app notifications work; SMTP/SMS delivery is not configured. Live AI credentials/provider acceptance, deployed HTTPS, device GPS accuracy and finance acceptance of current-year/state payroll rules require the respective external configuration or review. The hosted deployment has not been exercised here.

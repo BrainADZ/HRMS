@@ -21,7 +21,7 @@ try {
   runtime = await createApp({
     databaseUrl: process.env.DATABASE_URL,
     dataDir,
-    seed: process.env.SEED === 'empty' ? 'empty' : 'demo',
+    seed: process.env.SEED === 'demo' ? 'demo' : 'empty',
     serveClient: process.env.SERVE_CLIENT !== 'false',
   });
   const { app } = runtime;

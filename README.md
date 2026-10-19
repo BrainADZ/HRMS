@@ -59,7 +59,7 @@ Demo logins (password `Brainadz@2026` for all). Only the administrator signs in 
 
 Every team lead and vertical head also has a manager login with the same password; they use their generated username rather than their email.
 
-To start a demo again from scratch: stop the server, run `npm run reset-demo -- --confirm-reset`, and start it again. This refuses databases that are not marked as demo data.
+For a disposable local demo, run `npm run demo`. To reset a persistent demo database, stop the server and run `node --env-file=server/.env server/reset.js --confirm-reset`; the command refuses databases not marked as demo.
 
 ## Turn on Claude for resume screening
 
@@ -107,31 +107,10 @@ Things to know:
 
 ## Put it online
 
-The app is one Node.js process, a PostgreSQL database, and an uploads folder. Any host that runs Docker or Node 22 and gives you a **persistent disk** works (Render with a disk, Railway with a volume, a VPS, AWS Lightsail, an office server).
-
-### On Render (recommended, about 10 minutes)
-
-The repository includes `render.yaml` for the web service, persistent uploads, HTTPS and health checks. Provision a PostgreSQL database separately and supply its connection URL. The blueprint starts with `SEED=empty`.
-1. Sign up at [render.com](https://render.com) with GitHub, and add a payment card under Billing.
-2. Click **New → Blueprint**, connect GitHub if asked, and pick this repository and the branch to deploy.
-3. Set `DATABASE_URL`, `ADMIN_EMAIL` and `ADMIN_PASSWORD`. Render also asks for `ANTHROPIC_API_KEY`. Paste a key to turn on Claude resume screening, or leave it blank (you can add it later under the service's Environment tab).
-4. Click **Apply**. The first build takes about 5 minutes. Your HRMS is then live at `https://brainadz-hrms.onrender.com` (or a similar address shown on the service page). Share that link.
-
-Every push to that branch redeploys automatically; the data on the disk is kept. To use your own address such as `hr.brainadz.com`, add it under the service's **Settings → Custom Domains** and create the DNS record Render shows.
-
-**Before real data goes in:** the demo logins are public, so anyone with the link can sign in while the demo is loaded. When you're ready, sign in as the administrator and use **Settings → Data → Remove demo data**. It deletes every demo account and makes you set your own email and password.
-
-### With Docker
-
-```bash
-docker build -t brainadz-hrms .
-docker run -d -p 3000:3000 -v hrms-data:/app/data \
-  --env-file server/.env brainadz-hrms
-```
-
-### Other hosts
-
-Build command `npm install && npm run build`, start command `npm start`, provide PostgreSQL connection settings, and mount the persistent uploads disk at the folder named in `DATA_DIR`.
+Build the client with `npm run build`, then run `npm start` on a Node.js host.
+Provide a PostgreSQL connection through server environment variables and a
+persistent folder for `DATA_DIR` uploads. Back up PostgreSQL and uploads
+together. Deployment details depend on your host.
 
 Environment variables:
 
@@ -143,7 +122,7 @@ Environment variables:
 | `PGSSLMODE` | `disable` | Set to `require` for TLS with certificate verification |
 | `PGPOOL_MAX` | `10` | Maximum pooled PostgreSQL connections |
 | `DATA_DIR` | `./data` | Uploaded resumes, documents and photos. **Must be on a persistent disk.** |
-| `SEED` | `demo` | `demo` or `empty` for the first start |
+| `SEED` | `empty` | `demo` or `empty` for the first start |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | | First administrator when `SEED=empty` |
 | `ANTHROPIC_API_KEY` | | Enables Claude resume screening |
 | `HRMS_AI_MODEL` | `claude-opus-5-5` | Claude model for screening |
@@ -176,7 +155,7 @@ Things to know:
 
 ## For developers
 
-Frontend/backend configuration and separate run commands are documented in [ENVIRONMENT.md](ENVIRONMENT.md). Private settings are in `server/.env`; frontend settings are in `client/.env`. Use `npm run dev:server` and `npm run dev:client` in separate terminals, or `npm run dev` for both.
+Frontend/backend configuration and separate run commands are documented in [ENVIRONMENT.md](ENVIRONMENT.md). Private settings are in `server/.env`. The frontend needs no local env file. Use `npm run dev` for both.
 
 See [CURRENT_AUDIT.md](CURRENT_AUDIT.md) for verified status and [OPERATIONS.md](OPERATIONS.md) for PostgreSQL tests, browser checks, backups and recovery.
 

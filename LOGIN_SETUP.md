@@ -51,7 +51,7 @@ PGUSER=postgres
 PGPASSWORD="your PostgreSQL installation password"
 ```
 
-Then run `npm run db:setup`, `npm run db:check`, and `npm start`. See [DATABASE_SETUP.md](DATABASE_SETUP.md) for deployment and backup instructions.
+Then run `npm run db:setup`, `node --env-file=server/.env server/scripts/db-check.js`, and `npm start`. See [DATABASE_SETUP.md](DATABASE_SETUP.md) for deployment and backup instructions.
 
 ## API workflow fixes included
 

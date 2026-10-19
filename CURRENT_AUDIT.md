@@ -1,5 +1,7 @@
 # HRMS status after fixes — 17 October 2026
 
+> Historical verification record. For the current environment and run commands, use [ENVIRONMENT.md](ENVIRONMENT.md). Docker deployment files were later removed.
+
 Latest web remediation and the disposition of all 81 requested items: [REMEDIATION_STATUS.md](REMEDIATION_STATUS.md). This supersedes historical scope and test figures below. EXE/APK, mail and actual payment integrations are deferred by the user. Offline writes remain unsupported; live AI, office GPS/IP and statutory payroll acceptance remain conditional.
 
 ## Latest verification
