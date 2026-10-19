@@ -14,10 +14,8 @@ function geoError(message, code) {
   return e;
 }
 
-// { lat, lng, accuracy } from the browser, or from the demo's location
-// switcher when running as the claude.ai demo.
+// { lat, lng, accuracy } from the browser.
 export function getPosition({ maxAgeMs = 60000 } = {}) {
-  if (window.hrmsDemo?.getPosition) return Promise.resolve(window.hrmsDemo.getPosition());
   if (!window.isSecureContext) return Promise.reject(geoError('Location only works over a secure (https) connection. Ask your administrator to add this office network in Settings → Office locations.', 'geo_insecure'));
   if (!navigator.geolocation) return Promise.reject(geoError('This browser cannot share its location.', 'geo_unavailable'));
   return new Promise((resolve, reject) => {

@@ -73,7 +73,7 @@ export function Avatar({ name = '', id, hasPhoto, src: suppliedSrc, size = 36, o
   const [failedSrc, setFailedSrc] = useState(null);
   const knownPhoto = hasPhoto || app?.meta?.employees?.find((employee) => employee.id === Number(id))?.has_photo;
   const source = apiAssetUrl(suppliedSrc) || (id && knownPhoto ? photoUrl(id) : null);
-  const src = source && !window.hrmsDemo && !/^(blob:|data:)/.test(source) ? `${source}${source.includes('?') ? '&' : '?'}rev=${app?.photoVersion || 0}` : source;
+  const src = source && !/^(blob:|data:)/.test(source) ? `${source}${source.includes('?') ? '&' : '?'}rev=${app?.photoVersion || 0}` : source;
   const style = { width: size, height: size, fontSize: Math.max(11, size * 0.38), background: colorFor(name), borderRadius: square ? 12 : '50%' };
   return (
     <span className="avatar" style={style}>

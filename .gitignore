@@ -6,5 +6,4 @@ data/
 .env.*
 !.env.example
 .DS_Store
-demo/dist
 .test-results/

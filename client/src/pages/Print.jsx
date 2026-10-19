@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { Printer } from 'lucide-react';
 import { useApi } from '../lib/hooks.js';
 import { fmtDate } from '../lib/format.js';
@@ -12,7 +12,6 @@ export default function Print() {
   const { kind, id } = useParams();
   const path = kind === 'payslip' ? `/payroll/payslips/${id}` : `/resignations/${id}/letters/${kind}`;
   const { data, error } = useApi(path);
-  const navigate = useNavigate();
   useEffect(() => {
     if (data) document.title = kind === 'payslip' ? `Payslip ${data.label} - ${data.data.employee?.name}` : `${kind === 'experience' ? 'Experience' : 'Relieving'} letter - ${data.name}`;
   }, [data, kind]);
@@ -21,13 +20,8 @@ export default function Print() {
   return (
     <div>
       <div className="no-print row" style={{ justifyContent: 'center', gap: 10, padding: 16 }}>
-        {window.hrmsDemo ? <>
-          <Button onClick={() => navigate(-1)}>Back</Button>
-          <span className="small muted">Printing and PDF export work in the installed app, not in this demo.</span>
-        </> : <>
-          <Button variant="primary" icon={Printer} onClick={() => window.print()}>Print / Save as PDF</Button>
-          <Button onClick={() => window.close()}>Close</Button>
-        </>}
+        <Button variant="primary" icon={Printer} onClick={() => window.print()}>Print / Save as PDF</Button>
+        <Button onClick={() => window.close()}>Close</Button>
       </div>
       <div className="print-page">
         {kind === 'payslip' ? <PayslipView data={data.data} label={data.label} company={data.company.name} /> : <Letter kind={kind} r={data} />}

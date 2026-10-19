@@ -7,10 +7,10 @@ The imported company uses local PostgreSQL. Run `npm start` after `npm run build
 - `npm run test:postgres` runs every automated regression against disposable schemas in the configured PostgreSQL database. It needs permission to create/drop schemas. It does not reset the imported company's public tables.
 - `npm test` runs the same suite using embedded PostgreSQL by default. On a Windows machine under memory pressure, use `test:postgres` instead.
 - `npm run build` builds the normal web client.
-- `npm run build:demo` builds the independent browser demo.
+- `npm run demo` starts a local demo backed by a temporary embedded database. Press `q` and Enter to stop and discard its data.
 - `npm run test:browser` runs Playwright role checks. First install Chromium with `npx playwright install chromium`. To use an existing Chrome installation on Windows, set `HRMS_BROWSER_PATH` to its executable path. Set `HRMS_TEST_POSTGRES=1` to use disposable PostgreSQL schemas for browser checks.
 
-GitHub Actions runs the PostgreSQL suite, both builds, browser checks and the dependency scan. The workflow has been added locally; its first remote run is pending.
+GitHub Actions runs the PostgreSQL suite, the client build, browser checks and the dependency scan. The workflow has been added locally; its first remote run is pending.
 
 ## Backup and recovery verification
 
@@ -34,7 +34,7 @@ Exit letters can be issued by HR only after completion. Issue first, then View/P
 
 Production always hides demo account details and refuses the common demo password. Set real account passwords before production. `EXPOSE_DEMO_LOGINS=false` also hides the shortcuts locally. Mail, bank integration and native builds are deferred. Web writes require an online connection; no offline attendance queue is provided.
 
-See [REMEDIATION_STATUS.md](REMEDIATION_STATUS.md) for all 81 original items and [API_UI_MAP.md](API_UI_MAP.md) for the route/client reference inventory. Regenerate the inventory with `node scripts/audit-api-map.js`.
+See [REMEDIATION_STATUS.md](REMEDIATION_STATUS.md) for all 81 original items and [API_UI_MAP.md](API_UI_MAP.md) for the route/client reference inventory. Regenerate the inventory with `node server/scripts/audit-api-map.js`.
 
 Every account can change its profile photo from the top-right account menu → Change photo. Choose a JPG, PNG or WebP image up to 3 MB, preview it and save. HR/admin can also change an employee's photo from their employee profile. Uploaded photos appear in profile cards, the directory and account avatars; accounts without an uploaded image show a default profile illustration. Standalone administrator photos are supported without creating employee records. Replacing a photo refreshes avatars immediately and removes the previous stored image after commit.
 

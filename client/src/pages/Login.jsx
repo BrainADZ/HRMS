@@ -59,7 +59,7 @@ export default function Login() {
         <div className="box">
           <h1 style={{ fontSize: 28, letterSpacing: '-0.5px' }}>Sign in</h1>
           <p className="muted mt-8">Welcome back to {cfg?.companyName || 'BrainADZ'} HRMS.</p>
-          {cfg?.officeOnly && <p className="small muted mt-8 row gap-6"><MapPin size={15} />Sign-in works only from a {cfg.companyName || 'BrainADZ'} office. {window.hrmsDemo ? 'In this demo, choose where you are in the bottom-left corner.' : 'Your browser will ask to share your location.'}</p>}
+          {cfg?.officeOnly && <p className="small muted mt-8 row gap-6"><MapPin size={15} />Sign-in works only from a {cfg.companyName || 'BrainADZ'} office. Your browser will ask to share your location.</p>}
           {flash && <div className="alert warn mt-16">{flash}</div>}
           <form className="col mt-16" style={{ gap: 14, marginTop: 24 }} onSubmit={signIn}>
             <div className="row gap-8" role="group" aria-label="Sign-in type">

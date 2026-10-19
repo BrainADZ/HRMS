@@ -8,21 +8,21 @@
     "node": ">=22.13"
   },
   "scripts": {
-    "dev": "node scripts/dev.js",
-    "dev:server": "node scripts/dev.js --server-only",
+    "dev": "node server/scripts/dev.js",
+    "dev:server": "node server/scripts/dev.js --server-only",
     "dev:client": "vite --config client/vite.config.js",
     "build": "vite build --config client/vite.config.js",
     "start": "node --env-file-if-exists=server/.env --disable-warning=ExperimentalWarning server/index.js",
-    "test": "node --v8-pool-size=1 --wasm-num-compilation-tasks=1 --test --test-concurrency=1 \"tests/*.test.js\"",
+    "test": "node --v8-pool-size=1 --wasm-num-compilation-tasks=1 --test --test-concurrency=1 \"server/tests/*.test.js\"",
     "reset-demo": "node --env-file-if-exists=server/.env server/reset.js",
-    "build:demo": "vite build --config demo/vite.config.js && node demo/inline.js",
-    "db:setup": "node --env-file-if-exists=server/.env scripts/db-setup.js",
-    "db:check": "node --env-file-if-exists=server/.env scripts/db-check.js",
-    "db:backup": "node --env-file-if-exists=server/.env scripts/db-backup.js",
-    "db:verify-backup": "node --env-file-if-exists=server/.env scripts/db-verify-backup.js",
+    "demo": "node server/demo.js",
+    "db:setup": "node --env-file-if-exists=server/.env server/scripts/db-setup.js",
+    "db:check": "node --env-file-if-exists=server/.env server/scripts/db-check.js",
+    "db:backup": "node --env-file-if-exists=server/.env server/scripts/db-backup.js",
+    "db:verify-backup": "node --env-file-if-exists=server/.env server/scripts/db-verify-backup.js",
     "test:browser": "node --env-file-if-exists=server/.env node_modules/@playwright/test/cli.js test",
-    "test:postgres": "node scripts/test-postgres.js",
-    "db:import-sqlite": "node --env-file-if-exists=server/.env --disable-warning=ExperimentalWarning scripts/import-sqlite.js"
+    "test:postgres": "node server/scripts/test-postgres.js",
+    "db:import-sqlite": "node --env-file-if-exists=server/.env --disable-warning=ExperimentalWarning server/scripts/import-sqlite.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",

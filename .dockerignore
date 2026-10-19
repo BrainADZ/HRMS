@@ -1,5 +1,6 @@
 node_modules
 client/dist
+server/tests
 data
 .git
 *.log
@@ -7,6 +8,5 @@ data
 **/.env
 **/.env.*
 !**/.env.example
-demo/dist
 .test-results
 .github

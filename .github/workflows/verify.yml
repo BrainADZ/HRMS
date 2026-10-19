@@ -33,7 +33,6 @@ jobs:
       - run: npm ci
       - run: npm run test:postgres
       - run: npm run build
-      - run: npm run build:demo
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
       - run: npm audit --omit=dev --audit-level=moderate

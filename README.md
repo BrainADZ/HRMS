@@ -191,5 +191,6 @@ npm test        # unit and API tests (node:test)
   - `routes/`: one file per module
   - `seed.js`: demo company
 - `client/`: React 19 + Vite. `src/pages/` has one file per module; `src/components/` holds the UI kit and hand-drawn SVG charts.
-- `tests/`: isolated PostgreSQL (PGlite) database tests; payroll, leave and screener rules; end-to-end API flows across roles; the Claude request format against a local stand-in for the API.
-- `demo/`: the interactive claude.ai demo. `npm run build:demo` bundles the client and the server into one page (`demo/dist/brainadz-hrms.html`) that runs entirely in the browser: PostgreSQL via PGlite, uploads kept in memory, and Claude screening through the viewer's own claude.ai access. Node built-ins and the Anthropic SDK are swapped for the browser versions in `demo/shims/`; the route modules, payroll and leave rules, and seed are the same code. Data resets when the page reloads.
+- `server/scripts/`: development, database and maintenance commands.
+- `server/tests/`: isolated PostgreSQL (PGlite) tests, API flows and browser role checks.
+- `server/demo.js`: the single local demo launcher. Run `npm run demo`; it starts the real API and client with fictional data in a temporary embedded database. Press `q` and Enter to stop and remove its data.

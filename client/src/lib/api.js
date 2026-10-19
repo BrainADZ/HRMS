@@ -1,7 +1,7 @@
 // Thin fetch wrapper for the HRMS API. Every state-changing request carries
 // the X-Requested-With header the server uses as its CSRF guard.
 const apiBase = (import.meta.env?.VITE_API_BASE_URL || '/api').replace(/\/+$/, '');
-export const apiUrl = (path) => `${window.hrmsDemo ? '/api' : apiBase}${path}`;
+export const apiUrl = (path) => `${apiBase}${path}`;
 export const apiAssetUrl = (url) => url?.startsWith('/api/') ? apiUrl(url.slice(4)) : url;
 
 export async function api(path, { method = 'GET', body, form } = {}) {
@@ -30,17 +30,12 @@ api.put = (p, body = {}) => api(p, { method: 'PUT', body });
 api.del = (p) => api(p, { method: 'DELETE' });
 api.upload = (p, form, method = 'POST') => api(p, { method, form });
 
-// The claude.ai demo (demo/main.jsx) runs the server inside the page and sets
-// window.hrmsDemo so photos and downloads go through it instead of HTTP.
-const demo = () => window.hrmsDemo;
-
 export function photoUrl(employeeId) {
-  return demo() ? demo().photoUrl(employeeId) : apiUrl(`/files/photo/${employeeId}`);
+  return apiUrl(`/files/photo/${employeeId}`);
 }
 
 // Opens a GET download (CSV, documents) using the session cookie.
 export function download(path) {
-  if (demo()) return demo().download(path);
   const a = document.createElement('a');
   a.href = apiUrl(path);
   a.rel = 'noopener';
@@ -57,7 +52,6 @@ export async function postDownload(path, body, filename) {
     throw new Error(j.error || 'Download failed');
   }
   const blob = await res.blob();
-  if (demo()) return demo().saveFile(blob, filename);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
