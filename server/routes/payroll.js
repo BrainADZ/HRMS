@@ -76,7 +76,7 @@ export default function payrollRoutes(r, { db }) {
     const eligible = preview.length;
     const processed = run ? lines.filter((l) => ['Processed', 'Paid'].includes(l.status)).length : 0;
     const unmarkedPeople = preview.filter((l) => l.unmarked > 0).length;
-    const leaveRecords = await db.value("SELECT COUNT(*) FROM leave_requests WHERE status = 'Approved' AND from_date <= ? AND to_date >= ?", D.monthEnd(month), D.monthStart(month));
+    const leaveRecords = await db.value(`SELECT COUNT(*) FROM leave_requests r JOIN employees e ON e.id = r.employee_id WHERE r.status = 'Approved' AND r.from_date <= ? AND r.to_date >= ? ${f.sql}`, D.monthEnd(month), D.monthStart(month), ...f.params);
     const adjustments = (await db.all(`SELECT a.*, e.first_name, e.last_name, e.code FROM payroll_adjustments a JOIN employees e ON e.id = a.employee_id
       WHERE a.month = ? ${f.sql} ORDER BY a.status = 'Pending' DESC, a.created_at DESC`, month, ...f.params)).map((a) => ({ ...a, name: fullName(a) }));
 
@@ -227,7 +227,7 @@ export default function payrollRoutes(r, { db }) {
   r.get('/payroll/runs/:id/bank-file.csv', async (req, res) => {
     requireHR(req);
     const run = await getRun(req.params.id);
-    const rows = await db.all("SELECT p.*, e.bank_account, e.ifsc, e.bank_name, e.first_name, e.last_name, e.code FROM payslips p JOIN employees e ON e.id = p.employee_id WHERE p.run_id = ? AND p.status IN ('Processed','Paid') ORDER BY e.code", run.id);
+    const rows = await db.all(`SELECT p.*, e.bank_account, e.ifsc, e.bank_name, e.first_name, e.last_name, e.code FROM payslips p JOIN employees e ON e.id = p.employee_id WHERE p.run_id = ? AND p.status IN ('Processed','Paid') ${req.query.vertical ? 'AND e.vertical_id = ?' : ''} ORDER BY e.code`, run.id, ...(req.query.vertical ? [Number(req.query.vertical)] : []));
     sendCsv(res, `bank-transfer-${run.month}.csv`, rows, [
     { label: 'Beneficiary Name', value: (x) => fullName(x) }, { label: 'Employee ID', value: 'code' }, { label: 'Account Number', value: 'bank_account' },
     { label: 'IFSC', value: 'ifsc' }, { label: 'Bank', value: 'bank_name' }, { label: 'Amount', value: 'net' }, { label: 'Narration', value: () => `Salary ${D.monthLabel(run.month)}` }]
@@ -237,7 +237,7 @@ export default function payrollRoutes(r, { db }) {
   r.get('/payroll/runs/:id/register.csv', async (req, res) => {
     requireHR(req);
     const run = await getRun(req.params.id);
-    const rows = (await db.all('SELECT * FROM payslips WHERE run_id = ? ORDER BY id', run.id)).map((p) => ({ ...json(p.data, {}), status: p.status }));
+    const rows = (await db.all(`SELECT p.* FROM payslips p JOIN employees e ON e.id = p.employee_id WHERE p.run_id = ? ${req.query.vertical ? 'AND e.vertical_id = ?' : ''} ORDER BY p.id`, run.id, ...(req.query.vertical ? [Number(req.query.vertical)] : []))).map((p) => ({ ...json(p.data, {}), status: p.status }));
     sendCsv(res, `payroll-register-${run.month}.csv`, rows, [
     { label: 'Employee ID', value: (x) => x.employee?.code }, { label: 'Name', value: (x) => x.employee?.name }, { label: 'Department', value: (x) => x.employee?.department },
     { label: 'Days in Month', value: 'daysInMonth' }, { label: 'LOP Days', value: 'lopDays' }, { label: 'Paid Days', value: 'paidDays' },

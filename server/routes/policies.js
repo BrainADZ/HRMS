@@ -133,10 +133,12 @@ export default function policyRoutes(r, { db, uploads, upload }) {
   // ---------- POSH ----------
   r.get('/posh', async (req, res) => {
     const T = await today(db);
-    const current = await db.value("SELECT COUNT(*) FROM employees WHERE status != 'Exited' AND join_date <= ?", T);
-    const trained = await db.value("SELECT COUNT(*) FROM posh_training t JOIN employees e ON e.id = t.employee_id WHERE e.status != 'Exited'");
+    const vf = req.query.vertical ? 'AND e.vertical_id = ?' : '';
+    const vp = req.query.vertical ? [Number(req.query.vertical)] : [];
+    const current = await db.value(`SELECT COUNT(*) FROM employees e WHERE e.status != 'Exited' AND e.join_date <= ? ${vf}`, T, ...vp);
+    const trained = await db.value(`SELECT COUNT(*) FROM posh_training t JOIN employees e ON e.id = t.employee_id WHERE e.status != 'Exited' AND e.join_date <= ? ${vf}`, T, ...vp);
     const policy = await db.get("SELECT id, version FROM policies WHERE category = 'POSH' ORDER BY updated_at DESC LIMIT 1");
-    const acked = policy ? await db.value("SELECT COUNT(*) FROM policy_acks a JOIN employees e ON e.id = a.employee_id AND e.status != 'Exited' WHERE a.policy_id = ? AND a.version = ?", policy.id, policy.version) : 0;
+    const acked = policy ? await db.value(`SELECT COUNT(*) FROM policy_acks a JOIN employees e ON e.id = a.employee_id AND e.status != 'Exited' WHERE a.policy_id = ? AND a.version = ? AND e.join_date <= ? ${vf}`, policy.id, policy.version, T, ...vp) : 0;
     const icc = (await getSettings(db)).icc || {};
     const member = async (eid, role) => {
       const e = await db.get('SELECT id, first_name, last_name, designation, photo IS NOT NULL AS has_photo FROM employees WHERE id = ?', eid);
@@ -147,7 +149,7 @@ export default function policyRoutes(r, { db, uploads, upload }) {
     const complaints = canSeeCases ? await asyncMap(await db.all('SELECT * FROM posh_complaints ORDER BY created_at DESC'), async (c) => ({ ...c, updates: json(c.updates, []), complainant: c.anonymous ? 'Anonymous' : fullName(await db.get('SELECT first_name, last_name FROM employees WHERE id = ?', c.complainant_id)) })) : [];
     const mine = req.user.employeeId ? await db.all('SELECT id, ref_no, status, created_at, due_date FROM posh_complaints WHERE complainant_id = ? ORDER BY created_at DESC', req.user.employeeId) : [];
     const untrained = isHR(req.user) ? (await db.all(`SELECT e.id, e.first_name, e.last_name, e.code, d.name AS department FROM employees e LEFT JOIN departments d ON d.id = e.department_id
-      LEFT JOIN posh_training t ON t.employee_id = e.id WHERE e.status != 'Exited' AND e.join_date <= ? AND t.employee_id IS NULL ORDER BY e.first_name`, T)).map((e) => ({ ...e, name: fullName(e) })) : [];
+      LEFT JOIN posh_training t ON t.employee_id = e.id WHERE e.status != 'Exited' AND e.join_date <= ? AND t.employee_id IS NULL ${vf} ORDER BY e.first_name`, T, ...vp)).map((e) => ({ ...e, name: fullName(e) })) : [];
     res.json({
       stats: { headcount: current, trained, trainedPct: current ? Math.round(trained / current * 100) : 0, acked, ackPct: current ? Math.round(acked / current * 100) : 0 },
       policyId: policy?.id || null,

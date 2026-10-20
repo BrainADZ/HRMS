@@ -123,7 +123,10 @@ export default function settingsRoutes(r, { db, saveFile }) {
     const users = (await db.all(`SELECT u.id, u.email, u.username, u.role, u.active, u.last_login, u.must_change_password, u.employee_id, e.first_name, e.last_name, e.code, e.designation
       FROM users u LEFT JOIN employees e ON e.id = u.employee_id ORDER BY u.role, e.first_name`)).map((u) => ({ ...u, name: u.first_name ? fullName(u) : u.email }));
     const without = await db.value("SELECT COUNT(*) FROM employees e LEFT JOIN users u ON u.employee_id = e.id WHERE u.id IS NULL AND e.status != 'Exited'");
-    res.json({ users, withoutLogin: without });
+    const passwordRequests = isAdmin(req.user) ? await db.all(`SELECT p.id, p.user_id, p.requested_at, u.username, u.email,
+      e.first_name, e.last_name, e.code FROM password_reset_requests p JOIN users u ON u.id = p.user_id
+      LEFT JOIN employees e ON e.id = u.employee_id WHERE p.status = 'Pending' ORDER BY p.requested_at, p.id`) : [];
+    res.json({ users, withoutLogin: without, passwordRequests: passwordRequests.map((p) => ({ ...p, name: fullName(p) || p.username })) });
   });
 
   r.put('/users/:id', async (req, res) => {
@@ -142,13 +145,15 @@ export default function settingsRoutes(r, { db, saveFile }) {
   });
 
   r.post('/users/:id/reset', async (req, res) => {
-    requireHR(req);
+    requireAdmin(req);
     const u = (await db.get('SELECT * FROM users WHERE id = ?', id(req.params.id))) || notFound('User');
-    if (u.role === 'admin' && !isAdmin(req.user)) fail(403, 'Only an administrator can reset an admin password');
     const temp = tempPassword();
-    await db.update('users', u.id, { password_hash: hashPassword(temp), must_change_password: 1 });
-    await db.run('DELETE FROM sessions WHERE user_id = ?', u.id);
-    await audit(db, req.user, 'user.reset', 'user', u.id);
+    await db.tx(async () => {
+      await db.update('users', u.id, { password_hash: hashPassword(temp), must_change_password: 1 });
+      await db.run('DELETE FROM sessions WHERE user_id = ?', u.id);
+      await db.run("UPDATE password_reset_requests SET status = 'Resolved', resolved_at = ?, resolved_by = ? WHERE user_id = ? AND status = 'Pending'", new Date().toISOString(), req.user.id, u.id);
+      await audit(db, req.user, 'user.reset', 'user', u.id);
+    });
     res.json({ email: u.email, username: u.username, role: u.role, tempPassword: temp });
   });
 
@@ -233,7 +238,7 @@ export default function settingsRoutes(r, { db, saveFile }) {
   });
 
   // ---------- data management (admin) ----------
-  const TABLES = ['notifications', 'sessions', 'audit_log', 'candidate_activity', 'interviews', 'onboarding_tasks', 'candidates', 'jobs', 'payslips', 'payroll_runs', 'payroll_adjustments',
+  const TABLES = ['notifications', 'sessions', 'password_reset_requests', 'audit_log', 'candidate_activity', 'interviews', 'onboarding_tasks', 'candidates', 'jobs', 'payslips', 'payroll_runs', 'payroll_adjustments',
   'resignations', 'goals', 'reviews', 'review_cycles', 'assets', 'documents', 'requests', 'posh_complaints', 'posh_training', 'policy_acks', 'policies', 'notices',
   'location_log', 'hour_shortfalls', 'work_sessions', 'attendance', 'leave_requests', 'holidays', 'leave_types', 'users', 'employees', 'verticals', 'departments', 'locations', 'settings'];
 

@@ -36,17 +36,19 @@ export default function leaveRoutes(r, { db }) {
     const scope = await scopeIds(db, req.user);
     const approvable = isHR(req.user) ? null : scope.filter((x) => x !== req.user.employeeId);
     const apWhere = approvable === null ? '1=1' : approvable.length ? `r.employee_id IN (${approvable.map(() => '?').join(',')})` : '0=1';
-    const pendingApprovals = await db.all(`SELECT r.created_at FROM leave_requests r WHERE r.status = 'Pending' AND ${apWhere} ${req.user.employeeId ? 'AND r.employee_id != ?' : ''}`,
-    ...(approvable || []), ...(req.user.employeeId ? [req.user.employeeId] : []));
+    const vf = req.query.vertical ? 'AND e.vertical_id = ?' : '';
+    const vp = req.query.vertical ? [Number(req.query.vertical)] : [];
+    const pendingApprovals = await db.all(`SELECT r.created_at FROM leave_requests r JOIN employees e ON e.id = r.employee_id WHERE r.status = 'Pending' AND ${apWhere} ${vf} ${req.user.employeeId ? 'AND r.employee_id != ?' : ''}`,
+    ...(approvable || []), ...vp, ...(req.user.employeeId ? [req.user.employeeId] : []));
     const avgAge = pendingApprovals.length ? pendingApprovals.reduce((t, x) => t + (Date.now() - new Date(x.created_at).getTime()) / 86400000, 0) / pendingApprovals.length : 0;
     const emp = req.user.employeeId ? await db.get('SELECT * FROM employees WHERE id = ?', req.user.employeeId) : null;
     const bal = emp ? await balances(db, emp, year, year === D.yearOf(T) ? T : `${year}-12-31`, await calendarCtx(db)) : [];
     const myPending = emp ? await db.value("SELECT COUNT(*) FROM leave_requests WHERE employee_id = ? AND status = 'Pending'", emp.id) : 0;
-    const current = (await db.all("SELECT id FROM employees WHERE status != 'Exited' AND join_date <= ?", T)).map((x) => x.id);
+    const current = (await db.all(`SELECT id FROM employees WHERE status != 'Exited' AND join_date <= ? ${req.query.vertical ? 'AND vertical_id = ?' : ''}`, T, ...vp)).map((x) => x.id);
     const required = await db.value('SELECT COUNT(*) FROM policies WHERE requires_ack = 1');
     const acked = required ? await db.value(`SELECT COUNT(*) FROM (SELECT a.employee_id FROM policy_acks a JOIN policies p ON p.id = a.policy_id AND p.version = a.version AND p.requires_ack = 1
-      JOIN employees e ON e.id = a.employee_id AND e.status != 'Exited' GROUP BY a.employee_id HAVING COUNT(*) >= ?)`, required) : 0;
-    const orgPending = isHR(req.user) ? await db.value("SELECT COUNT(*) FROM leave_requests WHERE status = 'Pending'") : myPending;
+      JOIN employees e ON e.id = a.employee_id AND e.status != 'Exited' AND e.join_date <= ? ${req.query.vertical ? 'AND e.vertical_id = ?' : ''} GROUP BY a.employee_id HAVING COUNT(*) >= ?)`, T, ...vp, required) : 0;
+    const orgPending = isHR(req.user) ? await db.value(`SELECT COUNT(*) FROM leave_requests r JOIN employees e ON e.id = r.employee_id WHERE r.status = 'Pending' ${vf}`, ...vp) : myPending;
     res.json({
       year,
       balances: bal,
@@ -87,6 +89,7 @@ export default function leaveRoutes(r, { db }) {
     if (req.query.status) {where.push('r.status = ?');params.push(req.query.status);}
     if (req.query.type) {where.push('t.code = ?');params.push(req.query.type);}
     if (req.query.employee) {where.push('r.employee_id = ?');params.push(Number(req.query.employee));}
+    if (req.query.vertical) {where.push('e.vertical_id = ?');params.push(Number(req.query.vertical));}
     if (req.query.from) {where.push('r.to_date >= ?');params.push(req.query.from);}
     if (req.query.to) {where.push('r.from_date <= ?');params.push(req.query.to);}
     const limit = Math.min(500, Number(req.query.limit) || 100);
@@ -320,7 +323,7 @@ export default function leaveRoutes(r, { db }) {
     const year = Number(req.query.year) || D.yearOf(T);
     const ctx = await calendarCtx(db);
     const emps = await db.all(`SELECT e.*, d.name AS department FROM employees e LEFT JOIN departments d ON d.id = e.department_id
-      WHERE e.status != 'Exited' AND e.join_date <= ? ORDER BY e.first_name`, `${year}-12-31`);
+      WHERE e.status != 'Exited' AND e.join_date <= ? ${req.query.vertical ? 'AND e.vertical_id = ?' : ''} ORDER BY e.first_name`, `${year}-12-31`, ...(req.query.vertical ? [Number(req.query.vertical)] : []));
     res.json({
       year,
       items: await asyncMap(emps, async (e) => ({ id: e.id, code: e.code, name: fullName(e), department: e.department, balances: await balances(db, e, year, year === D.yearOf(T) ? T : `${year}-12-31`, ctx) }))

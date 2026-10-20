@@ -1,6 +1,4 @@
-// Employee documents. HR sees every employee's files, a checklist of the
-// required joining documents with what is missing, and can upload for
-// anyone. Everyone else sees and uploads their own.
+// Administrators can manage all employee documents. Other users see only their own.
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { FileText, Download, Trash2, Upload, CircleCheck, Plus, FolderOpen, Users, FileWarning, FileCheck2 } from 'lucide-react';
@@ -16,8 +14,8 @@ const kb = (n) => (n ? `${Math.max(1, Math.round(n / 1024))} KB` : '—');
 const ACCEPT = '.pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt';
 
 export function UploadModal({ employeeId, category, onClose, onDone }) {
-  const { meta, user, isHR, toast } = useApp();
-  const [f, setF] = useState({ employee: employeeId || (isHR ? '' : user.employeeId), category: category || meta.documentCategories?.[0] || 'Other', name: '' });
+  const { meta, user, isAdmin, toast } = useApp();
+  const [f, setF] = useState({ employee: employeeId || (isAdmin ? '' : user.employeeId), category: category || meta.documentCategories?.[0] || 'Other', name: '' });
   const [file, setFile] = useState(null);
   const [run, busy] = useAction(toast);
   const submit = async () => {
@@ -31,7 +29,7 @@ export function UploadModal({ employeeId, category, onClose, onDone }) {
     <Modal title="Upload a document" onClose={onClose}
       footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" icon={Upload} loading={busy} disabled={!file || !f.employee} onClick={submit}>Upload</Button></>}>
       <div className="form-grid">
-        {isHR && !employeeId && <Field label="Employee" className="full"><EmployeeSelect value={f.employee} onChange={(e) => setF({ ...f, employee: Number(e.target.value) || '' })} /></Field>}
+        {isAdmin && !employeeId && <Field label="Employee" className="full"><EmployeeSelect value={f.employee} onChange={(e) => setF({ ...f, employee: Number(e.target.value) || '' })} /></Field>}
         <Field label="Document type"><Select value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })} options={meta.documentCategories || ['Other']} /></Field>
         <Field label="Name (optional)"><Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} maxLength={120} placeholder={f.category} /></Field>
         <div className="full">
@@ -45,19 +43,19 @@ export function UploadModal({ employeeId, category, onClose, onDone }) {
 }
 
 export default function Documents() {
-  const { isHR } = useApp();
+  const { isAdmin } = useApp();
   const [sp, setSp] = useSearchParams();
   const [upload, setUpload] = useState(null);
   const [tick, setTick] = useState(0);
-  const tab = isHR ? sp.get('tab') || 'checklist' : 'mine';
+  const tab = isAdmin ? sp.get('tab') || 'checklist' : 'mine';
   const done = () => setTick((t) => t + 1);
   return (
     <div>
       <div className="page-head">
-        <div><h1>Documents</h1><div className="sub">{isHR ? <>Joining and HR documents for every employee, and what is still missing. <VerticalFilterNote /></> : 'Your joining and HR documents.'}</div></div>
+        <div><h1>Documents</h1><div className="sub">{isAdmin ? <>Joining and HR documents for every employee, and what is still missing. <VerticalFilterNote /></> : 'Your joining and HR documents.'}</div></div>
         <Button variant="primary" icon={Upload} onClick={() => setUpload({})}>Upload document</Button>
       </div>
-      {isHR && <Tabs value={tab} onChange={(t) => setSp({ tab: t })} tabs={[{ value: 'checklist', label: 'Checklist' }, { value: 'all', label: 'All documents' }]} />}
+      {isAdmin && <Tabs value={tab} onChange={(t) => setSp({ tab: t })} tabs={[{ value: 'checklist', label: 'Checklist' }, { value: 'all', label: 'All documents' }]} />}
       {tab === 'checklist' && <Checklist key={tick} onUpload={setUpload} />}
       {tab === 'all' && <AllDocuments key={tick} />}
       {tab === 'mine' && <MyDocuments key={tick} onUpload={setUpload} />}
@@ -176,7 +174,7 @@ function MyDocuments({ onUpload }) {
   const required = check.data.required;
   return (
     <div className="grid">
-      <Card className="span-5" title="Required documents" sub={me && me.missing.length ? `${me.missing.length} still needed by HR` : 'All submitted'}>
+      <Card className="span-5" title="Required documents" sub={me && me.missing.length ? `${me.missing.length} still needed` : 'All submitted'}>
         <div className="col" style={{ gap: 8 }}>
           {required.map((c) => (
             <div key={c} className="row between doc-req">
@@ -189,7 +187,7 @@ function MyDocuments({ onUpload }) {
         </div>
       </Card>
       <Card className="span-7" title="All my documents" flush>
-        {!list.data.items.length ? <Empty icon={FileText} text="No documents yet. Upload your joining documents so HR can verify them." /> : (
+        {!list.data.items.length ? <Empty icon={FileText} text="No documents yet. Upload your joining documents." /> : (
           <div className="table-wrap">
             <table className="table">
               <thead><tr><th>Document</th><th>Type</th><th className="hide-sm">Uploaded</th><th /></tr></thead>

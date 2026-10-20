@@ -121,6 +121,7 @@ export async function openDb({ connectionString, queryClient, pool: suppliedPool
         [2, '002-usernames.sql'],
           [3, '003-profile-photos.sql'],
           [4, '004-attendance-corrections.sql'],
+          [5, '005-password-reset-requests.sql'],
       ];
       await db.tx(async () => {
         await db.exec('SELECT pg_advisory_xact_lock(7264182026)');

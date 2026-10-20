@@ -2,7 +2,7 @@ import { authorizeEmployeeUpload } from '../services/uploads.js';
 import { asyncForEach } from "../database/async.js";import fs from 'node:fs';
 import path from 'node:path';
 import {
-  today, isHR, canSeeEmployee, assertCanSee, requireHR, fullName, str, num, date, oneOf, email, id, strList,
+  today, isHR, isAdmin, canSeeEmployee, assertCanSee, requireHR, requireAdmin, fullName, str, num, date, oneOf, email, id, strList,
   fail, notFound, getSettings, audit, notifyUsers, reportIds, sendCsv, DOC_CATEGORIES } from
 '../core.js';
 import { json } from '../db.js';
@@ -172,6 +172,7 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
     const full = await canSeeEmployee(db, req.user, eid);
     const self = req.user.employeeId === eid;
     const sensitive = isHR(req.user) || self;
+    const canViewDocuments = isAdmin(req.user) || self;
     const leaveSet = await onLeaveToday(db, T);
     const base = {
       ...listRow(e, leaveSet), gender: e.gender, about: e.about, skills: json(e.skills, []), certifications: json(e.certifications, []), manager_id: e.manager_id,
@@ -195,7 +196,8 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
         emergency_contact: sensitive ? e.emergency_contact : null
       },
       manager, reports, peers,
-      documents: sensitive ? await db.all('SELECT id, name, category, mime, size, uploaded_at FROM documents WHERE employee_id = ? ORDER BY uploaded_at DESC', eid) : [],
+      documents: canViewDocuments ? await db.all('SELECT id, name, category, mime, size, uploaded_at FROM documents WHERE employee_id = ? ORDER BY uploaded_at DESC', eid) : [],
+      canViewDocuments,
       assets: await db.all('SELECT * FROM assets WHERE employee_id = ? ORDER BY status, issued_on DESC', eid),
       acknowledgements: await db.all(`SELECT p.id, p.title, p.version, p.requires_ack, a.acked_at, a.version AS acked_version FROM policies p
         LEFT JOIN policy_acks a ON a.policy_id = p.id AND a.employee_id = ? WHERE p.requires_ack = 1 ORDER BY p.title`, eid),
@@ -346,9 +348,9 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
   });
 
   // ---------- documents ----------
-  r.post('/employees/:id/documents', authorizeEmployeeUpload(db), upload('documents', { maxMb: 10, exts: ['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx', '.xls', '.xlsx', '.txt'] }).single('file'), async (req, res) => {
+  r.post('/employees/:id/documents', authorizeEmployeeUpload(db, { allowHr: false }), upload('documents', { maxMb: 10, exts: ['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx', '.xls', '.xlsx', '.txt'] }).single('file'), async (req, res) => {
     const eid = id(req.params.id);
-    if (!isHR(req.user) && req.user.employeeId !== eid) fail(403, 'You can only upload your own documents');
+    if (!isAdmin(req.user) && req.user.employeeId !== eid) fail(403, 'You can only upload your own documents');
     if (!req.file) fail(400, 'Choose a file to upload');
     const category = oneOf(req.body.category || 'Other', DOC_CATEGORIES, { name: 'Category' });
     const did = await db.insert('documents', { employee_id: eid, name: str(req.body.name, { max: 120 }) || req.file.originalname.slice(0, 120), category, file: req.file.filename, mime: req.file.mimetype, size: req.file.size, uploaded_by: req.user.id });
@@ -356,16 +358,16 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
   });
   r.get('/documents/:id/download', async (req, res) => {
     const doc = (await db.get('SELECT * FROM documents WHERE id = ?', id(req.params.id))) || notFound('Document');
-    if (!isHR(req.user) && req.user.employeeId !== doc.employee_id) fail(403, 'You cannot open this document');
+    if (!isAdmin(req.user) && req.user.employeeId !== doc.employee_id) fail(403, 'You cannot open this document');
     const file = path.join(uploads, 'documents', path.basename(doc.file));
     if (!fs.existsSync(file)) notFound('File');
     res.download(file, doc.name.includes('.') ? doc.name : `${doc.name}${path.extname(doc.file)}`);
   });
-  // Every employee's documents (HR) or your own (everyone else).
+  // Administrators see all documents; everyone else sees only their own.
   r.get('/documents', async (req, res) => {
     const where = [];
     const params = [];
-    if (!isHR(req.user)) {
+    if (!isAdmin(req.user)) {
       where.push('d.employee_id = ?');
       params.push(req.user.employeeId || 0);
     } else if (req.query.employee) {
@@ -373,7 +375,7 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
       params.push(id(req.query.employee));
     }
     if (req.query.category) {where.push('d.category = ?');params.push(String(req.query.category));}
-    if (req.query.vertical) {where.push('e.vertical_id = ?');params.push(Number(req.query.vertical));}
+    if (isAdmin(req.user) && req.query.vertical) {where.push('e.vertical_id = ?');params.push(Number(req.query.vertical));}
     if (req.query.department) {where.push('e.department_id = ?');params.push(Number(req.query.department));}
     if (req.query.search) {
       const like = `%${String(req.query.search).replace(/[%_]/g, '')}%`;
@@ -395,8 +397,8 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
     const required = (await getSettings(db)).requiredDocuments || [];
     const where = ["e.status != 'Exited'"];
     const params = [];
-    if (!isHR(req.user)) {where.push('e.id = ?');params.push(req.user.employeeId || 0);}
-    if (req.query.vertical) {where.push('e.vertical_id = ?');params.push(Number(req.query.vertical));}
+    if (!isAdmin(req.user)) {where.push('e.id = ?');params.push(req.user.employeeId || 0);}
+    if (isAdmin(req.user) && req.query.vertical) {where.push('e.vertical_id = ?');params.push(Number(req.query.vertical));}
     if (req.query.department) {where.push('e.department_id = ?');params.push(Number(req.query.department));}
     if (req.query.search) {
       const like = `%${String(req.query.search).replace(/[%_]/g, '')}%`;
@@ -433,7 +435,7 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
   });
 
   r.delete('/documents/:id', async (req, res) => {
-    requireHR(req);
+    requireAdmin(req);
     const doc = (await db.get('SELECT * FROM documents WHERE id = ?', id(req.params.id))) || notFound('Document');
     await db.run('DELETE FROM documents WHERE id = ?', doc.id);
     fs.rm(path.join(uploads, 'documents', path.basename(doc.file)), { force: true }, () => {});

@@ -25,10 +25,10 @@ export function validateUploads(req) {
     if (!size || (checks[ext] && !checks[ext]())) fail(400, 'The file contents do not match its file type, or the file is empty');
   }
 }
-export function authorizeEmployeeUpload(db) {
+export function authorizeEmployeeUpload(db, { allowHr = true } = {}) {
   return async (req, _res, next) => {
     const employeeId = Number(req.params.id);
-    if (!['admin', 'hr'].includes(req.user.role) && req.user.employeeId !== employeeId) fail(403, 'You can only upload your own files');
+    if (req.user.role !== 'admin' && !(allowHr && req.user.role === 'hr') && req.user.employeeId !== employeeId) fail(403, 'You can only upload your own files');
     if (!await db.value('SELECT id FROM employees WHERE id=?', employeeId)) fail(404, 'Employee not found');
     next();
   };

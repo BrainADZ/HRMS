@@ -69,7 +69,7 @@ function People({ selectedId }) {
               <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, ID, role, department…" aria-label="Search employees" />
             </div>
             {isHR && <Button variant="primary" icon={UserPlus} onClick={() => setAdding(true)}>Add</Button>}
-            {isHR && <Button icon={Download} onClick={() => download('/employees/export.csv')} title="Export CSV" aria-label="Export CSV" />}
+            {isHR && <Button icon={Download} onClick={() => download(`/employees/export.csv${vertical ? `?vertical=${vertical}` : ''}`)} title="Export CSV" aria-label="Export CSV" />}
           </div>
           <div className="form-grid mb-12" style={{ gap: 10 }}>
             <Select value={filters.department} onChange={setF('department')} placeholder="All Departments" options={meta.departments.map((d) => ({ value: d.id, label: d.name }))} />
@@ -140,7 +140,8 @@ export function EmployeeProfile({ id, onChanged, isSelf }) {
   const e = data.employee;
   const refresh = () => { reload(); onChanged?.(); };
   const canEdit = isHR || isSelf;
-  const tabs = data.limited ? ['Overview'] : ['Overview', 'Documents', 'Attendance', 'Leave', 'Performance', ...(data.compensation ? ['Compensation'] : []), 'Assets'];
+  const tabs = data.limited ? ['Overview'] : ['Overview', ...(data.canViewDocuments ? ['Documents'] : []), 'Attendance', 'Leave', 'Performance', ...(data.compensation ? ['Compensation'] : []), 'Assets'];
+  const activeTab = tabs.includes(tab) ? tab : 'Overview';
   const uploadPhoto = async (file) => {
     const form = new FormData();
     form.append('photo', file);
@@ -186,15 +187,15 @@ export function EmployeeProfile({ id, onChanged, isSelf }) {
           </div>
         </div>
       </div>
-      <div style={{ padding: '0 22px' }}><Tabs tabs={tabs} value={tab} onChange={setTab} /></div>
+      <div style={{ padding: '0 22px' }}><Tabs tabs={tabs} value={activeTab} onChange={setTab} /></div>
       <div style={{ padding: '0 22px 22px' }}>
-        {tab === 'Overview' && <Overview data={data} isSelf={isSelf} onAction={setModal} reload={refresh} />}
-        {tab === 'Documents' && <Documents data={data} reload={refresh} />}
-        {tab === 'Attendance' && <AttendanceTab data={data} month={data.attendance.month} setMonth={setMonth} />}
-        {tab === 'Leave' && <LeaveTab data={data} onApply={() => setModal(isSelf ? 'leave-self' : 'leave')} canApply={isSelf || isHR} />}
-        {tab === 'Performance' && <PerformanceTab data={data} />}
-        {tab === 'Compensation' && <Compensation data={data} />}
-        {tab === 'Assets' && <Assets data={data} reload={refresh} />}
+        {activeTab === 'Overview' && <Overview data={data} isSelf={isSelf} onAction={setModal} reload={refresh} />}
+        {activeTab === 'Documents' && <Documents data={data} reload={refresh} />}
+        {activeTab === 'Attendance' && <AttendanceTab data={data} month={data.attendance.month} setMonth={setMonth} />}
+        {activeTab === 'Leave' && <LeaveTab data={data} onApply={() => setModal(isSelf ? 'leave-self' : 'leave')} canApply={isSelf || isHR} />}
+        {activeTab === 'Performance' && <PerformanceTab data={data} />}
+        {activeTab === 'Compensation' && <Compensation data={data} />}
+        {activeTab === 'Assets' && <Assets data={data} reload={refresh} />}
       </div>
       {modal === 'edit' && <EmployeeForm employee={data} selfOnly={!isHR} onClose={() => setModal(null)} onSaved={() => { refresh(); refreshMeta(); }} />}
       {modal === 'login' && <LoginModal employee={e} login={data.login} onClose={() => setModal(null)} onDone={refresh} />}
@@ -330,12 +331,12 @@ export function Onboarding({ tasks, reload, canEdit }) {
 }
 
 function Documents({ data, reload }) {
-  const { isHR, toast, user, meta } = useApp();
+  const { isAdmin, toast, user, meta } = useApp();
   const e = data.employee;
   const [cat, setCat] = useState(meta.documentCategories?.[0] || 'Other');
   const [run, busy] = useAction(toast);
   const [confirm, confirmEl] = useConfirm();
-  const canUpload = isHR || user.employeeId === e.id;
+  const canUpload = isAdmin || user.employeeId === e.id;
   const upload = async (files) => {
     for (const f of files) {
       const form = new FormData();
@@ -369,7 +370,7 @@ function Documents({ data, reload }) {
                 <td className="small muted">{fmtDate(d.uploaded_at)}</td>
                 <td className="right nowrap">
                   <Button size="xs" icon={Download} onClick={() => download(`/documents/${d.id}/download`)}>Download</Button>
-                  {isHR && <Button size="xs" variant="ghost" icon={Trash2} aria-label="Delete" onClick={async () => { if (await confirm({ title: 'Delete document?', text: d.name, danger: true, confirmLabel: 'Delete' })) { await run(() => api.del(`/documents/${d.id}`), 'Deleted'); reload(); } }} />}
+                  {isAdmin && <Button size="xs" variant="ghost" icon={Trash2} aria-label="Delete" onClick={async () => { if (await confirm({ title: 'Delete document?', text: d.name, danger: true, confirmLabel: 'Delete' })) { await run(() => api.del(`/documents/${d.id}`), 'Deleted'); reload(); } }} />}
                 </td>
               </tr>
             ))}
@@ -528,12 +529,12 @@ function Assets({ data, reload }) {
 
 // ---------------------------------------------------------------- forms
 export function EmployeeForm({ employee, onClose, onSaved, selfOnly }) {
-  const { meta, toast, isAdmin } = useApp();
+  const { meta, toast, isAdmin, vertical } = useApp();
   const e = employee?.employee;
   const c = employee?.compensation || {};
   const [f, setF] = useState(() => ({
     first_name: e?.first_name || '', last_name: e?.last_name || '', email: e?.email || '', phone: e?.phone || '', gender: e?.gender || '', dob: e?.dob || '',
-    vertical_id: e?.vertical_id || '', department_id: e?.department_id || '', designation: e?.designation || '', grade: e?.grade || 'Executive',
+    vertical_id: e?.vertical_id || vertical || '', department_id: e?.department_id || '', designation: e?.designation || '', grade: e?.grade || 'Executive',
     manager_id: e?.manager_id || '', employment_type: e?.employment_type || 'Full-time', location_id: e?.location_id || '', work_place: e ? (e.work_place || '') : 'onsite', join_date: e?.join_date || meta.today,
     ctc: c.ctc ?? '', monthly_tds: c.monthlyTds ?? '', pan: c.pan || '', uan: c.uan || '', bank_name: c.bank_name || '', bank_account: c.bank_account || '', ifsc: c.ifsc || '',
     address: e?.address || '', emergency_contact: e?.emergency_contact || '', about: e?.about || '', skills: (e?.skills || []).join(', '),

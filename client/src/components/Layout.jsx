@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  House, UserPlus, Sparkles, Users, CalendarDays, CreditCard, ChartColumnIncreasing, Clock, ShieldCheck, FileText, ChartNoAxesColumn,
-  Settings, Bell, Search, ChevronDown, Menu as MenuIcon, LogOut, KeyRound, User, LayoutGrid, CheckCheck, FolderOpen, CalendarRange, Camera,
+  CalendarDays, ChartColumnIncreasing, Clock, ShieldCheck, Search, ChevronDown,
+  Menu as MenuIcon, LogOut, KeyRound, User, LayoutGrid, CheckCheck, Camera,
 } from 'lucide-react';
 import { useApp } from '../context.jsx';
 import { api } from '../lib/api.js';
@@ -13,6 +13,12 @@ import WorkClock, { SignInPrompts, SignOutModal, LocationGuard } from './WorkClo
 import { useWorkday } from '../lib/workday.js';
 import CompanyLogo from './CompanyLogo.jsx';
 import ProfilePhoto from './ProfilePhoto.jsx';
+import FloatingNav from './FloatingNav.jsx';
+import {
+  IconDashboard, IconMySpace, IconHiring, IconScreener, IconEmployees, IconDocuments,
+  IconHolidays, IconPayroll, IconResignation, IconReports, IconSettings,
+  IconBell, VERTICAL_ICONS,
+} from './icons.jsx';
 
 export function Logo({ size = '', showHrms = true }) {
   return (
@@ -25,21 +31,27 @@ export function Logo({ size = '', showHrms = true }) {
 
 const VSTYLE = { Live: '#E5243B', Marketing: '#E5243B', Exhibits: '#3C9A3A' };
 export function VerticalLogo({ v, active, onClick }) {
+  const Icon = VERTICAL_ICONS[v.short];
   return (
     <button type="button" className={`vlogo ${active ? 'active' : ''}`} onClick={onClick} title={active ? `Showing ${v.name} only. Click to show all verticals.` : `Show ${v.name} only`}>
+      {Icon && <Icon size={28} className="vi" />}
+      <span className="vt">
       <span className="b">BrainADZ</span>
       <span className="n" style={{ color: VSTYLE[v.short] || v.color }}>{v.short}</span>
       <span className="t">{v.tagline}</span>
+      </span>
     </button>
   );
 }
 
 export function BrandBanner() {
+  const { vertical, verticalById } = useApp();
+  const selected = vertical && verticalById(vertical);
   return (
     <div className="brand-banner">
       <div>
         <div className="big"><CompanyLogo /> <span className="h">HRMS</span></div>
-        <div className="sub">Unified people operations across all BrainADZ verticals</div>
+        <div className="sub">{selected ? `${selected.name} people operations` : 'Unified people operations across all BrainADZ verticals'}</div>
       </div>
       <div className="script">People<br />Power<br />Progress</div>
     </div>
@@ -60,27 +72,32 @@ function Leaves() {
 }
 
 const NAV = [
-  { to: '/', label: 'Dashboard', icon: House, roles: ['admin', 'hr', 'manager'], end: true },
-  { to: '/my', label: 'My Space', icon: LayoutGrid, roles: ['employee', 'manager'] },
-  { to: '/hiring', label: 'Hiring', icon: UserPlus, roles: ['admin', 'hr', 'manager'] },
-  { to: '/screener', label: 'Resume Screener AI', icon: Sparkles, roles: ['admin', 'hr'] },
-  { to: '/employees', label: 'Employees', icon: Users },
-  { to: '/documents', label: 'Documents', icon: FolderOpen },
+  { to: '/', label: 'Dashboard', icon: IconDashboard, roles: ['admin', 'hr', 'manager'], end: true },
+  { to: '/my', label: 'My Space', icon: IconMySpace, roles: ['employee', 'manager'] },
+  { to: '/hiring', label: 'Hiring', icon: IconHiring, roles: ['admin', 'hr', 'manager'] },
+  { to: '/screener', label: 'Resume Screener AI', icon: IconScreener, roles: ['admin', 'hr'] },
+  { to: '/employees', label: 'Employees', icon: IconEmployees },
+  { to: '/documents', label: 'Documents', icon: IconDocuments },
   { label: 'Policies', icon: ShieldCheck, children: [
     { to: '/performance', label: 'Appraisal Policy', icon: ChartColumnIncreasing },
     { to: '/leave', label: 'Leave Policy', icon: CalendarDays },
     { to: '/attendance', label: 'Attendance Policy', icon: Clock },
     { to: '/posh', label: 'POSH Policy', icon: ShieldCheck },
   ] },
-  { to: '/calendar', label: 'Holiday Calendar', icon: CalendarRange },
-  { to: '/payroll', label: 'Payroll', icon: CreditCard, roles: ['admin', 'hr'] },
-  { to: '/resignation', label: 'Resignation', icon: FileText },
-  { to: '/reports', label: 'Reports', icon: ChartNoAxesColumn, roles: ['admin', 'hr'] },
-  { to: '/settings', label: 'Settings', icon: Settings, roles: ['admin', 'hr'] },
+  { to: '/calendar', label: 'Holiday Calendar', icon: IconHolidays },
+  { to: '/payroll', label: 'Payroll', icon: IconPayroll, roles: ['admin', 'hr'] },
+  { to: '/resignation', label: 'Resignation', icon: IconResignation },
+  { to: '/reports', label: 'Reports', icon: IconReports, roles: ['admin', 'hr'] },
+  { to: '/settings', label: 'Settings', icon: IconSettings, roles: ['admin', 'hr'] },
 ];
 
-function Sidebar({ open, onClose }) {
-  const { user } = useApp();
+const NAV_LAYOUT_KEY = 'hrms.navLayout';
+const readFloating = () => {
+  try { return localStorage.getItem(NAV_LAYOUT_KEY) === 'floating'; } catch { return false; }
+};
+
+function Sidebar({ open, onClose, onFloat }) {
+  const { user, setVertical } = useApp();
   const { pathname } = useLocation();
   const [policiesOpen, setPoliciesOpen] = useState(false);
   const [policiesHovered, setPoliciesHovered] = useState(false);
@@ -92,7 +109,7 @@ function Sidebar({ open, onClose }) {
     <>
       {open && <div className="scrim" onClick={onClose} />}
       <aside className={`sidebar ${open ? 'open' : ''}`}>
-        <div className="brand"><Link to={user.role === 'employee' ? '/my' : '/'} onClick={onClose} style={{ textDecoration: 'none' }}><Logo showHrms={false} /></Link></div>
+        <div className="brand"><Link to={user.role === 'employee' ? '/my' : '/'} onClick={() => { setVertical(null); onClose(); }} style={{ textDecoration: 'none' }} title="Show all BrainADZ verticals"><Logo showHrms={false} /></Link></div>
         <nav className="nav" aria-label="Main">
           {items.map((n) => n.children ? (
             <div key={n.label} className="nav-group" onMouseEnter={() => setPoliciesHovered(true)} onMouseLeave={() => setPoliciesHovered(false)}>
@@ -115,6 +132,9 @@ function Sidebar({ open, onClose }) {
               <n.icon size={21} strokeWidth={1.9} />{n.label}
             </NavLink>
           ))}
+          <button type="button" className="nav-act" onClick={() => { onClose(); onFloat(); }} title="Use a draggable floating menu">
+            <span className="nav-act-ic" aria-hidden="true">Br</span>Floating menu
+          </button>
         </nav>
         <div className="leaf-card">
           <b>Great People Build Brighter Tomorrows</b>
@@ -127,6 +147,7 @@ function Sidebar({ open, onClose }) {
 }
 
 function GlobalSearch() {
+  const { vertical } = useApp();
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
   const [results, setResults] = useState([]);
@@ -137,9 +158,9 @@ function GlobalSearch() {
   useEffect(() => {
     if (dq.trim().length < 2) return setResults([]);
     let alive = true;
-    api.get(`/search?q=${encodeURIComponent(dq.trim())}`).then((r) => alive && (setResults(r.results), setFocus(0))).catch(() => {});
+    api.get(`/search?q=${encodeURIComponent(dq.trim())}${vertical ? `&vertical=${vertical}` : ''}`).then((r) => alive && (setResults(r.results), setFocus(0))).catch(() => {});
     return () => { alive = false; };
-  }, [dq]);
+  }, [dq, vertical]);
   const go = (r) => {
     setOpen(false);
     setQ('');
@@ -194,7 +215,7 @@ function Notifications() {
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <button type="button" className="icon-btn" aria-label={`Notifications (${data.unread} unread)`} onClick={() => setOpen((o) => !o)}>
-        <Bell size={22} />
+        <IconBell size={22} />
         {data.unread > 0 && <span className="badge-dot">{data.unread > 9 ? '9+' : data.unread}</span>}
       </button>
       {open && (
@@ -289,17 +310,32 @@ function UserMenu() {
 
 export default function Layout({ children }) {
   const { user, meta, vertical, setVertical } = useApp();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [floating, setFloating] = useState(readFloating);
+  const focusFloat = useRef(false);
+  const goFloating = () => {
+    focusFloat.current = true;
+    setFloating(true);
+    try { localStorage.setItem(NAV_LAYOUT_KEY, 'floating'); } catch { /* Storage unavailable */ }
+  };
+  const dock = () => {
+    setFloating(false);
+    try { localStorage.setItem(NAV_LAYOUT_KEY, 'docked'); } catch { /* Storage unavailable */ }
+    setTimeout(() => document.querySelector('.nav-act')?.focus({ preventScroll: true }), 60);
+  };
+  const floatItems = NAV.filter((n) => !n.roles || n.roles.includes(user.role)).flatMap((n) => n.children || [n]);
   const verticals = (meta?.verticals || []).filter((v) => v.short !== 'Corporate');
   return (
-    <div className="app">
-      <Sidebar open={open} onClose={() => setOpen(false)} />
+    <div className={`app ${floating ? 'nav-floating' : ''}`}>
+      <Sidebar open={open} onClose={() => setOpen(false)} onFloat={goFloating} />
+      {floating && <FloatingNav items={floatItems} onDock={dock} focusOnMount={focusFloat} />}
       <div className="main">
         <header className="topbar no-print">
           <button type="button" className="icon-btn burger" aria-label="Open menu" onClick={() => setOpen(true)}><MenuIcon size={22} /></button>
           {user.role !== 'employee' && (
             <div className="verticals">
-              {verticals.map((v) => <VerticalLogo key={v.id} v={v} active={vertical === v.id} onClick={() => setVertical(vertical === v.id ? null : v.id)} />)}
+              {verticals.map((v) => <VerticalLogo key={v.id} v={v} active={vertical === v.id} onClick={() => { setVertical(vertical === v.id ? null : v.id); navigate('/'); }} />)}
             </div>
           )}
           <div className="spacer" />

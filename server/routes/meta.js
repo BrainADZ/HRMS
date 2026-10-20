@@ -50,19 +50,22 @@ export default function metaRoutes(r, { db, uploads }) {
     const q = String(req.query.q || '').trim();
     if (q.length < 2) return res.json({ results: [] });
     const like = `%${q.replace(/[%_]/g, '')}%`;
+    const vertical = req.query.vertical ? Number(req.query.vertical) : null;
+    const vf = vertical ? 'AND e.vertical_id = ?' : '';
+    const vp = vertical ? [vertical] : [];
     const results = [];
     for (const e of await db.all(`
       SELECT e.id, e.first_name, e.last_name, e.code, e.designation, e.status FROM employees e
-      WHERE (e.first_name || ' ' || e.last_name LIKE ? OR e.code LIKE ? OR e.email LIKE ? OR e.designation LIKE ?)
-      ORDER BY e.status = 'Exited', e.first_name LIMIT 8`, like, like, like, like)) {
+      WHERE (e.first_name || ' ' || e.last_name LIKE ? OR e.code LIKE ? OR e.email LIKE ? OR e.designation LIKE ?) ${vf}
+      ORDER BY e.status = 'Exited', e.first_name LIMIT 8`, like, like, like, like, ...vp)) {
       results.push({ type: 'Employee', id: e.id, title: fullName(e), subtitle: `${e.code} · ${e.designation || ''}${e.status === 'Exited' ? ' · Exited' : ''}`, link: `/employees/${e.id}` });
     }
     if (isHR(req.user)) {
       for (const c of await db.all(`SELECT c.id, c.name, c.stage, j.title FROM candidates c LEFT JOIN jobs j ON j.id = c.job_id
-        WHERE c.name LIKE ? OR c.email LIKE ? OR c.skills LIKE ? LIMIT 6`, like, like, like)) {
+        WHERE (c.name LIKE ? OR c.email LIKE ? OR c.skills LIKE ?) ${vertical ? 'AND j.vertical_id = ?' : ''} LIMIT 6`, like, like, like, ...vp)) {
         results.push({ type: 'Candidate', id: c.id, title: c.name, subtitle: `${c.title || 'No job'} · ${c.stage}`, link: `/hiring?candidate=${c.id}` });
       }
-      for (const j of await db.all('SELECT id, title, status FROM jobs WHERE title LIKE ? LIMIT 4', like)) {
+      for (const j of await db.all(`SELECT id, title, status FROM jobs WHERE title LIKE ? ${vertical ? 'AND vertical_id = ?' : ''} LIMIT 4`, like, ...vp)) {
         results.push({ type: 'Job', id: j.id, title: j.title, subtitle: j.status, link: `/hiring?job=${j.id}` });
       }
     }
@@ -113,7 +116,7 @@ export default function metaRoutes(r, { db, uploads }) {
     const mine = req.query.mine === '1' || !isHR(req.user);
     const rows = await db.all(`
       SELECT q.*, e.first_name, e.last_name, e.code FROM requests q JOIN employees e ON e.id = q.employee_id
-      ${mine ? 'WHERE q.employee_id = ?' : ''} ORDER BY q.status = 'Resolved', q.created_at DESC LIMIT 200`, ...(mine ? [req.user.employeeId || 0] : []));
+      WHERE 1=1 ${mine ? 'AND q.employee_id = ?' : ''} ${req.query.vertical ? 'AND e.vertical_id = ?' : ''} ORDER BY q.status = 'Resolved', q.created_at DESC LIMIT 200`, ...(mine ? [req.user.employeeId || 0] : []), ...(req.query.vertical ? [Number(req.query.vertical)] : []));
     res.json({ items: rows.map((q) => ({ ...q, employee: fullName(q) })), scope: scope === null ? 'all' : 'mine' });
   });
   r.post('/requests', async (req, res) => {

@@ -409,9 +409,9 @@ function HireModal({ c, onClose, onDone }) {
 }
 
 export function JobForm({ job, onClose, onSaved }) {
-  const { meta, toast } = useApp();
+  const { meta, toast, vertical } = useApp();
   const [f, setF] = useState(() => ({
-    title: job?.title || '', vertical_id: job?.vertical_id || '', department_id: job?.department_id || '', location_id: job?.location_id || '',
+    title: job?.title || '', vertical_id: job?.vertical_id || vertical || '', department_id: job?.department_id || '', location_id: job?.location_id || '',
     employment_type: job?.employment_type || 'Full-time', work_mode: job?.work_mode || 'Onsite', openings: job?.openings || 1,
     must_have: (job?.must_have || []).join(', '), nice_to_have: (job?.nice_to_have || []).join(', '), exp_min: job?.exp_min ?? '', exp_max: job?.exp_max ?? '',
     education: job?.education || '', salary_min: job?.salary_min ?? '', salary_max: job?.salary_max ?? '', knockout: (job?.knockout || []).join('\n'),

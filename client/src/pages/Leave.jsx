@@ -300,7 +300,7 @@ function PoshMini() {
 
 // ---------------------------------------------------------------- manage
 function Manage({ year }) {
-  const { isHR, user, toast, meta } = useApp();
+  const { isHR, user, toast, meta, vertical } = useApp();
   const [scope, setScope] = useState(isHR ? 'all' : user.role === 'manager' ? 'approvals' : 'mine');
   const [status, setStatus] = useState('');
   const [type, setType] = useState('');
@@ -346,7 +346,7 @@ function Manage({ year }) {
           </div>
         ) : <Empty text="No leave requests match" />}
       </Card>
-      {isHR && <div className="grid mt-16" id="holidays"><Card className="span-6" title={`Holidays ${year}`}><HolidayManager year={year} /></Card><Card className="span-6" title={`Leave register ${year}`} action={<Button size="sm" icon={Download} onClick={() => download(`/reports/leave-register.csv?year=${year}`)}>CSV</Button>}><LeaveRegister year={year} /></Card></div>}
+      {isHR && <div className="grid mt-16" id="holidays"><Card className="span-6" title={`Holidays ${year}`}><HolidayManager year={year} /></Card><Card className="span-6" title={`Leave register ${year}`} action={<Button size="sm" icon={Download} onClick={() => download(`/reports/leave-register.csv?year=${year}${vertical ? `&vertical=${vertical}` : ''}`)}>CSV</Button>}><LeaveRegister year={year} /></Card></div>}
       {!isHR && <div className="grid mt-16"><Card className="span-6" title={`Holidays ${year}`}><HolidayManager year={year} /></Card></div>}
       {modal === 'apply' && <ApplyLeaveModal onClose={() => setModal(null)} onDone={reload} />}
       {modal === 'behalf' && <ApplyLeaveModal onBehalf onClose={() => setModal(null)} onDone={reload} />}
@@ -503,6 +503,7 @@ const bump = (ver) => { const [a, b = '0'] = String(ver).split('.'); return `${a
 
 // ---------------------------------------------------------------- reports
 function LeaveReports({ year }) {
+  const { vertical } = useApp();
   const { data } = useApi('/reports/summary');
   if (!data) return <Loading />;
   const used = data.leaveUse.filter((l) => l.days > 0);
@@ -513,7 +514,7 @@ function LeaveReports({ year }) {
       </Card>
       <Card className="span-5" title="Downloads">
         {[['Leave register (balances)', `/reports/leave-register.csv?year=${year}`], ['All leave requests', '/reports/leave-requests.csv'], ['Attendance register (this month)', '/attendance/export.csv']].map(([l, p]) => (
-          <div key={p} className="list-item"><CalendarRange size={18} className="blue" /><span className="grow">{l}</span><Button size="sm" icon={Download} onClick={() => download(p)}>CSV</Button></div>
+          <div key={p} className="list-item"><CalendarRange size={18} className="blue" /><span className="grow">{l}</span><Button size="sm" icon={Download} onClick={() => download(`${p}${vertical ? `${p.includes('?') ? '&' : '?'}vertical=${vertical}` : ''}`)}>CSV</Button></div>
         ))}
         <div className="mt-12"><HBars items={data.leaveUse.map((l) => ({ label: l.name, value: l.requests, color: l.color }))} format={(v) => `${v} req`} labelWidth={120} /></div>
       </Card>

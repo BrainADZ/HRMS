@@ -243,6 +243,14 @@ function Users() {
       <div className="alert info mb-16" style={{ alignItems: 'center' }}>
         <span className="grow"><b>Roles:</b> Employee = self-service · Manager = their team's leave, attendance, reviews and hiring · HR = everything except admin settings · Administrator = everything, including payroll management approval and data reset.</span>
       </div>
+      {isAdmin && data.passwordRequests?.length > 0 && <Card flush title={`Password reset requests (${data.passwordRequests.length})`} className="mb-16">
+        <div className="table-wrap"><table className="table"><thead><tr><th style={{ paddingLeft: 18 }}>Employee</th><th>Requested</th><th /></tr></thead>
+          <tbody>{data.passwordRequests.map((request) => <tr key={request.id}>
+            <td style={{ paddingLeft: 18 }}><b>{request.name}</b><div className="small muted">{request.username}{request.code ? ` · ${request.code}` : ''}</div></td>
+            <td className="small muted">{fmtDateTime(request.requested_at)}</td>
+            <td className="right" style={{ paddingRight: 18 }}><Button size="xs" icon={KeyRound} loading={busy} onClick={async () => { const out = await run(() => api.post(`/users/${request.user_id}/reset`)); if (out) { setTemp(out); reload(); } }}>Set temporary password</Button></td>
+          </tr>)}</tbody></table></div>
+      </Card>}
       <Card flush title={`Logins (${data.users.length})`} action={
         <div className="row" style={{ gap: 8, marginRight: 18 }}>
           <Input className="sm" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" style={{ width: 200 }} />
@@ -257,7 +265,7 @@ function Users() {
                 <td><select className="select sm" style={{ width: 150 }} value={u.role} disabled={u.id === user.id || (u.role === 'admin' && !isAdmin)} onChange={(e) => run(() => api.put(`/users/${u.id}`, { role: e.target.value }), 'Role updated').then(reload)}>{roles.concat(u.role === 'admin' && !isAdmin ? [{ value: 'admin', label: 'Administrator' }] : []).map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}</select></td>
                 <td><Toggle on={Boolean(u.active)} disabled={u.id === user.id} label="Active" onChange={(v) => run(() => api.put(`/users/${u.id}`, { active: v }), v ? 'Login enabled' : 'Login disabled').then(reload)} /></td>
                 <td className="small muted">{u.last_login ? fmtDateTime(u.last_login) : 'Never'}</td>
-                <td className="right" style={{ paddingRight: 18 }}><Button size="xs" icon={KeyRound} disabled={u.role === 'admin' && !isAdmin} onClick={async () => { const out = await run(() => api.post(`/users/${u.id}/reset`)); if (out) setTemp(out); }}>Reset password</Button></td>
+                <td className="right" style={{ paddingRight: 18 }}>{isAdmin && <Button size="xs" icon={KeyRound} onClick={async () => { const out = await run(() => api.post(`/users/${u.id}/reset`)); if (out) { setTemp(out); reload(); } }}>Reset password</Button>}</td>
               </tr>
             ))}</tbody>
           </table>

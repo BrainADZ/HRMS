@@ -355,6 +355,12 @@ export default function Dashboard() {
             />
           </div>
         </Card>
+        <Card className="span-4" title={`Managers (${data.managers?.length || 0})`}>
+          {data.managers?.length ? data.managers.slice(0, 6).map((manager) => <div key={manager.id} className="list-item">
+            <div className="grow"><b>{manager.name}</b><div className="small muted">{manager.designation || 'Manager'}</div></div>
+            <span className="badge b-blue">{manager.team} team</span>
+          </div>) : <Empty text="No managers in this view" />}
+        </Card>
         <Card className="span-4" title="Employee Lifecycle Funnel">
           <Funnel
             steps={[

@@ -95,7 +95,7 @@ export default function Payroll() {
       </div>
 
       <div className="grid">
-        <Card className="span-6" title={<>Employee Salary Details <span className="sub">({fmtMonth(month)})</span></>} action={r && <Menu items={[{ label: 'Payroll register (CSV)', icon: Download, onClick: () => download(`/payroll/runs/${r.id}/register.csv`) }, { label: 'Bank transfer file (CSV)', icon: Download, onClick: () => download(`/payroll/runs/${r.id}/bank-file.csv`) }]} />}>
+        <Card className="span-6" title={<>Employee Salary Details <span className="sub">({fmtMonth(month)})</span></>} action={r && <Menu items={[{ label: 'Payroll register (CSV)', icon: Download, onClick: () => download(`/payroll/runs/${r.id}/register.csv${vertical ? `?vertical=${vertical}` : ''}`) }, { label: 'Bank transfer file (CSV)', icon: Download, onClick: () => download(`/payroll/runs/${r.id}/bank-file.csv${vertical ? `?vertical=${vertical}` : ''}`) }]} />}>
           <SalaryTable lines={data.lines} selected={line?.employeeId} onSelect={setSel} canHold={r && canRecompute} onHold={(l, hold) => act(() => api.put(`/payroll/payslips/${l.payslipId}/hold`, { hold }), hold ? 'Payslip put on hold' : 'Hold released')} />
         </Card>
         <Card className="span-3" title="Salary Structure Breakdown">
@@ -134,7 +134,7 @@ export default function Payroll() {
               <table className="table compact"><thead><tr><th>Batch ID</th><th>Bank</th><th>Employees</th><th className="num">Amount</th></tr></thead>
                 <tbody><tr><td className="small">{r.bankBatch.id}</td><td>{r.bankBatch.bank}</td><td>{r.bankBatch.count}</td><td className="num">{inr(r.bankBatch.amount)}</td></tr></tbody></table>
               <div className="row between mt-12"><span className="small muted">Initiated {fmtDate(r.bankBatch.initiatedAt)} · pay date {fmtDate(r.bankBatch.payDate)}</span><Badge tone={r.bankBatch.status === 'Completed' ? 'green' : 'blue'}>{r.bankBatch.status}</Badge></div>
-              <Button size="sm" icon={Download} className="mt-12" onClick={() => download(`/payroll/runs/${r.id}/bank-file.csv`)}>Bank file (CSV)</Button>
+              <Button size="sm" icon={Download} className="mt-12" onClick={() => download(`/payroll/runs/${r.id}/bank-file.csv${vertical ? `?vertical=${vertical}` : ''}`)}>Bank file (CSV)</Button>
               <div className="small muted mt-12">Manual bank payment. Upload the CSV through your bank, then record its payment reference here.</div>
               {r.bankBatch.paymentReference && <div className="small mt-12">Payment reference: {r.bankBatch.paymentReference}</div>}
             </div>

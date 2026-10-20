@@ -1,27 +1,44 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
+import { useApp } from '../context.jsx';
+
+const VERTICAL_LISTS = new Set(['/dashboard', '/hiring', '/screener', '/employees', '/documents', '/documents/checklist',
+  '/attendance/today', '/attendance/register', '/attendance/locations', '/attendance/short-hours', '/attendance/corrections', '/performance', '/payroll',
+  '/reports/summary', '/leave/overview', '/leave/requests', '/leave/calendar', '/leave/register', '/resignations', '/posh',
+  '/candidates', '/requests']);
+
+export function withVertical(path, vertical) {
+  if (!path || !vertical || !VERTICAL_LISTS.has(path.split('?')[0])) return path;
+  const [pathname, search = ''] = path.split('?');
+  const params = new URLSearchParams(search);
+  params.set('vertical', String(vertical));
+  return `${pathname}?${params}`;
+}
 
 // Loads `path` and keeps the previous data while reloading to avoid flicker.
 export function useApi(path) {
-  const [state, setState] = useState({ data: null, loading: Boolean(path), error: null });
+  const { vertical, isAdmin } = useApp();
+  const documentPath = ['/documents', '/documents/checklist'].includes(path?.split('?')[0]);
+  const scopedPath = withVertical(path, documentPath && !isAdmin ? null : vertical);
+  const [state, setState] = useState({ key: scopedPath, data: null, loading: Boolean(scopedPath), error: null });
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    if (!path) {
-      setState({ data: null, loading: false, error: null });
+    if (!scopedPath) {
+      setState({ key: scopedPath, data: null, loading: false, error: null });
       return undefined;
     }
     let alive = true;
-    setState((s) => ({ ...s, loading: true }));
-    api(path)
-      .then((data) => alive && setState({ data, loading: false, error: null }))
-      .catch((e) => alive && setState((s) => ({ data: s.data, loading: false, error: e.message })));
+    setState((s) => ({ ...s, key: scopedPath, data: s.key === scopedPath ? s.data : null, loading: true }));
+    api(scopedPath)
+      .then((data) => alive && setState({ key: scopedPath, data, loading: false, error: null }))
+      .catch((e) => alive && setState((s) => ({ key: scopedPath, data: s.key === scopedPath ? s.data : null, loading: false, error: e.message })));
     return () => {
       alive = false;
     };
-  }, [path, tick]);
+  }, [scopedPath, tick]);
   const reload = useCallback(() => setTick((t) => t + 1), []);
   const setData = useCallback((fn) => setState((s) => ({ ...s, data: typeof fn === 'function' ? fn(s.data) : fn })), []);
-  return { ...state, reload, setData };
+  return { ...state, data: state.key === scopedPath ? state.data : null, reload, setData };
 }
 
 export function useDebounced(value, ms = 300) {

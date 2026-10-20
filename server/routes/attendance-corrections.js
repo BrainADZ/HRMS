@@ -7,7 +7,7 @@ export default function correctionRoutes(r, { db }) {
   r.get('/attendance/corrections', async (req, res) => {
     const scope = await scopeIds(db, req.user);
     const where = scope === null ? '1=1' : scope.length ? `c.employee_id IN (${scope.map(() => '?').join(',')})` : '0=1';
-    const rows = await db.all(`SELECT c.*, e.first_name || ' ' || e.last_name AS name, e.code FROM attendance_corrections c JOIN employees e ON e.id=c.employee_id WHERE ${where} ORDER BY c.id DESC LIMIT 500`, ...(scope || []));
+    const rows = await db.all(`SELECT c.*, e.first_name || ' ' || e.last_name AS name, e.code FROM attendance_corrections c JOIN employees e ON e.id=c.employee_id WHERE ${where} ${req.query.vertical ? 'AND e.vertical_id = ?' : ''} ORDER BY c.id DESC LIMIT 500`, ...(scope || []), ...(req.query.vertical ? [Number(req.query.vertical)] : []));
     res.json({ items: await Promise.all(rows.map(async (row) => ({ ...row, canDecide: row.status === 'Pending' && await canDecide(req.user, row.employee_id) }))) });
   });
   r.post('/attendance/corrections', async (req, res) => {

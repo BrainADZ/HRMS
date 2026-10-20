@@ -73,7 +73,7 @@ export default function Reports() {
               <Button size="sm" icon={Download} onClick={() => download(p + (p.includes('?') ? '&' : '?') + filters)}>CSV</Button>
             </div>
           ))}
-          {runs?.run && <div className="card tight row" style={{ boxShadow: 'none', gap: 12 }}><FileSpreadsheet size={26} className="green" /><div className="grow"><div className="b6 small">Payroll register · {runs.label}</div><div className="xs muted">Earnings, deductions and employer cost per employee</div></div><Button size="sm" icon={Download} onClick={() => download(`/payroll/runs/${runs.run.id}/register.csv`)}>CSV</Button></div>}
+          {runs?.run && <div className="card tight row" style={{ boxShadow: 'none', gap: 12 }}><FileSpreadsheet size={26} className="green" /><div className="grow"><div className="b6 small">Payroll register · {runs.label}</div><div className="xs muted">Earnings, deductions and employer cost per employee</div></div><Button size="sm" icon={Download} onClick={() => download(`/payroll/runs/${runs.run.id}/register.csv${vertical ? `?vertical=${vertical}` : ''}`)}>CSV</Button></div>}
         </div>
       </Card>
     </div>

@@ -1,5 +1,5 @@
 import { createSession, destroySession, verifyPassword, hashPassword, checkPasswordStrength, loginThrottle, loadUser } from '../auth.js';
-import { getSettings, str, fail, audit, today } from '../core.js';
+import { getSettings, str, fail, audit, today, notifyUsers, fullName } from '../core.js';
 import { endSession, workDate, shiftEnd } from '../services/workday.js';
 import { checkLocation, logLocation, readCoords, geofencePolicy } from '../services/geofence.js';
 import * as D from '../lib/dates.js';
@@ -53,6 +53,22 @@ export default function authRoutes(r, { db }) {
     const expiresAt = settings.workdayEnd < settings.workdayStart ? shiftEnd(T, settings) : D.zonedIso(D.addDays(T, 1), '00:00', settings.timezone);
     await createSession(db, req, res, user.id, check.dayBound ? { expiresAt } : {});
     res.json({ ok: true, location: check.method === 'exempt' ? { exempt: check.exempt } : { office: check.site?.name, method: check.method, distance: check.distance ?? null } });
+  });
+
+  r.post('/auth/password-reset-request', async (req, res) => {
+    const username = str(req.body?.username, { required: true, name: 'Username', max: 200 }).toLowerCase();
+    const message = 'If this employee username is active, an administrator will receive the request. Please contact your administrator for a temporary password.';
+    const user = await db.get(`SELECT u.id, u.active, u.role, e.first_name, e.last_name FROM users u
+      LEFT JOIN employees e ON e.id = u.employee_id WHERE LOWER(u.username) = ? AND u.role != 'admin'`, username);
+    if (user?.active) {
+      const created = (await db.run('INSERT INTO password_reset_requests (user_id) VALUES (?) ON CONFLICT DO NOTHING', user.id)).changes > 0;
+      if (created) {
+        const admins = (await db.all("SELECT id FROM users WHERE role = 'admin' AND active = 1")).map((admin) => admin.id);
+        await notifyUsers(db, admins, `${fullName(user) || username} requested a password reset`, '/settings?tab=users');
+        await audit(db, user, 'password.reset_request', 'user', user.id);
+      }
+    }
+    res.json({ ok: true, message });
   });
 
   // pause: true stops the work clock; the next sign-in asks why the employee was away.

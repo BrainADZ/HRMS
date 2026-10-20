@@ -150,10 +150,12 @@ export default async function screenerRoutes(r, { db, uploads, upload, onClose }
 
   r.get('/screener', async (req, res) => {
     requireHR(req);
-    const jobs = (await db.all(`${JOB_SELECT} WHERE j.status != 'Closed' ORDER BY j.posted_on DESC`)).map(shapeJob);
+    const vertical = req.query.vertical ? Number(req.query.vertical) : null;
+    const jobs = (await db.all(`${JOB_SELECT} WHERE j.status != 'Closed' ${vertical ? 'AND j.vertical_id = ?' : ''} ORDER BY j.posted_on DESC`, ...(vertical ? [vertical] : []))).map(shapeJob);
     const active = jobs.filter((j) => j.status === 'Active').sort((a, b) => b.applicants - a.applicants);
     const jobId = req.query.job ? id(req.query.job) : active[0]?.id || jobs[0]?.id;
-    const job = jobId ? await db.get(`${JOB_SELECT} WHERE j.id = ?`, jobId) : null;
+    let job = jobId ? await db.get(`${JOB_SELECT} WHERE j.id = ? ${vertical ? 'AND j.vertical_id = ?' : ''}`, jobId, ...(vertical ? [vertical] : [])) : null;
+    if (!job && vertical && jobs.length) job = await db.get(`${JOB_SELECT} WHERE j.id = ?`, active[0]?.id || jobs[0].id);
     if (!job) return res.json({ jobs, job: null, candidates: [], duplicates: [], ai: aiEnabled() });
     const candidates = (await db.all(`SELECT * FROM candidates WHERE job_id = ? ORDER BY ai_score IS NULL, ai_score DESC, applied_on DESC`, job.id)).map(shapeCandidate);
     res.json({
@@ -162,7 +164,7 @@ export default async function screenerRoutes(r, { db, uploads, upload, onClose }
       candidates,
       duplicates: await duplicatesFor(job.id),
       totals: {
-        uploaded: await db.value('SELECT COUNT(*) FROM candidates WHERE resume_file IS NOT NULL OR resume_text IS NOT NULL'),
+        uploaded: await db.value(`SELECT COUNT(*) FROM candidates c JOIN jobs j ON j.id = c.job_id WHERE (c.resume_file IS NOT NULL OR c.resume_text IS NOT NULL) ${vertical ? 'AND j.vertical_id = ?' : ''}`, ...(vertical ? [vertical] : [])),
         forJob: candidates.length,
         processing: candidates.filter((c) => ['queued', 'processing'].includes(c.screen_status)).length
       },

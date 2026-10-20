@@ -1,7 +1,7 @@
 import { today, isHR, scopeIds, requireHR, fullName, str, num, date, oneOf, id, fail, notFound, getSettings, notifyUsers, hrUserIds, managerUserId, userIdForEmployee, audit } from '../core.js';
 import { json } from '../db.js';
 import * as D from '../lib/dates.js';
-import { headcountOn } from './dashboard.js';
+import { headcountOn, employeeFilter } from './dashboard.js';
 import { protectEmployeeAccount } from '../auth.js';
 import { calculateSettlement } from '../lib/settlement.js';
 
@@ -48,6 +48,7 @@ export default function resignationRoutes(r, { db }) {
     const where = [];
     const params = [];
     if (scope !== null) {where.push(scope.length ? `r.employee_id IN (${scope.map(() => '?').join(',')})` : '0=1');params.push(...scope);}
+    if (req.query.vertical) {where.push('e.vertical_id = ?');params.push(Number(req.query.vertical));}
     if (req.query.status) {where.push('r.status = ?');params.push(req.query.status);}
     const rows = (await db.all(`${SELECT} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY r.submitted_on DESC`, ...params)).map((row) => visible(row, req.user));
     const year = T.slice(0, 4);
@@ -56,7 +57,7 @@ export default function resignationRoutes(r, { db }) {
     const prev = rows.filter((x) => x.submitted_on.slice(0, 7) === D.addMonths(month, -1)).length;
     const cur = rows.filter((x) => x.submitted_on.slice(0, 7) === month).length;
     const reasons = REASONS.map((label) => ({ label, value: thisYear.filter((x) => x.reason_category === label).length })).filter((x) => x.value > 0).sort((a, b) => b.value - a.value);
-    const f = { sql: scope === null ? '1=1' : scope.length ? `e.id IN (${scope.map(() => '?').join(',')})` : '0=1', params: scope || [] };
+    const f = employeeFilter(scope, req.query.vertical ? Number(req.query.vertical) : null);
     const trend = [];
     for (let i = 5; i >= 0; i--) {
       const m = D.addMonths(month, -i);

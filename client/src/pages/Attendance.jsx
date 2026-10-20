@@ -166,7 +166,7 @@ function Register() {
         {team && <Select className="sm" style={{ width: 180 }} value={dept} onChange={(e) => setDept(e.target.value)} placeholder="All Departments" options={meta.departments.map((d) => ({ value: d.id, label: d.name }))} />}
         {team && <Input className="sm" style={{ width: 200 }} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search employee" />}
         <span className="grow" />
-        {isHR && <Button size="sm" icon={Download} onClick={() => download(`/attendance/export.csv?month=${month}`)}>Export CSV</Button>}
+        {isHR && <Button size="sm" icon={Download} onClick={() => download(`/attendance/export.csv?month=${month}${vertical ? `&vertical=${vertical}` : ''}`)}>Export CSV</Button>}
       </div>
       <div className="row wrap small mb-12" style={{ gap: 10 }}>
         {['P', 'WFH', 'HD', 'A', 'L', 'H', 'U'].map((c) => <span key={c} className="row gap-4"><span className={`cell c-${c}`} style={{ width: 22, height: 18, borderRadius: 5, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700 }}>{c === 'U' ? '·' : c === 'L' ? 'L' : c.slice(0, 2)}</span>{LABEL[c]}</span>)}

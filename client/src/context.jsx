@@ -86,8 +86,9 @@ export function AppProvider({ children }) {
 
   const value = useMemo(() => {
     const role = user?.role;
+    const visibleMeta = meta && vertical ? { ...meta, employees: meta.employees.filter((e) => e.vertical_id === vertical) } : meta;
     return {
-      user, info, meta, vertical, setVertical, toast, loadMe, refreshMeta, refreshPhotos, photoVersion, logout,
+      user, info, meta: visibleMeta, vertical, setVertical, toast, loadMe, refreshMeta, refreshPhotos, photoVersion, logout,
       isHR: role === 'admin' || role === 'hr',
       isAdmin: role === 'admin',
       isManager: role === 'manager',

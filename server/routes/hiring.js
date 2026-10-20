@@ -114,7 +114,7 @@ export default function hiringRoutes(r, { db }) {
     const onboarding = isHR(req.user) ? (await db.all(`SELECT e.id, e.first_name, e.last_name, e.designation, e.join_date, v.short AS vertical, v.color AS vertical_color,
         e.photo IS NOT NULL AS has_photo, COUNT(t.id) AS total, SUM(t.done) AS done
       FROM onboarding_tasks t JOIN employees e ON e.id = t.employee_id LEFT JOIN verticals v ON v.id = e.vertical_id
-      WHERE e.status != 'Exited' GROUP BY e.id, v.short, v.color HAVING SUM(t.done) < COUNT(t.id) OR e.join_date >= ? ORDER BY e.join_date DESC LIMIT 6`, D.addDays(T, -21))).
+      WHERE e.status != 'Exited' ${req.query.vertical ? 'AND e.vertical_id = ?' : ''} GROUP BY e.id, v.short, v.color HAVING SUM(t.done) < COUNT(t.id) OR e.join_date >= ? ORDER BY e.join_date DESC LIMIT 6`, ...(req.query.vertical ? [Number(req.query.vertical)] : []), D.addDays(T, -21))).
     map((x) => ({ ...x, name: fullName(x), status: x.done >= x.total ? 'Completed' : x.done > 0 ? 'In Progress' : 'Pending' })) : [];
     res.json({ today: T, from, to, kpis, pipeline, jobs, interviewsToday, upcoming, scorecards, sources, onboarding, totalCandidates: await db.value(`SELECT COUNT(*) FROM candidates c WHERE ${inActive}`, ...activeJobIds) });
   });
@@ -125,6 +125,7 @@ export default function hiringRoutes(r, { db }) {
     const params = [];
     if (req.query.job) {where.push('c.job_id = ?');params.push(Number(req.query.job));}
     if (req.query.stage) {where.push('c.stage = ?');params.push(req.query.stage);}
+    if (req.query.vertical) {where.push('j.vertical_id = ?');params.push(Number(req.query.vertical));}
     if (!isHR(req.user)) {where.push('j.hiring_manager_id = ?');params.push(req.user.employeeId || 0);}
     const q = String(req.query.search || '').trim();
     if (q) {

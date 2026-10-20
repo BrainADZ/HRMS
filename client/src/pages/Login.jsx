@@ -15,6 +15,8 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [requesting, setRequesting] = useState(false);
+  const [requestMessage, setRequestMessage] = useState('');
   const [locating, setLocating] = useState(false);
   // A message left by the app when it signed someone out (e.g. they left the office).
   const [flash] = useState(() => {
@@ -38,6 +40,18 @@ export default function Login() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const requestPassword = async () => {
+    if (!username.trim()) { setErr({ message: 'Enter your employee username first.' }); return; }
+    setRequesting(true);
+    setErr(null);
+    setRequestMessage('');
+    try {
+      const result = await api.post('/auth/password-reset-request', { username: username.trim() });
+      setRequestMessage(result.message);
+    } catch (ex) { setErr({ message: ex.message }); }
+    finally { setRequesting(false); }
   };
 
   return (
@@ -70,6 +84,8 @@ export default function Login() {
               ? <Field label="Admin email"><Input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@yourcompany.com" required /></Field>
               : <Field label="Username" hint="First name + employee ID, e.g. aaravbz030. HR and managers also use their username."><Input autoComplete="username" autoCapitalize="none" spellCheck={false} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="aaravbz030" required /></Field>}
             <Field label="Password"><Input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></Field>
+            {loginType === 'employee' && <button type="button" className="link" style={{ alignSelf: 'flex-end' }} disabled={requesting || busy} onClick={requestPassword}>{requesting ? 'Sending request…' : 'Forgot password? Ask admin'}</button>}
+            {requestMessage && <div className="alert info">{requestMessage}</div>}
             {err && <div className="alert error"><div>{err.message}{err.outside && <div className="mt-8">On an approved work-from-home or leave day you can sign in from anywhere.</div>}</div></div>}
             <button type="submit" className="btn primary lg block" disabled={busy}>{locating ? <MapPin size={18} /> : <LogIn size={18} />}{locating ? 'Checking your location…' : busy ? 'Signing in…' : 'Sign in'}</button>
           </form>

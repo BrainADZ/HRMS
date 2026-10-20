@@ -7,24 +7,25 @@ before(async () => {ctx = await boot();});
 after(async () => {await ctx.close();});
 
 const EMP = 'aarav.mehta@brainadz.com';
+const ADMIN = 'rajiv.malhotra@brainadz.com';
 const HR = 'priya.sharma@brainadz.com';
 const MGR = 'vikram.patel@brainadz.com';
 
-test('HR sees every employee\'s documents and the checklist of what is missing', async () => {
-  const hr = await as(ctx.base, HR);
-  const list = (await hr.get('/documents?limit=10')).body;
+test('administrator sees every employee document and checklist, and can download files', async () => {
+  const admin = await as(ctx.base, ADMIN);
+  const list = (await admin.get('/documents?limit=10')).body;
   assert.ok(list.total > 500);
   assert.equal(list.items.length, 10);
-  const check = (await hr.get('/documents/checklist')).body;
+  const check = (await admin.get('/documents/checklist')).body;
   assert.ok(check.required.includes('Aadhaar Card'));
   assert.ok(check.summary.employees > 80);
   assert.ok(check.summary.complete < check.summary.employees, 'some files are incomplete');
   const aarav = check.rows.find((r) => r.name === 'Aarav Mehta');
   assert.deepEqual(aarav.missing, ['Address Proof']);
-  const missingOnly = (await hr.get('/documents/checklist?missing=1')).body.rows;
+  const missingOnly = (await admin.get('/documents/checklist?missing=1')).body.rows;
   assert.ok(missingOnly.every((r) => r.missing.length));
   // A seeded document downloads as a PDF.
-  const file = await hr.raw('GET', `/documents/${list.items[0].id}/download`);
+  const file = await admin.raw('GET', `/documents/${list.items[0].id}/download`);
   assert.equal(file.status, 200);
   assert.match(String(file.body), /^%PDF-1\.4/);
 });
@@ -53,6 +54,22 @@ test('employees and managers only see their own documents and can upload their o
   const bad = new FormData();
   bad.append('file', new Blob(['x']), 'x.pdf');
   assert.equal((await mgr.post(`/employees/${empId}/documents`, undefined, { form: bad })).status, 403);
+
+  const hr = await as(ctx.base, HR);
+  const hrId = (await hr.get('/auth/me')).body.user.employeeId;
+  assert.ok((await hr.get('/documents?limit=200')).body.items.every((d) => d.employee_id === hrId));
+  assert.deepEqual((await hr.get('/documents/checklist')).body.rows.map((r) => r.id), [hrId]);
+  assert.equal((await hr.raw('GET', `/documents/${mine.items[0].id}/download`)).status, 403);
+  assert.equal((await hr.get(`/employees/${empId}`)).body.canViewDocuments, false);
+  assert.deepEqual((await hr.get(`/employees/${empId}`)).body.documents, []);
+  assert.equal((await hr.post(`/employees/${empId}/documents`, undefined, { form: bad })).status, 403);
+  assert.equal((await hr.del(`/documents/${mine.items[0].id}`)).status, 403);
+  assert.equal((await emp.del(`/documents/${mine.items[0].id}`)).status, 403);
+  assert.equal((await emp.get(`/employees/${empId}`)).body.canViewDocuments, true);
+
+  const admin = await as(ctx.base, ADMIN);
+  assert.equal((await admin.get(`/employees/${empId}`)).body.canViewDocuments, true);
+  assert.equal((await admin.raw('GET', `/documents/${mine.items[0].id}/download`)).status, 200);
 });
 
 test('the holiday calendar lists the year\'s holidays and your own leave', async () => {

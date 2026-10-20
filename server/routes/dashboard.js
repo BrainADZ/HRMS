@@ -40,7 +40,7 @@ export default function dashboardRoutes(r, { db }) {
     const headcount = await headcountOn(db, T, f);
     const headcountPrev = await headcountOn(db, prevEnd, f);
     const current = await db.all(`
-      SELECT e.id, e.join_date, e.exit_date, e.gender, e.vertical_id, e.department_id, e.location_id, d.name AS department, l.name AS location, v.name AS vertical, v.color
+      SELECT e.id, e.first_name, e.last_name, e.designation, e.manager_id, e.join_date, e.exit_date, e.gender, e.vertical_id, e.department_id, e.location_id, d.name AS department, l.name AS location, v.name AS vertical, v.color
       FROM employees e LEFT JOIN departments d ON d.id = e.department_id LEFT JOIN locations l ON l.id = e.location_id LEFT JOIN verticals v ON v.id = e.vertical_id
       WHERE e.join_date <= ? AND (e.exit_date IS NULL OR e.exit_date >= ?) AND ${f.sql}`, T, T, ...f.params);
     const ids = current.map((e) => e.id);
@@ -81,8 +81,9 @@ export default function dashboardRoutes(r, { db }) {
     const interviews = await db.all(`
       SELECT i.id, i.scheduled_at, i.round, i.mode, c.id AS candidate_id, c.name, j.title
       FROM interviews i JOIN candidates c ON c.id = i.candidate_id JOIN jobs j ON j.id = c.job_id
-      WHERE i.status = 'Scheduled' AND i.scheduled_at >= ? ${jw} ${isHR(req.user) ? '' : 'OR (i.status = \'Scheduled\' AND i.interviewer_id = ? AND i.scheduled_at >= ?)'}
-      ORDER BY i.scheduled_at LIMIT 4`, `${T}T00:00`, ...jobParams, ...(isHR(req.user) ? [] : [req.user.employeeId || 0, `${T}T00:00`]));
+      WHERE i.status = 'Scheduled' AND i.scheduled_at >= ?
+      ${isHR(req.user) ? '' : 'AND (j.hiring_manager_id = ? OR i.interviewer_id = ?)'} ${vertical ? 'AND j.vertical_id = ?' : ''}
+      ORDER BY i.scheduled_at LIMIT 4`, `${T}T00:00`, ...(isHR(req.user) ? [] : [req.user.employeeId || 0, req.user.employeeId || 0]), ...(vertical ? [vertical] : []));
 
     // Leave requests this user can act on
     const approvable = scope === null ? null : scope.filter((x) => x !== req.user.employeeId);
@@ -137,6 +138,10 @@ export default function dashboardRoutes(r, { db }) {
       label, value: current.filter((e) => {const y = D.yearsBetween(e.join_date, T);return y >= a && y < b;}).length
     }));
     const byVertical = (await db.all('SELECT * FROM verticals ORDER BY id')).map((v) => ({ id: v.id, label: v.name, short: v.short, color: v.color, value: current.filter((e) => e.vertical_id === v.id).length }));
+    const managers = current.filter((e) => current.some((other) => other.manager_id === e.id))
+      .map((e) => ({ id: e.id, name: `${e.first_name} ${e.last_name || ''}`.trim(), designation: e.designation,
+        team: current.filter((other) => other.manager_id === e.id).length }))
+      .sort((a, b) => b.team - a.team || a.name.localeCompare(b.name));
 
     // Compliance
     const required = await db.all('SELECT id, version FROM policies WHERE requires_ack = 1');
@@ -157,6 +162,7 @@ export default function dashboardRoutes(r, { db }) {
         onLeave, onLeavePct: pct(onLeave, headcount)
       },
       byVertical,
+      managers,
       funnel,
       pipeline,
       interviews,
