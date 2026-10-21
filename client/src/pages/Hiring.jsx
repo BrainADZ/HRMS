@@ -149,15 +149,15 @@ export default function Hiring() {
         </Card>
         <Card className="span-6" title={<>Onboarding Handoff <span className="sub">(New Hires)</span></>}>
           {data.onboarding.length ? (
-            <table className="table compact">
+            <table className="table compact onboarding-table">
               <thead><tr><th>Name</th><th>Vertical</th><th>Join Date</th><th>Onboarding Tasks</th><th>Status</th></tr></thead>
               <tbody>{data.onboarding.map((o) => (
                 <tr key={o.id}>
-                  <td><Person name={o.name} sub={o.designation} id={o.id} hasPhoto={o.has_photo} size={28} /></td>
-                  <td><span className="row gap-6 small"><span className="dot" style={{ background: o.vertical_color }} />{o.vertical}</span></td>
-                  <td className="small nowrap">{fmtDate(o.join_date)}</td>
-                  <td style={{ minWidth: 120 }}><div className="row gap-6"><div className="grow"><Progress value={(o.done / o.total) * 100} color="var(--blue)" height={6} /></div><span className="xs muted">{o.done}/{o.total}</span></div></td>
-                  <td><Badge tone={o.status === 'Completed' ? 'green' : o.status === 'In Progress' ? 'amber' : 'red'}>{o.status}</Badge></td>
+                  <td data-label="Name"><Person name={o.name} sub={o.designation} id={o.id} hasPhoto={o.has_photo} size={28} /></td>
+                  <td data-label="Vertical"><span className="row gap-6 small"><span className="dot" style={{ background: o.vertical_color }} />{o.vertical}</span></td>
+                  <td data-label="Join Date" className="small">{fmtDate(o.join_date)}</td>
+                  <td data-label="Onboarding Tasks"><div className="row gap-6"><div className="grow"><Progress value={o.total ? (o.done / o.total) * 100 : 0} color="var(--blue)" height={6} /></div><span className="xs muted nowrap">{o.done}/{o.total}</span></div></td>
+                  <td data-label="Status"><Badge tone={o.status === 'Completed' ? 'green' : o.status === 'In Progress' ? 'amber' : 'red'}>{o.status}</Badge></td>
                 </tr>
               ))}</tbody>
             </table>

@@ -22,7 +22,7 @@ for (const [role, email, routes] of [
     if (role === 'admin') {
       await page.getByRole('button', { name: 'Admin login', exact: true }).click();
       await page.locator('input[type=email]').fill(email);
-    } else await page.getByPlaceholder('aaravbz030').fill(login.username);
+    } else await page.getByRole('textbox', { name: 'Username', exact: true }).fill(login.username);
     await page.locator('input[type=password]').fill('Brainadz@2026');
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
     await expect(page.locator('main')).toBeVisible();

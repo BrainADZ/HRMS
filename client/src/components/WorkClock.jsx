@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
-import { Timer, LogIn, LogOut, House, PictureInPicture2, Pause, Coffee, TriangleAlert, CircleAlert, MapPin } from 'lucide-react';
+import { Timer, LogIn, LogOut, House, PictureInPicture2, Minus, Maximize2, Pause, Coffee, TriangleAlert, CircleAlert, MapPin } from 'lucide-react';
 import { useApp } from '../context.jsx';
 import { api } from '../lib/api.js';
 import { useAction, useClickOutside } from '../lib/hooks.js';
@@ -21,29 +21,45 @@ const readPref = () => { try { return localStorage.getItem(POP_PREF) !== 'off'; 
 const writePref = (on) => { try { localStorage.setItem(POP_PREF, on ? 'on' : 'off'); } catch { /* storage blocked */ } };
 
 // ---------- floating clock (Document Picture-in-Picture) ----------
-let pipWindow = null;
+// The browser window survives Vite module refreshes; recover it when this module reloads.
+const currentPipWindow = () => typeof window !== 'undefined' ? window.documentPictureInPicture?.window || null : null;
+let pipWindow = currentPipWindow();
 const pipListeners = new Set();
 const setPip = (w) => { pipWindow = w; pipListeners.forEach((f) => f(w)); };
 
-export async function openFloatingClock() {
-  if (!canPopOut()) return false;
-  if (pipWindow) return true;
-  const win = await window.documentPictureInPicture.requestWindow({ width: 300, height: 245 });
+function syncFloatingStyles(win) {
+  if (!win || win.closed) return;
+  win.document.head.querySelectorAll('[data-clock-styles]').forEach((node) => node.remove());
   for (const sheet of [...document.styleSheets]) {
     try {
       const style = win.document.createElement('style');
+      style.dataset.clockStyles = '';
       style.textContent = [...sheet.cssRules].map((r) => r.cssText).join('\n');
       win.document.head.append(style);
     } catch {
       if (sheet.href) {
         const link = win.document.createElement('link');
+        link.dataset.clockStyles = '';
         link.rel = 'stylesheet';
         link.href = sheet.href;
         win.document.head.append(link);
       }
     }
   }
+}
+
+export async function openFloatingClock() {
+  if (!canPopOut()) return false;
+  const existing = currentPipWindow() || pipWindow;
+  if (existing && !existing.closed) {
+    syncFloatingStyles(existing);
+    setPip(existing);
+    return true;
+  }
+  const win = await window.documentPictureInPicture.requestWindow({ width: 300, height: 245, disallowReturnToOpener: true, preferInitialWindowPlacement: true });
+  syncFloatingStyles(win);
   win.document.title = 'Work clock';
+  win.document.documentElement.classList.add('pip-root');
   win.document.body.className = 'pip-body';
   win.addEventListener('pagehide', () => setPip(null));
   setPip(win);
@@ -54,7 +70,14 @@ function usePipWindow() {
   const [w, setW] = useState(pipWindow);
   useEffect(() => {
     pipListeners.add(setW);
-    return () => pipListeners.delete(setW);
+    const win = currentPipWindow() || pipWindow;
+    setPip(win && !win.closed ? win : null);
+    const onClose = () => setPip(null);
+    win?.addEventListener('pagehide', onClose);
+    return () => {
+      pipListeners.delete(setW);
+      win?.removeEventListener('pagehide', onClose);
+    };
   }, []);
   return w;
 }
@@ -62,19 +85,48 @@ function usePipWindow() {
 function FloatingClock({ s }) {
   const now = useNow(1000);
   const { toast } = useApp();
+  const [minimized, setMinimized] = useState(false);
+  const expandedSize = useRef(null);
+  useEffect(() => {
+    const win = pipWindow;
+    syncFloatingStyles(win);
+    // Vite updates CSS in the main document; keep an already-open clock in sync.
+    const observer = new MutationObserver(() => syncFloatingStyles(win));
+    observer.observe(document.head, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  }, []);
+  const toggleSize = (event) => {
+    const win = event.currentTarget.ownerDocument.defaultView;
+    if (!win || win.closed) return;
+    if (!minimized) expandedSize.current = { width: win.innerWidth, height: win.innerHeight };
+    const size = minimized ? expandedSize.current || { width: 300, height: 245 } : { width: 170, height: 80 };
+    setMinimized(!minimized);
+    try {
+      win.resizeBy(size.width - win.innerWidth, size.height - win.innerHeight);
+    } catch {
+      // Keep the compact content usable if the browser restricts window resizing.
+    }
+  };
   const w = s.workday;
   const worked = workedNow(s, now);
   const running = Boolean(w.openSince);
   return (
-    <div className="pip-clock">
-      <div className="row between"><span className={`pip-state ${running ? 'on' : ''}`}>{running ? 'Working' : w.breakSince ? 'On break' : 'Paused'}</span><span className="xs muted">{clockText(w.requiredMinutes, false)} target</span></div>
-      <div className="pip-time">{clockText(worked)}</div>
+    <div className={`pip-clock${minimized ? ' minimized' : ''}`}>
+      <div className="row between pip-summary">
+        <span className={`pip-state ${running ? 'on' : ''}`}>{running ? 'Working' : w.breakSince ? 'On break' : 'Paused'}</span>
+        <button type="button" className="btn xs pip-size-toggle" onClick={toggleSize} aria-label={minimized ? 'Expand timer' : 'Minimize timer'} title={minimized ? 'Expand timer' : 'Minimize timer'} aria-expanded={!minimized}>
+          {minimized ? <Maximize2 size={12} /> : <Minus size={12} />}
+        </button>
+      </div>
+      <div className="pip-time" aria-label="Time worked">{clockText(worked)}</div>
+      {!minimized && <>
       <Progress value={Math.min(100, (worked / w.requiredMinutes) * 100)} color={worked >= w.requiredMinutes ? 'var(--green)' : 'var(--blue)'} height={6} />
       <div className="row between mt-8">
         <span className="xs muted">{running ? `Since ${fmtTime(w.openSince)}` : w.awaySince ? `Away since ${fmtTime(w.awaySince)}` : 'Not checked in'}</span>
         {running && <button type="button" className="btn xs" onClick={() => checkOut().then(() => toast('Checked out. Your clock is paused.', 'success')).catch((e) => toast(e.message, 'error'))}>Check out</button>}
       </div>
       <BreakControls s={s} />
+      </>}
     </div>
   );
 }

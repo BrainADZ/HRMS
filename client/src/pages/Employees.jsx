@@ -533,7 +533,7 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly }) {
   const e = employee?.employee;
   const c = employee?.compensation || {};
   const [f, setF] = useState(() => ({
-    first_name: e?.first_name || '', last_name: e?.last_name || '', email: e?.email || '', phone: e?.phone || '', gender: e?.gender || '', dob: e?.dob || '',
+    code: e?.code || '', first_name: e?.first_name || '', last_name: e?.last_name || '', email: e?.email || '', phone: e?.phone || '', gender: e?.gender || '', dob: e?.dob || '',
     vertical_id: e?.vertical_id || vertical || '', department_id: e?.department_id || '', designation: e?.designation || '', grade: e?.grade || 'Executive',
     manager_id: e?.manager_id || '', employment_type: e?.employment_type || 'Full-time', location_id: e?.location_id || '', work_place: e ? (e.work_place || '') : 'onsite', join_date: e?.join_date || meta.today,
     ctc: c.ctc ?? '', monthly_tds: c.monthlyTds ?? '', pan: c.pan || '', uan: c.uan || '', bank_name: c.bank_name || '', bank_account: c.bank_account || '', ifsc: c.ifsc || '',
@@ -580,6 +580,7 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly }) {
         <Field label="Phone"><Input value={f.phone} onChange={set('phone')} placeholder="+91 98765 43210" /></Field>
         {!selfOnly && <>
           <div className="form-section">Job</div>
+          <Field label="Employee ID" hint="Your unique company ID. Leave blank when adding to generate BZ + employee number automatically."><Input value={f.code} onChange={set('code')} maxLength={30} placeholder="BZ001" /></Field>
           <Field label="Vertical"><Select value={f.vertical_id} onChange={set('vertical_id')} placeholder="Select" options={opts(meta.verticals)} /></Field>
           <Field label="Department"><Select value={f.department_id} onChange={set('department_id')} placeholder="Select" options={opts(meta.departments)} /></Field>
           <Field label="Designation"><Input value={f.designation} onChange={set('designation')} /></Field>

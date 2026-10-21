@@ -22,7 +22,6 @@ import {
   greeting,
   fmtDate,
   fmtShort,
-  fmtTime,
   inr,
   fmtMonth,
   fmtDay,
@@ -48,14 +47,9 @@ import {
   ClaimModal,
 } from "../components/forms.jsx";
 import { NoticeBoard } from "./Dashboard.jsx";
-import { ClockActions, AttentionBanner } from "../components/WorkClock.jsx";
-import {
-  useWorkday,
-  useNow,
-  workedNow,
-  clockText,
-  useOnWorkdayChange,
-} from "../lib/workday.js";
+import { AttentionBanner } from "../components/WorkClock.jsx";
+import { useOnWorkdayChange } from "../lib/workday.js";
+import DailyAttendance from "../components/DailyAttendance.jsx";
 import { EmployeeForm, Onboarding } from "./Employees.jsx";
 
 export default function MySpace() {
@@ -90,93 +84,6 @@ export default function MySpace() {
   );
 }
 
-function CheckIn({ data }) {
-  const s = useWorkday();
-  const now = useNow(1000);
-  const st = data.attendance.todayStatus;
-  const off = st && ["H", "WO", "L"].includes(st.code);
-  const w = s?.workday;
-  const running = Boolean(w?.openSince);
-  const worked = workedNow(s, now);
-  const first = w?.sessions[0];
-  return (
-    <div
-      className="card"
-      style={{
-        background: "linear-gradient(135deg, #1f2b7b, #3346b8)",
-        color: "#fff",
-        border: 0,
-      }}
-    >
-      <div className="row between wrap" style={{ gap: 14 }}>
-        <div>
-          <div style={{ opacity: 0.8, fontSize: 13 }}>{fmtDay(data.today)}</div>
-          <div
-            style={{
-              fontSize: 22,
-              fontWeight: 700,
-              marginTop: 4,
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            {running
-              ? `Working · ${clockText(worked)}`
-              : w?.sessions.length
-                ? `Paused · ${clockText(worked, false)} worked`
-                : off
-                  ? st.code === "L"
-                    ? `On ${st.leave?.name || "leave"} today`
-                    : st.code === "H"
-                      ? "Holiday today"
-                      : "Weekly off today"
-                  : "Not checked in yet"}
-          </div>
-          {first && (
-            <div style={{ opacity: 0.85, marginTop: 4 }}>
-              Checked in at {fmtTime(first.start)}
-              {w.sessions.length > 1 ? ` · ${w.sessions.length} sessions` : ""}
-              {!running && w.awaySince
-                ? ` · away since ${fmtTime(w.awaySince)}`
-                : ""}
-              {first.mode === "wfh" ? " · Work from home" : ""}
-            </div>
-          )}
-        </div>
-        <ClockActions light />
-      </div>
-      <div
-        className="row wrap mt-16"
-        style={{ gap: 18, fontSize: 13, opacity: 0.9 }}
-      >
-        <span>This month:</span>
-        <span>
-          Present <b>{data.attendance.monthSummary.P}</b>
-        </span>
-        <span>
-          WFH <b>{data.attendance.monthSummary.WFH}</b>
-        </span>
-        <span>
-          Half day <b>{data.attendance.monthSummary.HD}</b>
-        </span>
-        <span>
-          Leave <b>{data.attendance.monthSummary.L}</b>
-        </span>
-        {data.attendance.monthSummary.A > 0 && (
-          <span>
-            Absent <b>{data.attendance.monthSummary.A}</b>
-          </span>
-        )}
-        <Link
-          to="/attendance"
-          style={{ color: "#fff", textDecoration: "underline" }}
-        >
-          View attendance
-        </Link>
-      </div>
-    </div>
-  );
-}
-
 function Overview() {
   const { toast } = useApp();
   const { data, error, reload } = useApi("/dashboard/me");
@@ -198,7 +105,7 @@ function Overview() {
       <AttentionBanner />
       <div className="grid">
         <div className="span-8">
-          <CheckIn data={data} />
+          <DailyAttendance data={data} />
         </div>
         <Card className="span-4" title="Quick actions">
           <div

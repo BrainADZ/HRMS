@@ -184,9 +184,9 @@ export function Tabs({ tabs, value, onChange, variant = '' }) {
     </div>
   );
 }
-export function Seg({ options, value, onChange }) {
+export function Seg({ options, value, onChange, className = '' }) {
   return (
-    <div className="seg">
+    <div className={`seg ${className}`}>
       {options.map((o) => {
         const key = typeof o === 'string' ? o : o.value;
         return <button key={key} type="button" className={value === key ? 'on' : ''} onClick={() => onChange(key)}>{typeof o === 'string' ? o : o.label}</button>;

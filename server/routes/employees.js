@@ -14,6 +14,7 @@ import { calendarCtx, dayStatuses } from '../services/calendar.js';
 import { IFSC_RE, ACCOUNT_RE } from '../services/payroll.js';
 import { invalidatePayrollInputs } from '../services/payroll-inputs.js';
 import { employeeFilter } from '../services/report-filters.js';
+import { nextEmployeeCode } from '../services/employee-codes.js';
 
 const TYPES = ['Full-time', 'Part-time', 'Contract', 'Intern'];
 const STATUSES = ['Active', 'Notice', 'Exited'];
@@ -44,16 +45,15 @@ function listRow(e, leaveSet) {
   };
 }
 
-async function nextCode(db) {
-  const prefix = (await getSettings(db)).employeeCodePrefix || 'BZ';
-  const max = (await db.all('SELECT code FROM employees')).map((r) => Number(String(r.code).replace(/\D/g, '')) || 0).reduce((a, b) => Math.max(a, b), 0);
-  return `${prefix}${String(max + 1).padStart(3, '0')}`;
-}
-
 async function readEmployeeBody(db, b, { partial = false } = {}) {
   const out = {};
   const has = (k) => Object.prototype.hasOwnProperty.call(b, k);
   const set = (k, v) => {if (!partial || has(k)) out[k] = v;};
+  if (has('code') && (partial || String(b.code || '').trim())) {
+    const code = str(b.code, { required: true, max: 30, name: 'Employee ID' }).toUpperCase();
+    if (!/^[A-Z]*[0-9]+$/.test(code)) fail(400, 'Employee ID must be a number, optionally prefixed with letters (e.g. 001 or BZ001)');
+    out.code = code;
+  }
   set('first_name', str(b.first_name, { required: !partial || has('first_name'), max: 60, name: 'First name' }));
   set('last_name', str(b.last_name, { max: 60 }) || '');
   if (!partial || has('email')) out.email = email(b.email, { required: true });
@@ -233,13 +233,14 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
   r.post('/employees', async (req, res) => {
     requireHR(req);
     const data = await readEmployeeBody(db, req.body);
+    if (data.code && await db.value('SELECT 1 FROM employees WHERE UPPER(code) = ?', data.code)) fail(409, 'This employee ID is already in use');
     if (data.manager_id && !(await db.value("SELECT 1 FROM employees WHERE id = ? AND status != 'Exited'", data.manager_id))) fail(400, 'Choose an active manager');
     const createLogin = Boolean(req.body.create_login);
     const role = oneOf(req.body.role || 'employee', ['employee', 'manager', 'hr', 'admin'], { name: 'Role' });
     if (role === 'admin' && req.user.role !== 'admin') fail(403, 'Only an administrator can create admin logins');
     let temp = null;
     const eid = await db.tx(async () => {
-      const newId = await db.insert('employees', { ...data, code: await nextCode(db), status: 'Active' });
+      const newId = await db.insert('employees', { ...data, code: data.code || await nextEmployeeCode(db), status: 'Active' });
       await invalidatePayrollInputs(db, data.join_date);
       if (data.join_date >= D.addDays(await today(db), -30)) await asyncForEach(ONBOARDING, async (t, i) => await db.insert('onboarding_tasks', { employee_id: newId, title: t, sort: i }));
       // An existing login with this email and no employee record (e.g. the
@@ -265,6 +266,7 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
     let data;
     if (isHR(req.user)) {
       data = await readEmployeeBody(db, req.body, { partial: true });
+      if (data.code && await db.value('SELECT 1 FROM employees WHERE UPPER(code) = ? AND id != ?', data.code, eid)) fail(409, 'This employee ID is already in use');
       if ('manager_id' in data && data.manager_id) {
         if (data.manager_id === eid || (await reportIds(db, eid)).includes(data.manager_id)) fail(400, 'An employee cannot report to themselves or their own team');
         if (!(await db.value("SELECT 1 FROM employees WHERE id = ? AND status != 'Exited'", data.manager_id))) fail(400, 'Choose an active manager');

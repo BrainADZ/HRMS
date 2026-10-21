@@ -1,9 +1,10 @@
 import { lazy, Suspense } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useApp } from './context.jsx';
 import Layout, { ChangePassword } from './components/Layout.jsx';
 import { Loading } from './components/ui.jsx';
 import Login from './pages/Login.jsx';
+import ResetPassword from './pages/ResetPassword.jsx';
 
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const MySpace = lazy(() => import('./pages/MySpace.jsx'));
@@ -30,6 +31,8 @@ function Guard({ roles, children }) {
 
 export default function App() {
   const { user, meta } = useApp();
+  const location = useLocation();
+  if (location.pathname === '/reset-password') return <ResetPassword />;
   if (user?.mustChangePassword) return <ChangePassword forced onClose={() => {}} />;
   if (user === undefined || (user && !meta)) return <Loading text="Loading BrainADZ HRMS…" />;
   if (!user) return <Login />;

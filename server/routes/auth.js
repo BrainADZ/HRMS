@@ -1,12 +1,14 @@
 import { createSession, destroySession, verifyPassword, hashPassword, checkPasswordStrength, loginThrottle, loadUser } from '../auth.js';
-import { getSettings, str, fail, audit, today, notifyUsers, fullName } from '../core.js';
+import { getSettings, str, email as validateEmail, fail, audit, today, notifyUsers, fullName } from '../core.js';
 import { endSession, workDate, shiftEnd } from '../services/workday.js';
 import { checkLocation, logLocation, readCoords, geofencePolicy } from '../services/geofence.js';
 import * as D from '../lib/dates.js';
 import { DEMO_ACCOUNTS, DEMO_PASSWORD } from '../seed.js';
 import { aiEnabled } from '../services/ai.js';
+import { workflow } from '../database/workflows.js';
+import { requestAdminReset, completeAdminReset, RESET_EMAIL_MESSAGE } from '../services/admin-password-reset.js';
 
-export default function authRoutes(r, { db }) {
+export default function authRoutes(r, { db, passwordResetMailer }) {
   const exposeDemo = (settings) => Boolean(settings.demo) && process.env.NODE_ENV !== 'production' && process.env.EXPOSE_DEMO_LOGINS !== 'false';
   r.get('/auth/config', async (_req, res) => {
     const s = await getSettings(db);
@@ -56,19 +58,37 @@ export default function authRoutes(r, { db }) {
   });
 
   r.post('/auth/password-reset-request', async (req, res) => {
-    const username = str(req.body?.username, { required: true, name: 'Username', max: 200 }).toLowerCase();
-    const message = 'If this employee username is active, an administrator will receive the request. Please contact your administrator for a temporary password.';
-    const user = await db.get(`SELECT u.id, u.active, u.role, e.first_name, e.last_name FROM users u
-      LEFT JOIN employees e ON e.id = u.employee_id WHERE LOWER(u.username) = ? AND u.role != 'admin'`, username);
-    if (user?.active) {
-      const created = (await db.run('INSERT INTO password_reset_requests (user_id) VALUES (?) ON CONFLICT DO NOTHING', user.id)).changes > 0;
-      if (created) {
-        const admins = (await db.all("SELECT id FROM users WHERE role = 'admin' AND active = 1")).map((admin) => admin.id);
-        await notifyUsers(db, admins, `${fullName(user) || username} requested a password reset`, '/settings?tab=users');
-        await audit(db, user, 'password.reset_request', 'user', user.id);
-      }
+    const loginType = req.body?.loginType || (req.body?.email ? 'admin' : 'employee');
+    if (!['admin', 'employee'].includes(loginType)) fail(400, 'Choose administrator or employee sign-in');
+    const adminRequest = loginType === 'admin';
+    const identifier = adminRequest
+      ? validateEmail(req.body?.email, { required: true })
+      : str(req.body?.username, { required: true, name: 'Username', max: 200 }).toLowerCase();
+    if (adminRequest) {
+      loginThrottle(`admin-reset:${req.ip}`).failed();
+      await requestAdminReset(db, passwordResetMailer, identifier);
+      return res.json({ ok: true, message: RESET_EMAIL_MESSAGE });
     }
+    const message = 'If this employee username is active, an administrator will receive the request. Please contact your administrator for a temporary password.';
+    await workflow(db, async () => {
+      const user = await db.get(`SELECT u.id, u.active, u.role, u.display_name, e.first_name, e.last_name FROM users u
+        LEFT JOIN employees e ON e.id = u.employee_id WHERE LOWER(u.username) = ? AND u.role != 'admin'`, identifier);
+      if (user?.active) {
+        const created = (await db.run('INSERT INTO password_reset_requests (user_id) VALUES (?) ON CONFLICT DO NOTHING', user.id)).changes > 0;
+        if (created) {
+          const admins = (await db.all("SELECT id FROM users WHERE role = 'admin' AND active = 1 AND id != ?", user.id)).map((admin) => admin.id);
+          await notifyUsers(db, admins, `${user.first_name ? fullName(user) : user.display_name || identifier} requested a password reset`, '/settings?tab=users');
+          await audit(db, user, 'password.reset_request', 'user', user.id);
+        }
+      }
+    });
     res.json({ ok: true, message });
+  });
+
+  r.post('/auth/password-reset', async (req, res) => {
+    loginThrottle(`admin-reset-complete:${req.ip}`).failed();
+    await completeAdminReset(db, req.body?.token, req.body?.password);
+    res.json({ ok: true, message: 'Password updated. Sign in with your new password.' });
   });
 
   // pause: true stops the work clock; the next sign-in asks why the employee was away.

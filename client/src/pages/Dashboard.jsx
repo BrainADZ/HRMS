@@ -57,6 +57,7 @@ import {
 } from "../components/charts.jsx";
 import { BrandBanner } from "../components/Layout.jsx";
 import { AttentionBanner } from "../components/WorkClock.jsx";
+import DailyAttendance from "../components/DailyAttendance.jsx";
 
 const NOTICE_ICON = {
   health: HeartPulse,
@@ -297,6 +298,7 @@ export default function Dashboard() {
         <BrandBanner />
       </div>
       <AttentionBanner />
+      {user.employeeId && <div className="mb-16"><DailyAttendance /></div>}
 
       <div className="kpis">
         <Kpi
@@ -621,6 +623,7 @@ export default function Dashboard() {
         </Card>
         <Card className="span-3" title="People Analytics">
           <Seg
+            className="people-analytics-tabs"
             value={tab}
             onChange={setTab}
             options={[

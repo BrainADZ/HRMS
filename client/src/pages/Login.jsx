@@ -43,12 +43,12 @@ export default function Login() {
   };
 
   const requestPassword = async () => {
-    if (!username.trim()) { setErr({ message: 'Enter your employee username first.' }); return; }
+    if (loginType === 'admin' ? !email.trim() : !username.trim()) { setErr({ message: loginType === 'admin' ? 'Enter your admin email first.' : 'Enter your employee username first.' }); return; }
     setRequesting(true);
     setErr(null);
     setRequestMessage('');
     try {
-      const result = await api.post('/auth/password-reset-request', { username: username.trim() });
+      const result = await api.post('/auth/password-reset-request', { loginType, ...(loginType === 'admin' ? { email: email.trim() } : { username: username.trim() }) });
       setRequestMessage(result.message);
     } catch (ex) { setErr({ message: ex.message }); }
     finally { setRequesting(false); }
@@ -77,14 +77,14 @@ export default function Login() {
           {flash && <div className="alert warn mt-16">{flash}</div>}
           <form className="col mt-16" style={{ gap: 14, marginTop: 24 }} onSubmit={signIn}>
             <div className="row gap-8" role="group" aria-label="Sign-in type">
-              <button type="button" className={`btn sm ${loginType === 'employee' ? 'primary' : ''}`} aria-pressed={loginType === 'employee'} disabled={busy} onClick={() => { setLoginType('employee'); setErr(null); }}>Employee login</button>
-              <button type="button" className={`btn sm ${loginType === 'admin' ? 'primary' : ''}`} aria-pressed={loginType === 'admin'} disabled={busy} onClick={() => { setLoginType('admin'); setErr(null); }}>Admin login</button>
+              <button type="button" className={`btn sm ${loginType === 'employee' ? 'primary' : ''}`} aria-pressed={loginType === 'employee'} disabled={busy || requesting} onClick={() => { setLoginType('employee'); setErr(null); setRequestMessage(''); }}>Employee login</button>
+              <button type="button" className={`btn sm ${loginType === 'admin' ? 'primary' : ''}`} aria-pressed={loginType === 'admin'} disabled={busy || requesting} onClick={() => { setLoginType('admin'); setErr(null); setRequestMessage(''); }}>Admin login</button>
             </div>
             {loginType === 'admin'
               ? <Field label="Admin email"><Input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@yourcompany.com" required /></Field>
-              : <Field label="Username" hint="First name + employee ID, e.g. aaravbz030. HR and managers also use their username."><Input autoComplete="username" autoCapitalize="none" spellCheck={false} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="aaravbz030" required /></Field>}
+              : <Field label="Username" hint="First name + BZL (Live), BZM (Marketing), BZE (Exhibits) or BZ (Corporate) + employee number, e.g. AaravBZL030."><Input autoComplete="username" autoCapitalize="none" spellCheck={false} value={username} onChange={(e) => setUsername(e.target.value)} placeholder="AaravBZL030" required /></Field>}
             <Field label="Password"><Input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></Field>
-            {loginType === 'employee' && <button type="button" className="link" style={{ alignSelf: 'flex-end' }} disabled={requesting || busy} onClick={requestPassword}>{requesting ? 'Sending request…' : 'Forgot password? Ask admin'}</button>}
+            <button type="button" className="link" style={{ alignSelf: 'flex-end' }} disabled={requesting || busy} onClick={requestPassword}>{requesting ? 'Sending request…' : loginType === 'admin' ? 'Forgot password?' : 'Forgot password? Ask admin'}</button>
             {requestMessage && <div className="alert info">{requestMessage}</div>}
             {err && <div className="alert error"><div>{err.message}{err.outside && <div className="mt-8">On an approved work-from-home or leave day you can sign in from anywhere.</div>}</div></div>}
             <button type="submit" className="btn primary lg block" disabled={busy}>{locating ? <MapPin size={18} /> : <LogIn size={18} />}{locating ? 'Checking your location…' : busy ? 'Signing in…' : 'Sign in'}</button>

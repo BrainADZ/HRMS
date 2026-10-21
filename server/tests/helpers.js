@@ -15,7 +15,7 @@ export function credentials(base, identifier) {
 }
 
 // Boots an app on a random port with a fresh demo database in a temp dir.
-export async function boot({ serveClient = false, clientOrigin } = {}) {
+export async function boot({ serveClient = false, clientOrigin, relativeDataDir = false, passwordResetMailer = null } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hrms-test-'));
   let cleanup = async () => {};
   let database;
@@ -31,7 +31,7 @@ export async function boot({ serveClient = false, clientOrigin } = {}) {
     const { PGlite } = await import('@electric-sql/pglite');
     database = await openDb({ queryClient: new PGlite() });
   }
-  const { app, db, close: closeApp } = await createApp({ database, dataDir: dir, serveClient, clientOrigin });
+  const { app, db, close: closeApp } = await createApp({ database, dataDir: relativeDataDir ? path.relative(process.cwd(), dir) : dir, serveClient, clientOrigin, passwordResetMailer });
   const server = await new Promise((resolve) => {const s = app.listen(0, () => resolve(s));});
   const base = `http://127.0.0.1:${server.address().port}/api`;
   fixtures.set(base, await db.all('SELECT email, username, role FROM users'));

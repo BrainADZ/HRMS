@@ -26,13 +26,14 @@ import reportRoutes from './routes/reports.js';
 import settingsRoutes from './routes/settings.js';
 import { atomicRouter, workflow } from './database/workflows.js';
 import { cleanUploads, validateUploads } from './services/uploads.js';
+import { createPasswordResetMailer } from './services/reset-mail.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-export async function createApp({ databaseUrl, database, dataDir = path.resolve('data'), seed = 'demo', serveClient = true, today, clientOrigin = process.env.CLIENT_ORIGIN || '' } = {}) {
+export async function createApp({ databaseUrl, database, dataDir = path.resolve('data'), seed = 'demo', serveClient = true, today, clientOrigin = process.env.CLIENT_ORIGIN || '', passwordResetMailer = createPasswordResetMailer() } = {}) {
   const allowedOrigin = clientOrigin ? new URL(clientOrigin).origin : '';
   const db = database || (await openDb({ connectionString: databaseUrl }));
-  const uploads = path.join(dataDir, 'uploads');
+  const uploads = path.resolve(dataDir, 'uploads');
   // Lets the demo seed store sample files (employee documents).
   const saveFile = (kind, name, bytes) => {
     fs.mkdirSync(path.join(uploads, kind), { recursive: true });
@@ -92,7 +93,7 @@ export async function createApp({ databaseUrl, database, dataDir = path.resolve(
       };
     }]));
   };
-  const ctx = { db, uploads, upload, here, saveFile, onClose: (fn) => closeHooks.push(fn) };
+  const ctx = { db, uploads, upload, here, saveFile, passwordResetMailer, onClose: (fn) => closeHooks.push(fn) };
 
   const app = express();
   app.disable('x-powered-by');

@@ -10,7 +10,8 @@ const form = (bytes = png, name = 'portrait.png') => {
   const body = new FormData(); body.append('photo', new Blob([bytes], { type: 'image/png' }), name); return body;
 };
 let ctx;
-before(async () => { ctx = await boot(); });
+// Match DATA_DIR=./data: Express sendFile needs absolute paths even when storage is configured relatively.
+before(async () => { ctx = await boot({ relativeDataDir: true }); });
 after(async () => { await ctx?.close(); });
 
 test('admin, manager and employee upload their own photo; auth, profile and protected image agree', async () => {

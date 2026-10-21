@@ -57,9 +57,58 @@ test('new employee credentials, first-login gate, session rotation, rename and r
   assert.equal((await resetUser.get('/meta')).status, 403);
 });
 
+test('vertical usernames are returned at creation, accept mixed-case login and follow transfers', async () => {
+  const admin = await as(ctx.base, ADMIN);
+  const meta = (await admin.get('/meta')).body;
+  for (const [short, marker, role] of [['Live', 'BZL', 'employee'], ['Marketing', 'BZM', 'manager'], ['Exhibits', 'BZE', 'hr']]) {
+    const vertical = meta.verticals.find((v) => v.short === short);
+    const made = await admin.post('/employees', { first_name: 'Sumit', email: `sumit.${short.toLowerCase()}@example.com`, join_date: meta.today, vertical_id: vertical.id, create_login: true, role });
+    assert.equal(made.status, 200, JSON.stringify(made.body));
+    const profile = (await admin.get(`/employees/${made.body.id}`)).body.employee;
+    assert.match(profile.code, /^BZ\d+$/);
+    const number = profile.code.match(/\d+$/)[0];
+    assert.equal(made.body.username, `Sumit${marker}${number}`);
+    const signedIn = await as(ctx.base, made.body.username.toUpperCase(), made.body.tempPassword);
+    assert.equal((await signedIn.get('/auth/me')).body.user.role, role);
+    if (short === 'Live') {
+      const marketing = meta.verticals.find((v) => v.short === 'Marketing');
+      assert.equal((await admin.put(`/employees/${made.body.id}`, { vertical_id: marketing.id })).status, 200);
+      const changed = (await admin.get(`/employees/${made.body.id}`)).body.login;
+      assert.equal(changed.username, `SumitBZM${number}`);
+      assert.equal((await client(ctx.base).post('/auth/login', { username: made.body.username, password: made.body.tempPassword })).status, 401);
+      await as(ctx.base, changed.username.toLowerCase(), made.body.tempPassword);
+    }
+  }
+});
+
+test('manual employee IDs are unique and Corporate usernames use BZ', async () => {
+  const admin = await as(ctx.base, ADMIN);
+  const meta = (await admin.get('/meta')).body;
+  const corporate = meta.verticals.find((v) => v.short === 'Corporate');
+  const body = { first_name: 'Owner', email: 'manual.owner@example.com', join_date: meta.today, vertical_id: corporate.id, code: '087', designation: 'Owner', create_login: true };
+  const made = await admin.post('/employees', body);
+  assert.equal(made.status, 200, JSON.stringify(made.body));
+  assert.equal(made.body.username, 'OwnerBZ087');
+  assert.equal((await admin.get(`/employees/${made.body.id}`)).body.employee.code, '087');
+  await as(ctx.base, 'ownerbz087', made.body.tempPassword);
+  const duplicate = await admin.post('/employees', { ...body, email: 'duplicate.id@example.com' });
+  assert.equal(duplicate.status, 409);
+  assert.match(duplicate.body.error, /employee ID/i);
+  const invalid = await admin.post('/employees', { ...body, email: 'invalid.id@example.com', code: 'bad id!' });
+  assert.equal(invalid.status, 400);
+  const other = await admin.post('/employees', { ...body, email: 'other.id@example.com', code: 'bz901', create_login: false });
+  assert.equal(other.status, 200);
+  assert.equal((await admin.post('/employees', { ...body, email: 'case.duplicate@example.com', code: 'BZ901' })).status, 409);
+  assert.equal((await admin.put(`/employees/${made.body.id}`, { code: 'BZ901' })).status, 409);
+  assert.equal((await admin.put(`/employees/${made.body.id}`, { code: '088' })).status, 200);
+  assert.equal((await admin.get(`/employees/${made.body.id}`)).body.login.username, 'OwnerBZ088');
+  await as(ctx.base, 'OwnerBZ088', made.body.tempPassword);
+});
+
 test('bulk logins and candidate conversion return generated usernames', async () => {
   const hr = await as(ctx.base, HR);
-  const today = (await hr.get('/meta')).body.today;
+  const meta = (await hr.get('/meta')).body;
+  const today = meta.today;
   const employee = await hr.post('/employees', { first_name: 'Bulk', email: 'bulk@example.com', join_date: today, create_login: false });
   assert.equal(employee.status, 200);
   const csv = await hr.post('/users/bulk-create');
@@ -67,7 +116,7 @@ test('bulk logins and candidate conversion return generated usernames', async ()
   assert.match(csv.body, /Username/);
   const bulk = await ctx.db.get('SELECT username FROM users WHERE employee_id = ?', employee.body.id);
   assert.ok(csv.body.includes(bulk.username));
-  const job = await hr.post('/jobs', { title: 'Username integration role' });
+  const job = await hr.post('/jobs', { title: 'Username integration role', vertical_id: meta.verticals.find((v) => v.short === 'Live').id });
   assert.equal(job.status, 200);
   const candidate = await hr.post('/candidates', { job_id: job.body.id, name: 'Candidate Tester', email: 'candidate@example.com' });
   assert.equal(candidate.status, 200);
@@ -88,7 +137,8 @@ test('bulk logins and candidate conversion return generated usernames', async ()
   assert.equal((await hr.post(`/candidates/${candidate.body.id}/offer-status`, { status: 'Accepted' })).status, 200);
   const hired = await hr.post(`/candidates/${candidate.body.id}/hire`, { join_date: today, email: 'hired@example.com', create_login: true });
   assert.equal(hired.status, 200, JSON.stringify(hired.body));
-  assert.match(hired.body.username, /^candidatebz\d+$/);
+  assert.match(hired.body.username, /^CandidateBZL\d+$/);
+  assert.match(await ctx.db.value('SELECT code FROM employees WHERE id = ?', hired.body.employeeId), /^BZ\d+$/);
   await as(ctx.base, hired.body.username, hired.body.tempPassword);
   assert.equal((await hr.post(`/candidates/${candidate.body.id}/hire`, { join_date: today })).status, 409);
   assert.equal((await hr.post(`/candidates/${candidate.body.id}/move`, { stage: 'Rejected' })).status, 409);

@@ -120,13 +120,13 @@ export default function settingsRoutes(r, { db, saveFile }) {
   // ---------- users & roles ----------
   r.get('/users', async (req, res) => {
     requireHR(req);
-    const users = (await db.all(`SELECT u.id, u.email, u.username, u.role, u.active, u.last_login, u.must_change_password, u.employee_id, e.first_name, e.last_name, e.code, e.designation
-      FROM users u LEFT JOIN employees e ON e.id = u.employee_id ORDER BY u.role, e.first_name`)).map((u) => ({ ...u, name: u.first_name ? fullName(u) : u.email }));
+    const users = (await db.all(`SELECT u.id, u.email, u.username, u.role, u.display_name, u.active, u.last_login, u.must_change_password, u.employee_id, e.first_name, e.last_name, e.code, e.designation
+      FROM users u LEFT JOIN employees e ON e.id = u.employee_id ORDER BY u.role, e.first_name`)).map((u) => ({ ...u, name: u.first_name ? fullName(u) : u.display_name || u.email }));
     const without = await db.value("SELECT COUNT(*) FROM employees e LEFT JOIN users u ON u.employee_id = e.id WHERE u.id IS NULL AND e.status != 'Exited'");
-    const passwordRequests = isAdmin(req.user) ? await db.all(`SELECT p.id, p.user_id, p.requested_at, u.username, u.email,
+    const passwordRequests = isAdmin(req.user) ? await db.all(`SELECT p.id, p.user_id, p.requested_at, u.username, u.email, u.display_name,
       e.first_name, e.last_name, e.code FROM password_reset_requests p JOIN users u ON u.id = p.user_id
       LEFT JOIN employees e ON e.id = u.employee_id WHERE p.status = 'Pending' ORDER BY p.requested_at, p.id`) : [];
-    res.json({ users, withoutLogin: without, passwordRequests: passwordRequests.map((p) => ({ ...p, name: fullName(p) || p.username })) });
+    res.json({ users, withoutLogin: without, passwordRequests: passwordRequests.map((p) => ({ ...p, name: p.first_name ? fullName(p) : p.display_name || p.username || p.email })) });
   });
 
   r.put('/users/:id', async (req, res) => {
@@ -238,7 +238,7 @@ export default function settingsRoutes(r, { db, saveFile }) {
   });
 
   // ---------- data management (admin) ----------
-  const TABLES = ['notifications', 'sessions', 'password_reset_requests', 'audit_log', 'candidate_activity', 'interviews', 'onboarding_tasks', 'candidates', 'jobs', 'payslips', 'payroll_runs', 'payroll_adjustments',
+  const TABLES = ['notifications', 'sessions', 'admin_password_reset_tokens', 'password_reset_requests', 'audit_log', 'candidate_activity', 'interviews', 'onboarding_tasks', 'candidates', 'jobs', 'payslips', 'payroll_runs', 'payroll_adjustments',
   'resignations', 'goals', 'reviews', 'review_cycles', 'assets', 'documents', 'requests', 'posh_complaints', 'posh_training', 'policy_acks', 'policies', 'notices',
   'location_log', 'hour_shortfalls', 'work_sessions', 'attendance', 'leave_requests', 'holidays', 'leave_types', 'users', 'employees', 'verticals', 'departments', 'locations', 'settings'];
 
@@ -272,11 +272,12 @@ export default function settingsRoutes(r, { db, saveFile }) {
     requireAdmin(req);
     if (req.body.confirm !== 'START FRESH') fail(400, 'Type START FRESH to confirm');
     const adminEmail = email(req.body.email, { required: true });
+    const adminName = str(req.body.name, { max: 120, name: 'Administrator name' });
     checkPasswordStrength(req.body.password);
     const keep = req.user.id;
     await db.tx(async () => {
       await wipe(keep);
-      await db.run('UPDATE users SET employee_id = NULL, email = ?, password_hash = ?, must_change_password = 0 WHERE id = ?', adminEmail, hashPassword(req.body.password), keep);
+      await db.run('UPDATE users SET employee_id = NULL, display_name = ?, email = ?, password_hash = ?, must_change_password = 0 WHERE id = ?', adminName, adminEmail, hashPassword(req.body.password), keep);
       await db.run('DELETE FROM sessions WHERE user_id = ?', keep);
       await setSetting(db, 'demo', false);
       await setSetting(db, 'companyName', (await getSettings(db)).companyName || DEFAULT_SETTINGS.companyName);

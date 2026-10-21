@@ -63,7 +63,7 @@ export async function openDb({ connectionString, queryClient, pool: suppliedPool
     async exec(sql) { return onClient((target) => queryClient && target.exec ? target.exec(sql) : target.query(sql)); },
     async insert(table, row) {
       const keys = Object.keys(row);
-      const hasId = !['settings', 'sessions', 'attendance', 'policy_acks', 'posh_training'].includes(table);
+      const hasId = !['settings', 'sessions', 'attendance', 'policy_acks', 'posh_training', 'admin_password_reset_tokens'].includes(table);
       const result = await query(`INSERT INTO ${identifier(table)} (${keys.map(identifier).join(',')}) VALUES (${keys.map(() => '?').join(',')})${hasId ? ' RETURNING id' : ''}`, ...keys.map((key) => row[key]));
       return hasId ? result.rows[0].id : null;
     },
@@ -122,6 +122,10 @@ export async function openDb({ connectionString, queryClient, pool: suppliedPool
           [3, '003-profile-photos.sql'],
           [4, '004-attendance-corrections.sql'],
           [5, '005-password-reset-requests.sql'],
+          [6, '006-user-display-names.sql'],
+          [7, '007-vertical-usernames.sql'],
+          [8, '008-corporate-usernames.sql'],
+          [9, '009-admin-password-reset-tokens.sql'],
       ];
       await db.tx(async () => {
         await db.exec('SELECT pg_advisory_xact_lock(7264182026)');

@@ -25,7 +25,7 @@ export function atomicRouter(router, db, onClose) {
         return typeof value === 'function' ? value.bind(target) : value;
       }
       return (path, ...handlers) => {
-        if (method === 'get' || path.endsWith('/ask')) {
+        if (method === 'get' || path.endsWith('/ask') || path === '/auth/password-reset-request') {
           const handler = handlers.pop();
           return target[method](path, ...handlers, track(handler));
         }

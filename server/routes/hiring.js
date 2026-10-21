@@ -3,6 +3,7 @@ import { json } from '../db.js';
 import * as D from '../lib/dates.js';
 import { hashPassword, tempPassword, loginDetails } from '../auth.js';
 import { estimateMonthlyTds } from '../lib/payroll.js';
+import { nextEmployeeCode } from '../services/employee-codes.js';
 
 export const STAGES = ['Applied', 'AI Screened', 'Shortlisted', 'Interview 1', 'Interview 2', 'Offer', 'Hired'];
 const ALL_STAGES = [...STAGES, 'Rejected', 'On Hold'];
@@ -283,10 +284,8 @@ export default function hiringRoutes(r, { db }) {
     const ctc = Math.round((Number(req.body.ctc) || c.offer_ctc || c.expected_ctc || 0) * 100000);
     let temp = null;
     const eid = await db.tx(async () => {
-      const prefix = await db.value("SELECT value FROM settings WHERE key = 'employeeCodePrefix'");
-      const max = (await db.all('SELECT code FROM employees')).map((x) => Number(String(x.code).replace(/\D/g, '')) || 0).reduce((a, b) => Math.max(a, b), 0);
       const newId = await db.insert('employees', {
-        code: `${prefix ? JSON.parse(prefix) : 'BZ'}${String(max + 1).padStart(3, '0')}`, first_name: first, last_name: rest.join(' '), email: workEmail, phone: c.phone,
+        code: await nextEmployeeCode(db), first_name: first, last_name: rest.join(' '), email: workEmail, phone: c.phone,
         vertical_id: job.vertical_id, department_id: job.department_id, location_id: job.location_id, designation: job.title || c.current_title, grade: 'Executive',
         manager_id: job.hiring_manager_id || null, employment_type: job.employment_type || 'Full-time', join_date: joinDate, status: 'Active',
         skills: json(c.skills, []), ctc, monthly_tds: estimateMonthlyTds(ctc)

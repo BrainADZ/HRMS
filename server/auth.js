@@ -67,7 +67,7 @@ export async function destroySession(db, req, res) {
 
 export async function loadUser(db, userId) {
   const row = await db.get(`
-    SELECT u.id, u.email, u.username, u.role, u.employee_id, u.must_change_password, u.active,
+    SELECT u.id, u.email, u.username, u.role, u.display_name, u.employee_id, u.must_change_password, u.active,
            e.first_name, e.last_name, e.designation, e.photo AS employee_photo, u.photo AS account_photo, e.code, e.gender
     FROM users u LEFT JOIN employees e ON e.id = u.employee_id WHERE u.id = ?`, userId);
   if (!row || !row.active) return null;
@@ -77,8 +77,8 @@ export async function loadUser(db, userId) {
     username: row.username,
     role: row.role,
     employeeId: row.employee_id,
-    name: row.first_name ? fullName(row) : row.email,
-    firstName: row.first_name || row.email.split('@')[0],
+    name: row.first_name ? fullName(row) : row.display_name || row.email,
+    firstName: row.first_name || row.display_name?.split(/\s+/)[0] || row.email.split('@')[0],
     designation: row.designation || { admin: 'Administrator', hr: 'HR', manager: 'Manager', employee: 'Employee' }[row.role],
     hasPhoto: Boolean(row.employee_photo || row.account_photo),
     photoUrl: row.employee_photo
