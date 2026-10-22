@@ -12,6 +12,7 @@ if (!/^https?:\/\//.test(apiTarget)) {
 
 export default defineConfig({
   root: here,
+  envDir: path.join(here, '..'),
   plugins: [react()],
   server: {
     port: 5173,

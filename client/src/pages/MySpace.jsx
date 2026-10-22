@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { useApp } from "../context.jsx";
 import { useApi, useAction } from "../lib/hooks.js";
-import { api, download } from "../lib/api.js";
+import { api, apiUrl, download } from "../lib/api.js";
 import {
   greeting,
   fmtDate,
@@ -607,6 +607,7 @@ function Payslips() {
                   {c.note || "—"} · {fmtMonth(c.month)}
                 </div>
               </div>
+              {c.proof_file && <a className="small link" href={apiUrl(`/payroll/adjustments/${c.id}/proof`)} target="_blank" rel="noreferrer">Download proof</a>}
               <Badge>{c.status}</Badge>
               {c.status === "Pending" && (
                 <Button

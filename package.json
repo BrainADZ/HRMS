@@ -10,13 +10,13 @@
   "scripts": {
     "dev": "node server/scripts/dev.js",
     "build": "vite build --config client/vite.config.js",
-    "start": "node --env-file-if-exists=server/.env --disable-warning=ExperimentalWarning server/index.js",
+    "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning server/index.js",
     "test": "node --v8-pool-size=1 --wasm-num-compilation-tasks=1 --test --test-concurrency=1 \"server/tests/*.test.js\"",
     "demo": "node server/demo.js",
-    "db:setup": "node --env-file-if-exists=server/.env server/scripts/db-setup.js",
-    "db:backup": "node --env-file-if-exists=server/.env server/scripts/db-backup.js",
-    "db:verify-backup": "node --env-file-if-exists=server/.env server/scripts/db-verify-backup.js",
-    "test:browser": "node --env-file-if-exists=server/.env node_modules/@playwright/test/cli.js test"
+    "db:setup": "node --env-file-if-exists=.env server/scripts/db-setup.js",
+    "db:backup": "node --env-file-if-exists=.env server/scripts/db-backup.js",
+    "db:verify-backup": "node --env-file-if-exists=.env server/scripts/db-verify-backup.js",
+    "test:browser": "node --env-file-if-exists=.env node_modules/@playwright/test/cli.js test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",

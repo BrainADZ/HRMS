@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '../context.jsx';
 import { useApi, useAction } from '../lib/hooks.js';
-import { api, download } from '../lib/api.js';
+import { api, apiUrl, download } from '../lib/api.js';
 import { inr, inrShort, fmtDate, fmtMonth, addMonths, fmtShort } from '../lib/format.js';
 import { Card, Kpi, Badge, Button, Empty, Loading, ErrorBox, Person, Modal, Select, Pagination, useConfirm, Menu } from '../components/ui.jsx';
 import { Steps, Donut, Legend, Bars, Ring, CAT, STATUS } from '../components/charts.jsx';
@@ -387,7 +387,7 @@ function Adjustments({ items, onChange, locked }) {
           <tr key={a.id}>
             <td><Person name={a.name} sub={a.code} id={a.employee_id} size={28} /></td>
             <td><Badge tone={a.kind === 'Deduction' ? 'red' : a.kind === 'Bonus' ? 'purple' : 'blue'}>{a.kind}</Badge></td>
-            <td className="small muted">{a.note}</td>
+            <td className="small muted">{a.note}{a.proof_file && <div><a className="link" href={apiUrl(`/payroll/adjustments/${a.id}/proof`)} target="_blank" rel="noreferrer">Download proof</a></div>}</td>
             <td className="num b6">{inr(a.amount)}</td>
             <td><Badge>{a.status}</Badge></td>
             <td className="right nowrap">

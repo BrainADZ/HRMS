@@ -4,7 +4,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronsRight, GripHorizontal, LayoutGrid, Menu as MenuIcon, PanelLeft, Search, X } from 'lucide-react';
 import { moduleFor } from './icons.jsx';
-import { useApp } from '../context.jsx';
 
 const MARGIN = 12; // never closer than this to the edge of the screen
 const GAP = 12; // between the button and what it opens
@@ -155,7 +154,6 @@ function usePanel() {
 }
 
 export default function FloatingNav({ items, onDock, focusOnMount }) {
-  const { setVertical } = useApp();
   const { pathname: path } = useLocation();
   const navigate = useNavigate();
   const small = useMedia('(max-width: 760px)');
@@ -217,7 +215,6 @@ export default function FloatingNav({ items, onDock, focusOnMount }) {
     close();
     navigate(to);
   };
-  const showCompany = () => { setVertical(null); go('/'); };
 
   // Escape or a click elsewhere closes it; "[" opens and closes it.
   useEffect(() => {
@@ -269,11 +266,11 @@ export default function FloatingNav({ items, onDock, focusOnMount }) {
           aria-haspopup="dialog" aria-expanded={Boolean(panel) && !closing}
           aria-label="BrainADZ menu. Drag to move it anywhere." title="Open the menu · drag to move"
         >
-          <img src="/favicon.svg" alt="" draggable={false} width={Math.round(size * 0.62)} height={Math.round(size * 0.62)} />
+          <img src={`${import.meta.env.BASE_URL}icon.png`} alt="" draggable={false} width={Math.round(size * 0.62)} height={Math.round(size * 0.62)} />
         </button>
       </div>
       {panel === 'menu' && (
-        <FloatMenu anchor={anchor} items={items} path={path} wide={wide} setWide={setWide} closing={closing} onPicked={close} onQuick={() => show('quick')} onDock={onDock} onBrand={showCompany} />
+        <FloatMenu anchor={anchor} items={items} path={path} wide={wide} setWide={setWide} closing={closing} onPicked={close} onQuick={() => show('quick')} onDock={onDock} />
       )}
       {panel === 'quick' && (
         <QuickAccess anchor={anchor} items={items} path={path} closing={closing} onGo={go} onMenu={() => show('menu')} onDock={onDock} onClose={close} />
@@ -283,7 +280,7 @@ export default function FloatingNav({ items, onDock, focusOnMount }) {
 }
 
 // Floating side menu, opened beside the button on whichever side has room.
-function FloatMenu({ anchor, items, path, wide, setWide, closing, onPicked, onQuick, onDock, onBrand }) {
+function FloatMenu({ anchor, items, path, wide, setWide, closing, onPicked, onQuick, onDock }) {
   const ref = useRef(null);
   const [top, setTop] = useState(anchor.y);
   const [tip, setTip] = useState(null); // { label, x, y, side }
@@ -321,15 +318,6 @@ function FloatMenu({ anchor, items, path, wide, setWide, closing, onPicked, onQu
         ref={ref} role="dialog" aria-label="Menu" style={{ ...side, top }}
         className={`fnav-panel fnav-menu ${wide ? 'wide' : ''} ${closing ? 'closing' : ''} ${anchor.onRight ? 'from-right' : 'from-left'}`}
       >
-        <div className="fnav-head">
-          <button type="button" className="fnav-brand" onClick={onBrand} aria-label="Show all BrainADZ verticals" title="Show all BrainADZ verticals">
-            <img src="/favicon.svg" alt="" width="28" height="28" />
-            <span className="fnav-word"><b>BrainADZ</b><b>HRMS</b></span>
-          </button>
-          <button type="button" className="fnav-expand" onClick={() => setWide(!wide)} aria-label={wide ? 'Show icons only' : 'Show names'} title={wide ? 'Show icons only' : 'Show names'}>
-            <ChevronsRight size={14} strokeWidth={2.4} />
-          </button>
-        </div>
         <nav className="fnav-items" aria-label="Main">
           {items.map((n) => {
             const active = isActivePath(n, path);
@@ -342,6 +330,9 @@ function FloatMenu({ anchor, items, path, wide, setWide, closing, onPicked, onQu
           })}
         </nav>
         <div className="fnav-foot">
+          <button type="button" className="fnav-item" onClick={() => setWide(!wide)} aria-label={wide ? 'Show icons only' : 'Show names'} {...tipProps(wide ? 'Show icons only' : 'Show names')}>
+            <span className="fnav-act-ic"><ChevronsRight size={17} style={{ transform: wide ? 'rotate(180deg)' : undefined }} /></span><span className="lbl">Show icons only</span>
+          </button>
           <button type="button" className="fnav-item" onClick={onQuick} {...tipProps('Quick Access')}>
             <span className="fnav-act-ic"><LayoutGrid size={17} /></span><span className="lbl">Quick Access</span>
           </button>
@@ -405,7 +396,7 @@ function QuickAccess({ anchor, items, path, closing, onGo, onMenu, onDock, onClo
       <div ref={cardRef} role="dialog" aria-label="Quick Access" style={{ width }} className={`fnav-panel fnav-quick ${closing ? 'closing' : ''} ${anchor.onRight ? 'from-right' : 'from-left'}`}>
         <div className="fq-head" {...drag.handlers} title="Drag to move">
           <GripHorizontal size={16} className="fq-grip" aria-hidden="true" />
-          <img src="/favicon.svg" alt="" draggable={false} width="21" height="21" />
+          <img src={`${import.meta.env.BASE_URL}icon.png`} alt="" draggable={false} width="21" height="21" />
           <b>Quick Access</b>
           <button type="button" className="fq-x" onClick={onClose} aria-label="Close Quick Access"><X size={17} /></button>
         </div>

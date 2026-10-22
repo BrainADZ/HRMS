@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { asyncMap } from "../database/async.js";import { today, isHR, isAdmin, requireHR, fullName, str, num, oneOf, id, fail, notFound, getSettings, notifyUsers, audit, sendCsv } from '../core.js';
 import { json } from '../db.js';
 import * as D from '../lib/dates.js';
@@ -14,7 +15,7 @@ function lineFromPayslip(p) {
   };
 }
 
-export default function payrollRoutes(r, { db }) {
+export default function payrollRoutes(r, { db, upload, uploads }) {
   function filterSql(q, alias = 'e') {
     const where = [];
     const params = [];
@@ -262,7 +263,7 @@ export default function payrollRoutes(r, { db }) {
     });
   }
 
-  r.post('/payroll/adjustments', async (req, res) => {
+  r.post('/payroll/adjustments', upload('expense-proofs', { maxMb: 10, exts: ['.jpg', '.jpeg', '.png', '.webp', '.pdf', '.doc', '.docx'] }).single('proof'), async (req, res) => {
     const T = await today(db);
     const hr = isHR(req.user);
     const employeeId = req.body.employee_id ? id(req.body.employee_id) : req.user.employeeId;
@@ -277,11 +278,21 @@ export default function payrollRoutes(r, { db }) {
       employee_id: employeeId, month, kind,
       amount: num(req.body.amount, { required: true, min: 1, max: 10000000, name: 'Amount', int: true }),
       note: str(req.body.note, { max: 200 }),
-      status: hr && req.body.approve ? 'Approved' : 'Pending'
+      proof_file: req.file?.filename || null,
+      proof_name: req.file?.originalname || null,
+      status: hr && (req.body.approve === true || req.body.approve === 'true') ? 'Approved' : 'Pending'
     }));
     if (!hr) await notifyUsers(db, (await db.all("SELECT id FROM users WHERE role IN ('admin','hr') AND active = 1")).map((u) => u.id), `${req.user.name} submitted a reimbursement claim`, `/payroll?month=${month}`);
     res.json({ id: aid });
   });
+  r.get('/payroll/adjustments/:id/proof', async (req, res) => {
+    const claim = (await db.get('SELECT * FROM payroll_adjustments WHERE id = ?', id(req.params.id))) || notFound('Claim');
+    if (!isHR(req.user) && claim.employee_id !== req.user.employeeId) fail(403, 'You can only access your own expense proof');
+    if (!claim.proof_file) notFound('Expense proof');
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.download(path.join(uploads, 'expense-proofs', path.basename(claim.proof_file)), claim.proof_name || 'expense-proof');
+  });
+
   r.put('/payroll/adjustments/:id', async (req, res) => {
     requireHR(req);
     const a = (await db.get('SELECT * FROM payroll_adjustments WHERE id = ?', id(req.params.id))) || notFound('Adjustment');

@@ -1,13 +1,13 @@
 # Environment setup
 
-There is one local environment file: `server/.env`. It contains the PostgreSQL
-connection and any private server settings. Copy `server/.env.example` on a new
+There is one local environment file: `.env`. It contains the PostgreSQL
+connection and any private server settings. Copy `.env.example` on a new
 checkout, set `DATABASE_URL` and `ADMIN_EMAIL`, and keep the file out of Git. Set
 `ADMIN_PASSWORD` or leave it blank to receive a generated temporary password at first
 startup.
 
-In this workspace, the old root `.env` was moved to `server/.env` with its existing
-values preserved.
+Existing server settings are preserved in the root `.env`. Vite reads public
+`VITE_` settings from this same file; private keys are never exposed to the browser.
 
 The React client needs no local env file. It calls `/api`. In development,
 `npm run dev` starts the API and Vite together and gives Vite the API's actual
@@ -35,4 +35,9 @@ origin. Keep database passwords and API keys on the server.
 
 The server uses `DATA_DIR=./data` by default for uploads. Back up both that
 directory and PostgreSQL. For HTTPS behind a trusted proxy, set
-`TRUST_PROXY=1` and `COOKIE_SECURE=true` in `server/.env`.
+`TRUST_PROXY=1` and `COOKIE_SECURE=true` in `.env`.
+
+Set `LOCAL_QUICK_LOGIN=true` for local Admin, Manager and Employee sign-in buttons.
+These select an active registered account for each role, require no password typing,
+and retain location and session checks. They work only on localhost outside production.
+Set it to `false` to disable them. Restart the dev server after changing this flag.

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { api } from './lib/api.js';
 import { setTimeZone } from './lib/format.js';
 import { clearWorkday } from './lib/workday.js';
+import NotificationToast from './components/NotificationToast.jsx';
 
 const AppCtx = createContext(null);
 export const useApp = () => useContext(AppCtx);
@@ -23,10 +24,10 @@ export function AppProvider({ children }) {
   const [toasts, setToasts] = useState([]);
   const [photoVersion, setPhotoVersion] = useState(0);
 
-  const toast = useCallback((text, kind = 'info') => {
+  const dismissToast = useCallback((id) => setToasts((items) => items.filter((item) => item.id !== id)), []);
+  const toast = useCallback((text, kind = 'info', options = {}) => {
     const tid = Math.random().toString(36).slice(2);
-    setToasts((t) => [...t, { id: tid, text, kind }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== tid)), kind === 'error' ? 5500 : 3500);
+    setToasts((t) => [...t, { id: tid, text, kind, onClick: options.onClick }].slice(-4));
   }, []);
 
   const loadMe = useCallback(async () => {
@@ -102,7 +103,7 @@ export function AppProvider({ children }) {
     <AppCtx.Provider value={value}>
       {children}
       <div className="toasts">
-        {toasts.map((t) => <div key={t.id} className={`toast ${t.kind}`}>{t.text}</div>)}
+        {toasts.map((t) => <NotificationToast key={t.id} item={t} onClose={dismissToast} />)}
       </div>
     </AppCtx.Provider>
   );

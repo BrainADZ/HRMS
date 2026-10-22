@@ -33,6 +33,16 @@ export default function Login() {
     setBusy(true);
     setErr(null);
     try {
+      // Development restarts rotate quick-login tokens while this page stays open.
+      // Resolve the selected registered account again immediately before sign-in.
+      if (creds?.quickLoginToken) {
+        const latest = await api.get('/auth/config');
+        setCfg(latest);
+        const account = latest.quickAccounts?.find((a) => a.loginType === creds.loginType
+          && (a.loginType === 'admin' ? a.email === creds.email : a.username === creds.username));
+        if (!account) throw new Error('Quick login is unavailable for this account. Refresh the page or sign in with your password.');
+        creds = { loginType: account.loginType, ...(account.loginType === 'admin' ? { email: account.email } : { username: account.username }), quickLoginToken: account.quickLoginToken };
+      }
       await withLocation((location) => api.post('/auth/login', { ...(creds || { loginType, ...(loginType === 'admin' ? { email } : { username }), password }), ...(location ? { location } : {}) }), { onLocating: setLocating });
       await loadMe();
     } catch (ex) {
@@ -41,6 +51,8 @@ export default function Login() {
       setBusy(false);
     }
   };
+
+  const quickAccounts = cfg?.quickAccounts?.length ? cfg.quickAccounts : (cfg?.demo ? cfg.demoAccounts : []);
 
   const requestPassword = async () => {
     if (loginType === 'admin' ? !email.trim() : !username.trim()) { setErr({ message: loginType === 'admin' ? 'Enter your admin email first.' : 'Enter your employee username first.' }); return; }
@@ -89,14 +101,14 @@ export default function Login() {
             {err && <div className="alert error"><div>{err.message}{err.outside && <div className="mt-8">On an approved work-from-home or leave day you can sign in from anywhere.</div>}</div></div>}
             <button type="submit" className="btn primary lg block" disabled={busy}>{locating ? <MapPin size={18} /> : <LogIn size={18} />}{locating ? 'Checking your location…' : busy ? 'Signing in…' : 'Sign in'}</button>
           </form>
-          {cfg?.demo && cfg.demoAccounts.length > 0 && (
+          {quickAccounts.length > 0 && (
             <div className="mt-16" style={{ marginTop: 28 }}>
-              <div className="small muted b6 mb-8">DEMO ACCOUNTS · password {cfg.demoAccounts[0].password}</div>
+              <div className="small muted b6 mb-8">QUICK LOGIN</div>
               <div className="col" style={{ gap: 8 }}>
-                {cfg.demoAccounts.map((a) => {
-                  const name = a.email.split('@')[0].split('.').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
+                {quickAccounts.map((a) => {
+                  const name = a.name || a.email.split('@')[0].split('.').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ');
                   return (
-                    <button key={a.email} type="button" className="demo-acc" disabled={busy} onClick={() => signIn(null, { loginType: a.loginType, ...(a.loginType === 'admin' ? { email: a.email } : { username: a.username }), password: a.password })}>
+                    <button key={a.email} type="button" className="demo-acc" disabled={busy || requesting} onClick={() => signIn(null, { loginType: a.loginType, ...(a.loginType === 'admin' ? { email: a.email } : { username: a.username }), ...(a.quickLoginToken ? { quickLoginToken: a.quickLoginToken } : { password: a.password }) })}>
                       <Avatar name={name} size={34} />
                       <div className="grow"><div className="b6">{name}</div><div className="small muted">{a.loginType === 'admin' ? a.email : a.username}</div></div>
                       <span className="badge b-blue">{a.label}</span>

@@ -10,7 +10,7 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 const serverOnly = process.argv.includes('--server-only');
 function backendEnvironment() {
   let values = {};
-  try { values = parseEnv(fs.readFileSync(path.join(root, 'server', '.env'), 'utf8')); }
+  try { values = parseEnv(fs.readFileSync(path.join(root, '.env'), 'utf8')); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
   return { ...values, ...process.env, SERVE_CLIENT: 'false' };
 }
@@ -94,6 +94,8 @@ function sourceHash() {
     }
   }
   visit(path.join(root, 'server'));
+  const envFile = path.join(root, '.env');
+  if (fs.existsSync(envFile)) hash.update(fs.readFileSync(envFile));
   return hash.digest('hex');
 }
 

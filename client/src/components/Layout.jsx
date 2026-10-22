@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  CalendarDays, ChartColumnIncreasing, Clock, ShieldCheck, Search, ChevronDown,
+  Search, ChevronDown,
   Menu as MenuIcon, LogOut, KeyRound, User, LayoutGrid, CheckCheck, Camera,
 } from 'lucide-react';
 import { useApp } from '../context.jsx';
@@ -17,7 +17,8 @@ import FloatingNav from './FloatingNav.jsx';
 import {
   IconDashboard, IconMySpace, IconHiring, IconScreener, IconEmployees, IconDocuments,
   IconHolidays, IconPayroll, IconResignation, IconReports, IconSettings,
-  IconBell, VERTICAL_ICONS,
+  IconPolicies, IconPerformance, IconLeave, IconAttendance, IconPosh,
+  IconBell,
 } from './icons.jsx';
 
 export function Logo({ size = '', showHrms = true }) {
@@ -29,17 +30,15 @@ export function Logo({ size = '', showHrms = true }) {
   );
 }
 
-const VSTYLE = { Live: '#E5243B', Marketing: '#E5243B', Exhibits: '#3C9A3A' };
+const VERTICAL_LOGOS = {
+  Live: 'live-optimized.webp',
+  Marketing: 'marketing-optimized.webp',
+  Exhibits: 'exhibits-optimized.webp',
+};
 export function VerticalLogo({ v, active, onClick }) {
-  const Icon = VERTICAL_ICONS[v.short];
   return (
-    <button type="button" className={`vlogo ${active ? 'active' : ''}`} onClick={onClick} title={active ? `Showing ${v.name} only. Click to show all verticals.` : `Show ${v.name} only`}>
-      {Icon && <Icon size={28} className="vi" />}
-      <span className="vt">
-      <span className="b">BrainADZ</span>
-      <span className="n" style={{ color: VSTYLE[v.short] || v.color }}>{v.short}</span>
-      <span className="t">{v.tagline}</span>
-      </span>
+    <button type="button" className={`vlogo ${active ? 'active' : ''}`} onClick={onClick} aria-pressed={Boolean(active)} title={active ? `Showing ${v.name} only. Click to show all verticals.` : `Show ${v.name} only`}>
+      <img className="vertical-logo" src={`${import.meta.env.BASE_URL}${VERTICAL_LOGOS[v.short]}`} alt={v.name} width="126" height="76" />
     </button>
   );
 }
@@ -78,11 +77,11 @@ const NAV = [
   { to: '/screener', label: 'Resume Screener AI', icon: IconScreener, roles: ['admin', 'hr'] },
   { to: '/employees', label: 'Employees', icon: IconEmployees },
   { to: '/documents', label: 'Documents', icon: IconDocuments },
-  { label: 'Policies', icon: ShieldCheck, children: [
-    { to: '/performance', label: 'Appraisal Policy', icon: ChartColumnIncreasing },
-    { to: '/leave', label: 'Leave Policy', icon: CalendarDays },
-    { to: '/attendance', label: 'Attendance Policy', icon: Clock },
-    { to: '/posh', label: 'POSH Policy', icon: ShieldCheck },
+  { label: 'Policies', icon: IconPolicies, children: [
+    { to: '/performance', label: 'Appraisal Policy', icon: IconPerformance },
+    { to: '/leave', label: 'Leave Policy', icon: IconLeave },
+    { to: '/attendance', label: 'Attendance Policy', icon: IconAttendance },
+    { to: '/posh', label: 'POSH Policy', icon: IconPosh },
   ] },
   { to: '/calendar', label: 'Holiday Calendar', icon: IconHolidays },
   { to: '/payroll', label: 'Payroll', icon: IconPayroll, roles: ['admin', 'hr'] },
@@ -133,7 +132,7 @@ function Sidebar({ open, onClose, onFloat }) {
             </NavLink>
           ))}
           <button type="button" className="nav-act" onClick={() => { onClose(); onFloat(); }} title="Use a draggable floating menu">
-            <span className="nav-act-ic" aria-hidden="true">Br</span>Floating menu
+            <img className="nav-act-ic" src={`${import.meta.env.BASE_URL}icon.png`} alt="" width="26" height="26" />Floating menu
           </button>
         </nav>
         <div className="leaf-card">
@@ -195,16 +194,30 @@ function GlobalSearch() {
 }
 
 function Notifications() {
+  const { toast } = useApp();
+  const seen = useRef(null);
+  const mounted = useRef(false);
   const [open, setOpen] = useState(false);
   const [data, setData] = useState({ items: [], unread: 0 });
   const nav = useNavigate();
   const loc = useLocation();
   const ref = useClickOutside(useCallback(() => setOpen(false), []));
-  const load = useCallback(() => api.get('/notifications').then(setData).catch(() => {}), []);
+  const load = useCallback(() => api.get('/notifications').then((result) => {
+    if (!mounted.current) return;
+    if (seen.current) {
+      result.items.filter((item) => !item.read && !seen.current.has(item.id)).slice(0, 4).reverse().forEach((item) => {
+        toast(item.text, 'info', { onClick: () => { setOpen(false); if (item.link) nav(item.link); } });
+      });
+    }
+    if (!seen.current) seen.current = new Set();
+    result.items.forEach((item) => seen.current.add(item.id));
+    setData(result);
+  }).catch(() => {}), [toast, nav]);
   useEffect(() => {
+    mounted.current = true;
     load();
-    const t = setInterval(load, 60000);
-    return () => clearInterval(t);
+    const t = setInterval(load, 15000);
+    return () => { mounted.current = false; clearInterval(t); };
   }, [load, loc.pathname]);
   const click = async (n) => {
     if (!n.read) await api.post(`/notifications/${n.id}/read`).catch(() => {});

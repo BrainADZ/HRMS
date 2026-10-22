@@ -77,16 +77,33 @@ export function RaiseRequestModal({ onClose, onDone }) {
 export function ClaimModal({ onClose, onDone, hr }) {
   const { toast, meta } = useApp();
   const [f, setF] = useState({ employee_id: '', kind: 'Reimbursement', amount: '', note: '', month: meta.today.slice(0, 7), approve: true });
+  const [proof, setProof] = useState(null);
+  const submit = () => {
+    const form = new FormData();
+    for (const [key, value] of Object.entries({ ...f, employee_id: hr ? f.employee_id : undefined })) {
+      if (value !== undefined) form.append(key, String(value));
+    }
+    if (proof) form.append('proof', proof);
+    return api('/payroll/adjustments', { method: 'POST', form });
+  };
   const [run, busy] = useAction(toast);
   return (
     <Modal title={hr ? 'Add payroll adjustment' : 'Submit a reimbursement claim'} onClose={onClose}
-      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={async () => { if (await run(() => api.post('/payroll/adjustments', { ...f, employee_id: hr ? f.employee_id : undefined }), hr ? 'Adjustment added' : 'Claim submitted')) { onDone?.(); onClose(); } }}>Save</Button></>}>
+      footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy} onClick={async () => { if (await run(submit, hr ? 'Adjustment added' : 'Claim submitted')) { onDone?.(); onClose(); } }}>Save</Button></>}>
       <div className="form-grid">
         {hr && <Field label="Employee" className="full"><EmployeeSelect value={f.employee_id} onChange={(e) => setF({ ...f, employee_id: Number(e.target.value) || '' })} /></Field>}
         {hr && <Field label="Type"><Select value={f.kind} onChange={(e) => setF({ ...f, kind: e.target.value })} options={['Reimbursement', 'Bonus', 'Arrears', 'Deduction']} /></Field>}
         <Field label="Amount (₹)"><Input type="number" min="1" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} /></Field>
         <Field label="Payroll month"><Input type="month" value={f.month} onChange={(e) => setF({ ...f, month: e.target.value })} /></Field>
-        <Field label="Note" className="full"><Input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} placeholder={hr ? 'e.g. Performance bonus' : 'e.g. Client travel, bill attached by email'} maxLength={200} /></Field>
+        <Field label="Note" className="full"><Input value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} placeholder={hr ? 'e.g. Performance bonus' : 'e.g. Client travel or office supplies'} maxLength={200} /></Field>
+        <Field label="Expense proof (optional)" className="full" hint="Upload a receipt, bill or supporting document. JPG, PNG, WebP, PDF, DOC or DOCX; up to 10 MB.">
+          <input type="file" accept=".jpg,.jpeg,.png,.webp,.pdf,.doc,.docx" disabled={busy} onChange={(e) => {
+            const file = e.target.files?.[0] || null;
+            if (file && file.size > 10 * 1024 * 1024) { toast('Expense proof must be 10 MB or smaller.', 'error'); e.target.value = ''; setProof(null); return; }
+            setProof(file);
+          }} />
+          {proof && <div className="row gap-8 mt-8 small"><span className="grow">{proof.name}</span><button type="button" className="link" disabled={busy} onClick={(e) => { const input = e.currentTarget.closest('.field')?.querySelector('input[type=file]'); if (input) input.value = ''; setProof(null); }}>Remove</button></div>}
+        </Field>
         {hr && <label className="check full"><input type="checkbox" checked={f.approve} onChange={(e) => setF({ ...f, approve: e.target.checked })} />Approved (include in this month's payroll)</label>}
       </div>
     </Modal>

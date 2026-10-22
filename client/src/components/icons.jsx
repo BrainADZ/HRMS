@@ -59,6 +59,14 @@ const PALM = [
 ];
 
 // ---------- sidebar (duotone) ----------
+export const IconPolicies = (p) => (
+  <Svg {...p}>
+    <path d="M12 2.8 20 6v6c0 4.5-3.5 7.5-8 9.2C7.5 19.5 4 16.5 4 12V6Z" fill={C.indigoSoft} stroke={C.indigo} strokeWidth="2" />
+    <rect x="8" y="7" width="8" height="10" rx="1.4" fill="#fff" stroke={C.indigo} strokeWidth="1.6" />
+    <path d="M10.2 10h3.6M10.2 13h3.6" stroke={C.indigo} strokeWidth="1.6" />
+  </Svg>
+);
+
 export const IconDashboard = (p) => (
   <Svg {...p}>
     <path d="M3.4 10.4 12 3.3l8.6 7.1v8.4a2.2 2.2 0 0 1-2.2 2.2H5.6a2.2 2.2 0 0 1-2.2-2.2Z" fill={C.redSoft} stroke={C.red} strokeWidth="2.2" />

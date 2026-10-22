@@ -14,7 +14,7 @@ const types = { getTypeParser(oid, format) {
   return [20, 1700].includes(oid) && format !== 'binary' ? numberParser : pg.types.getTypeParser(oid, format);
 } };
 export function postgresConfig(env = process.env) {
-  if (!env.DATABASE_URL && !env.PGDATABASE) throw new Error('Set DATABASE_URL, or PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD in server/.env.');
+  if (!env.DATABASE_URL && !env.PGDATABASE) throw new Error('Set DATABASE_URL, or PGHOST/PGPORT/PGDATABASE/PGUSER/PGPASSWORD in .env.');
   const url = new URL(env.DATABASE_URL || 'postgresql://localhost');
   if (!env.DATABASE_URL) {
     url.hostname = env.PGHOST || 'localhost';
@@ -126,6 +126,7 @@ export async function openDb({ connectionString, queryClient, pool: suppliedPool
           [7, '007-vertical-usernames.sql'],
           [8, '008-corporate-usernames.sql'],
           [9, '009-admin-password-reset-tokens.sql'],
+          [10, '010-expense-proof.sql'],
       ];
       await db.tx(async () => {
         await db.exec('SELECT pg_advisory_xact_lock(7264182026)');

@@ -1,3 +1,4 @@
+import { createHmac, randomBytes } from 'node:crypto';
 import { createSession, destroySession, verifyPassword, hashPassword, checkPasswordStrength, loginThrottle, loadUser } from '../auth.js';
 import { getSettings, str, email as validateEmail, fail, audit, today, notifyUsers, fullName } from '../core.js';
 import { endSession, workDate, shiftEnd } from '../services/workday.js';
@@ -9,10 +10,24 @@ import { workflow } from '../database/workflows.js';
 import { requestAdminReset, completeAdminReset, RESET_EMAIL_MESSAGE } from '../services/admin-password-reset.js';
 
 export default function authRoutes(r, { db, passwordResetMailer }) {
+  const quickLoginSecret = randomBytes(32);
+  const quickLoginEnabled = (req) => process.env.LOCAL_QUICK_LOGIN === 'true'
+    && process.env.NODE_ENV !== 'production'
+    && ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress)
+    && ['localhost', '127.0.0.1', '[::1]'].includes(req.hostname);
+  const quickToken = (id) => createHmac('sha256', quickLoginSecret).update(String(id)).digest('hex');
   const exposeDemo = (settings) => Boolean(settings.demo) && process.env.NODE_ENV !== 'production' && process.env.EXPOSE_DEMO_LOGINS !== 'false';
-  r.get('/auth/config', async (_req, res) => {
+  r.get('/auth/config', async (req, res) => {
     const s = await getSettings(db);
+    res.set('Cache-Control', 'no-store');
+    const quickAccounts = quickLoginEnabled(req)
+      ? await db.all("SELECT id, email, username, role, display_name FROM users WHERE active = 1 AND role IN ('admin', 'manager', 'employee') ORDER BY id") : [];
     res.json({
+      quickAccounts: ['admin', 'manager', 'employee'].flatMap((role) => {
+        const user = quickAccounts.find((account) => account.role === role);
+        return user ? [{ email: user.email, username: user.username, name: user.display_name || user.email,
+          label: role[0].toUpperCase() + role.slice(1), loginType: role === 'admin' ? 'admin' : 'employee', quickLoginToken: quickToken(user.id) }] : [];
+      }),
       companyName: s.companyName,
       officeOnly: geofencePolicy(s).mode !== 'off',
       demo: exposeDemo(s),
@@ -33,7 +48,8 @@ export default function authRoutes(r, { db, passwordResetMailer }) {
     const user = loginType === 'admin'
       ? await db.get("SELECT id, password_hash, active FROM users WHERE LOWER(email) = ? AND role = 'admin'", identifier)
       : await db.get("SELECT id, password_hash, active FROM users WHERE LOWER(username) = ? AND role != 'admin'", identifier);
-    if (!user || !user.active || !verifyPassword(password, user.password_hash)) {
+    const quickLogin = quickLoginEnabled(req) && user && req.body?.quickLoginToken === quickToken(user.id);
+    if (!user || !user.active || (!quickLogin && !verifyPassword(password, user.password_hash))) {
       guard.failed();
       fail(401, 'Incorrect login details');
     }

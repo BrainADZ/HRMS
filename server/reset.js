@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 if (!process.argv.includes('--confirm-reset')) {
-  console.error('To reset a demo PostgreSQL database, run: node --env-file=server/.env server/reset.js --confirm-reset');
+  console.error('To reset a demo PostgreSQL database, run: node --env-file=.env server/reset.js --confirm-reset');
   process.exitCode = 1;
 } else {
   let db;
