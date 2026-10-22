@@ -7,6 +7,7 @@ test.afterAll(async () => { await ctx?.close(); });
 
 for (const [role, email, path] of [['employee', 'aarav.mehta@brainadz.com', '/my'], ['manager', 'vikram.patel@brainadz.com', '/']]) {
   test(`${role} sees the full day attendance and live break status on their dashboard`, async ({ page }) => {
+    await page.route('**/api/auth/celebrations', route => route.fulfill({ json: { today: '2026-10-22', birthdays: [], holidays: [] } }));
     const origin = ctx.base.replace(/\/api$/, '');
     const login = await page.request.post(`${ctx.base}/auth/login`, { headers: { 'X-Requested-With': 'hrms' }, data: { ...credentials(ctx.base, email), password: 'Brainadz@2026' } });
     expect(login.ok()).toBe(true);
@@ -36,6 +37,25 @@ for (const [role, email, path] of [['employee', 'aarav.mehta@brainadz.com', '/my
     await page.goto(origin + path);
     const card = page.getByRole('region', { name: "Today's attendance", exact: true });
     await expect(card).toBeVisible();
+    if (role === 'employee') {
+      await expect(page.locator('.employee-greeting')).toBeVisible();
+      await expect(page.locator('main .page-head h1')).toHaveCount(0);
+      await expect(card).toHaveClass(/compact/);
+      const sizes = await card.evaluate(node => {
+        const compact = node.getBoundingClientRect().height;
+        node.classList.remove('compact');
+        const original = node.getBoundingClientRect().height;
+        node.classList.add('compact');
+        return { compact, original };
+      });
+      expect(sizes.compact).toBeLessThan(sizes.original);
+      const greeting = await page.locator('.employee-greeting').boundingBox();
+      const search = await page.locator('.topbar .search').boundingBox();
+      expect(Math.abs((greeting.y + greeting.height / 2) - (search.y + search.height / 2))).toBeLessThan(2);
+    } else {
+      await expect(page.locator('.employee-greeting')).toHaveCount(0);
+      await expect(card).not.toHaveClass(/compact/);
+    }
     await expect(card.locator('.daily-attendance-status')).toHaveText('Working');
     for (const label of ['First check-in', 'Last check-out', 'Worked today', 'Break time', 'Daily target', "Today's activity"]) await expect(card.getByText(label, { exact: true })).toBeVisible();
     await expect(card.getByText('Break 0:15:00', { exact: true })).toBeVisible();
@@ -46,5 +66,6 @@ for (const [role, email, path] of [['employee', 'aarav.mehta@brainadz.com', '/my
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(card).toBeVisible();
     expect(await card.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
 }

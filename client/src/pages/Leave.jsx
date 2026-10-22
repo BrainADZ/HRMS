@@ -15,25 +15,24 @@ import { Ring, HBars, MiniCalendar, Bars, STATUS } from '../components/charts.js
 import { ApplyLeaveModal } from '../components/forms.jsx';
 import { BrandBanner } from '../components/Layout.jsx';
 import { PolicyModal } from './MySpace.jsx';
-import Posh from './Posh.jsx';
 
 export const LEAVE_ICONS = { calendar: Calendar, palm: Palmtree, cross: Cross, baby: Baby, user: User, home: House, ban: Ban };
 
-export default function Leave() {
+export default function Leave({ embedded = false }) {
   const [sp, setSp] = useSearchParams();
   const { meta, user, isHR } = useApp();
   const tab = sp.get('tab') || 'overview';
   const [year, setYear] = useState(Number(meta.today.slice(0, 4)));
-  const tabs = [{ value: 'overview', label: 'Overview' }, { value: 'manage', label: 'Leave Management' }, { value: 'policies', label: 'Policy Management' }, { value: 'posh', label: 'POSH' }, ...(isHR ? [{ value: 'reports', label: 'Reports' }] : [])];
+  const tabs = [{ value: 'overview', label: 'Overview' }, { value: 'manage', label: 'Leave Management' }, { value: 'policies', label: 'Policy Management' }, ...(isHR ? [{ value: 'reports', label: 'Reports' }] : [])];
   return (
     <div>
-      <div className="page-head">
+      {!embedded && <div className="page-head">
         <div>
-          <h1>{greeting()}, {user.firstName}! <span aria-hidden="true">👋</span></h1>
-          <div className="sub">Manage leave, policies and a safe, compliant workplace at BrainADZ.</div>
+          <h1>{greeting()}, {user.firstName}!</h1>
+          <div className="sub">Leave, approvals and company policies at BrainADZ.</div>
         </div>
         <BrandBanner />
-      </div>
+      </div>}
       <div className="row between wrap" style={{ alignItems: 'flex-end' }}>
         <div className="grow"><Tabs value={tab} onChange={(t) => setSp(t === 'overview' ? {} : { tab: t })} tabs={tabs} /></div>
         <div className="row small mb-16" style={{ marginBottom: 16 }}>Policy Year
@@ -45,7 +44,6 @@ export default function Leave() {
       {tab === 'overview' && <Overview year={year} />}
       {tab === 'manage' && <Manage year={year} />}
       {tab === 'policies' && <Policies focus={Number(sp.get('policy')) || null} />}
-      {tab === 'posh' && <Posh embedded />}
       {tab === 'reports' && isHR && <LeaveReports year={year} />}
     </div>
   );
@@ -53,7 +51,7 @@ export default function Leave() {
 
 // ---------------------------------------------------------------- overview
 function Overview({ year }) {
-  const { meta, isHR, user } = useApp();
+  const { isHR, user } = useApp();
   const { data, error, reload } = useApi(`/leave/overview?year=${year}`);
   const [apply, setApply] = useState(false);
   if (error && !data) return <ErrorBox error={error} onRetry={reload} />;
@@ -64,13 +62,12 @@ function Overview({ year }) {
         <Kpi icon={Plane} tone="blue" label="Total Leave Balance" value={data.totalBalance} unit="Days" />
         <Kpi icon={ClipboardList} tone="red" label={isHR ? 'Pending Leave Requests' : 'My Pending Requests'} value={data.pendingRequests} />
         <Kpi icon={UsersRound} tone="amber" label="Pending Approvals" value={data.pendingApprovals} extra={data.pendingApprovals > 0 && <span className="delta"><span className="d" style={{ color: 'var(--text-2)' }}><Clock size={13} /> Avg. {data.avgApprovalAgeDays} days</span></span>} />
-        <Kpi icon={CalendarDays} tone="blue" label="Company Holidays" value={data.holidays} unit="This Year" />
         <Kpi icon={ShieldCheck} tone="green" label="Policy Acknowledgement" value={`${data.policyAckPct}%`} />
       </div>
       <div className="grid">
-        <Card className="span-5" title="Leave Balance Overview" action={user.employeeId && <Button size="sm" variant="primary" icon={Plus} onClick={() => setApply(true)}>Apply leave</Button>}>
+        <Card className="span-7" title="Leave Balance Overview" action={user.employeeId && <Button size="sm" variant="primary" icon={Plus} onClick={() => setApply(true)}>Apply leave</Button>}>
           {data.balances.length ? (
-            <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 10, marginBottom: 0 }}>
+            <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(104px, 1fr))', gap: 10, marginBottom: 0 }}>
               {data.balances.filter((b) => b.quota != null).map((b) => {
                 const Icon = LEAVE_ICONS[b.icon] || Calendar;
                 const total = b.entitled + b.carried;
@@ -87,31 +84,16 @@ function Overview({ year }) {
             </div>
           ) : <Empty text="Leave balances appear for employees" />}
         </Card>
-        <Card className="span-4" title="Leave Request Workflow" action={<Link className="link" to="/leave?tab=manage">View all <ArrowRight size={14} /></Link>}>
+        <Card className="span-5" title="Leave Request Workflow" action={<Link className="link" to="/leave?tab=manage">View all <ArrowRight size={14} /></Link>}>
           <Workflow onChanged={reload} />
         </Card>
-        <Card className="span-3" title="Holiday Calendar" action={<Link className="link" to="/leave?tab=manage#holidays">View all <ArrowRight size={14} /></Link>}>
-          <HolidayCalendar year={year} today={meta.today} />
-        </Card>
       </div>
       <div className="grid">
-        <Card className="span-5" title="Team Leave Calendar"><TeamCalendar /></Card>
-        <Card className="span-4" title="Leave Policy Builder" action={isHR && <Link className="link" to="/settings?tab=leave">Edit Policy <ArrowRight size={14} /></Link>}><PolicyBuilder /></Card>
-        <Card className="span-3" title="Policy Library" action={<Link className="link" to="/leave?tab=policies">View all <ArrowRight size={14} /></Link>}><PolicyLibraryMini /></Card>
+        <Card className="span-12" title="Who's on Leave"><TeamCalendar /></Card>
       </div>
       <div className="grid">
-        <Card className="span-5" title="Policy Acknowledgement"><AckByDepartment /></Card>
-        <Card className="span-4" title="POSH Compliance" action={<Link className="link" to="/posh">View details <ArrowRight size={14} /></Link>}><PoshMini /></Card>
-        <div className="span-3 card" style={{ background: 'linear-gradient(160deg, #fff 0%, #fde9ef 100%)' }}>
-          <div className="row" style={{ alignItems: 'flex-start', gap: 12 }}>
-            <HandHeart size={42} className="red" style={{ flexShrink: 0 }} />
-            <div>
-              <h3 className="red" style={{ fontSize: 16 }}>Confidential POSH Support</h3>
-              <p className="small mt-8" style={{ color: 'var(--text-2)', lineHeight: 1.5 }}>A safe and confidential channel to report harassment at the workplace. You can stay anonymous.</p>
-            </div>
-          </div>
-          <Link to="/posh?raise=1" className="btn solid-red block mt-16">Report / Seek Support <ExternalLink size={15} /></Link>
-        </div>
+        <Card className="span-5" title="Policy Library" action={<Link className="link" to="/leave?tab=policies">View all <ArrowRight size={14} /></Link>}><PolicyLibraryMini /></Card>
+        <Card className="span-7" title="Policy Acknowledgement"><AckByDepartment /></Card>
       </div>
       {apply && <ApplyLeaveModal onClose={() => setApply(false)} onDone={reload} />}
     </div>

@@ -1,3 +1,4 @@
+import { lanAddresses, isLoopback } from '../lib/network.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { getSettings, isHR, today, str, oneOf, id, fail, notFound, requireHR, fullName, notifyUsers, scopeIds, DOC_CATEGORIES } from '../core.js';
@@ -24,6 +25,11 @@ export default function metaRoutes(r, { db, uploads }) {
       icc: await isIcc(db, req.user),
       geofence: { mode: geofencePolicy(s).mode, exempt: (await exemption(db, req.user, s, await today(db)))?.reason || null }
     });
+  });
+
+  r.get('/meta/addresses', (req, res) => {
+    const port = req.socket?.localPort;
+    res.json({ urls: isLoopback(req.socket?.remoteAddress) && port ? lanAddresses().map((ip) => `http://${ip}:${port}`) : [] });
   });
 
   r.get('/files/photo/:employeeId', async (req, res) => {

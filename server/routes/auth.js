@@ -8,8 +8,13 @@ import { DEMO_ACCOUNTS, DEMO_PASSWORD } from '../seed.js';
 import { aiEnabled } from '../services/ai.js';
 import { workflow } from '../database/workflows.js';
 import { requestAdminReset, completeAdminReset, RESET_EMAIL_MESSAGE } from '../services/admin-password-reset.js';
+import { celebrations } from '../services/celebrations.js';
 
 export default function authRoutes(r, { db, passwordResetMailer }) {
+  r.get('/auth/celebrations', async (_req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json(await celebrations(db));
+  });
   const quickLoginSecret = randomBytes(32);
   const quickLoginEnabled = (req) => process.env.LOCAL_QUICK_LOGIN === 'true'
     && process.env.NODE_ENV !== 'production'

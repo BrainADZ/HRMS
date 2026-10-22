@@ -1,9 +1,10 @@
-import { lazy, Suspense } from 'react';
+import { Component, lazy, Suspense } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useApp } from './context.jsx';
 import Layout, { ChangePassword } from './components/Layout.jsx';
 import { Loading } from './components/ui.jsx';
 import Login from './pages/Login.jsx';
+import { OfflineBanner } from './components/InstallApp.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
 
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
@@ -11,10 +12,9 @@ const MySpace = lazy(() => import('./pages/MySpace.jsx'));
 const Hiring = lazy(() => import('./pages/Hiring.jsx'));
 const Screener = lazy(() => import('./pages/Screener.jsx'));
 const Employees = lazy(() => import('./pages/Employees.jsx'));
-const Leave = lazy(() => import('./pages/Leave.jsx'));
+const AttendanceLeave = lazy(() => import('./pages/AttendanceLeave.jsx'));
 const Payroll = lazy(() => import('./pages/Payroll.jsx'));
 const Performance = lazy(() => import('./pages/Performance.jsx'));
-const Attendance = lazy(() => import('./pages/Attendance.jsx'));
 const Posh = lazy(() => import('./pages/Posh.jsx'));
 const Resignation = lazy(() => import('./pages/Resignation.jsx'));
 const Reports = lazy(() => import('./pages/Reports.jsx'));
@@ -29,7 +29,40 @@ function Guard({ roles, children }) {
   return children;
 }
 
+class PageBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { failed: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  // Going to another page clears the message (without rebuilding the page, which would drop
+  // dialogs that stay open across a navigation, such as a new employee's temporary password).
+  componentDidUpdate(prev) {
+    if (prev.path !== this.props.path && this.state.failed) this.setState({ failed: false });
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children;
+    const offline = navigator.onLine === false;
+    return (
+      <div className="card" style={{ padding: 28, maxWidth: 520, margin: '40px auto', textAlign: 'center' }}>
+        <h3 style={{ marginBottom: 8 }}>{offline ? 'This page needs a connection' : 'This page could not open'}</h3>
+        <p className="muted" style={{ marginBottom: 16 }}>{offline ? 'Connect to the internet or office Wi-Fi, then try again.' : 'Reload the app and try again.'}</p>
+        <button type="button" className="btn primary" onClick={() => window.location.reload()}>Try again</button>
+      </div>
+    );
+  }
+}
+
 export default function App() {
+  return <><OfflineBanner /><AppRoutes /></>;
+}
+
+function AppRoutes() {
   const { user, meta } = useApp();
   const location = useLocation();
   if (location.pathname === '/reset-password') return <ResetPassword />;
@@ -43,6 +76,7 @@ export default function App() {
         <Route path="/print/:kind/:id" element={<Print />} />
         <Route path="*" element={(
           <Layout>
+            <PageBoundary path={location.pathname}>
             <Suspense fallback={<Loading />}>
               <Routes>
                 <Route path="/" element={user.role === 'employee' ? <Navigate to="/my" replace /> : <Dashboard />} />
@@ -52,11 +86,11 @@ export default function App() {
                 <Route path="/employees" element={<Employees />} />
                 <Route path="/employees/:id" element={<Employees />} />
                 <Route path="/documents" element={<Documents />} />
-                <Route path="/leave" element={<Leave />} />
+                <Route path="/leave" element={<AttendanceLeave />} />
                 <Route path="/calendar" element={<HolidayCalendar />} />
                 <Route path="/payroll" element={<Guard roles={HR}><Payroll /></Guard>} />
                 <Route path="/performance" element={<Performance />} />
-                <Route path="/attendance" element={<Attendance />} />
+                <Route path="/attendance" element={<AttendanceLeave />} />
                 <Route path="/posh" element={<Posh />} />
                 <Route path="/resignation" element={<Resignation />} />
                 <Route path="/reports" element={<Guard roles={HR}><Reports /></Guard>} />
@@ -64,6 +98,7 @@ export default function App() {
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </Suspense>
+            </PageBoundary>
           </Layout>
         )} />
       </Routes>

@@ -5,7 +5,7 @@ import { fmtDay, fmtTime } from '../lib/format.js';
 import { ClockActions, SessionList } from './WorkClock.jsx';
 import { Loading, ErrorBox, Progress } from './ui.jsx';
 
-export default function DailyAttendance({ data: suppliedData }) {
+export default function DailyAttendance({ data: suppliedData, compact = false }) {
   const { data: fetchedData, error, reload } = useApi(suppliedData ? null : '/dashboard/me');
   const data = suppliedData || fetchedData;
   const s = useWorkday();
@@ -23,7 +23,7 @@ export default function DailyAttendance({ data: suppliedData }) {
   const title = !w ? 'Loading today’s status…' : w.openSince ? 'Working' : w.breakSince ? 'On break' : first ? 'Checked out / paused'
     : status?.code === 'L' ? `On ${status.leave?.name || 'leave'} today` : status?.code === 'H' ? 'Holiday today' : status?.code === 'WO' ? 'Weekly off today' : 'Not checked in yet';
   const summary = data.attendance.monthSummary;
-  return <section className="card daily-attendance" aria-label="Today's attendance">
+  return <section className={`card daily-attendance${compact ? ' compact' : ''}`} aria-label="Today's attendance">
     <div className="row between wrap" style={{ gap: 16 }}>
       <div>
         <h2>Today's attendance</h2>

@@ -26,6 +26,14 @@ const currentPipWindow = () => typeof window !== 'undefined' ? window.documentPi
 let pipWindow = currentPipWindow();
 const pipListeners = new Set();
 const setPip = (w) => { pipWindow = w; pipListeners.forEach((f) => f(w)); };
+let pipGeneration = 0;
+function closeFloatingClock() {
+  pipGeneration++;
+  for (const win of new Set([currentPipWindow(), pipWindow])) {
+    if (win && !win.closed) win.close();
+  }
+  setPip(null);
+}
 
 function syncFloatingStyles(win) {
   if (!win || win.closed) return;
@@ -56,7 +64,9 @@ export async function openFloatingClock() {
     setPip(existing);
     return true;
   }
+  const generation = pipGeneration;
   const win = await window.documentPictureInPicture.requestWindow({ width: 300, height: 245, disallowReturnToOpener: true, preferInitialWindowPlacement: true });
+  if (generation !== pipGeneration) { win.close(); return false; }
   syncFloatingStyles(win);
   win.document.title = 'Work clock';
   win.document.documentElement.classList.add('pip-root');
@@ -74,9 +84,13 @@ function usePipWindow() {
     setPip(win && !win.closed ? win : null);
     const onClose = () => setPip(null);
     win?.addEventListener('pagehide', onClose);
+    window.addEventListener('hrms:signed-out', closeFloatingClock);
+    window.addEventListener('hrms:unauthorized', closeFloatingClock);
     return () => {
       pipListeners.delete(setW);
       win?.removeEventListener('pagehide', onClose);
+      window.removeEventListener('hrms:signed-out', closeFloatingClock);
+      window.removeEventListener('hrms:unauthorized', closeFloatingClock);
     };
   }, []);
   return w;

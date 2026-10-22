@@ -5,13 +5,32 @@ import { useApp } from '../context.jsx';
 import { useApi, useAction } from '../lib/hooks.js';
 import { api, download } from '../lib/api.js';
 import { fmtDate } from '../lib/format.js';
-import { Card, Kpi, Badge, Button, Empty, Loading, ErrorBox, Person, Modal, Field, Input, Select, Textarea, Progress, useConfirm, Pagination, Seg } from '../components/ui.jsx';
+import { Card, Kpi, Badge, Button, Empty, Loading, ErrorBox, Person, Modal, Field, Input, Select, Textarea, Progress, useConfirm, Pagination, Seg, Tabs } from '../components/ui.jsx';
 import { Donut, Legend, Bars, HBars, STATUS } from '../components/charts.jsx';
 import { VerticalFilterNote } from './Dashboard.jsx';
+import AppraisalPolicy from './AppraisalPolicy.jsx';
 
 const STATUS_COLORS = { 'Not Started': STATUS.neutral, 'Self Review': STATUS.warn, 'Manager Review': STATUS.info, Completed: STATUS.good };
 
 export default function Performance() {
+  const [sp, setSp] = useSearchParams();
+  const tab = sp.get('tab') === 'appraisal' && !sp.has('review') ? 'appraisal' : 'performance';
+  return (
+    <div>
+      <div className="page-head"><div><h1>Performance &amp; Appraisal</h1><div className="sub">Performance reviews and the company's appraisal policy. <VerticalFilterNote /></div></div></div>
+      <Tabs value={tab} onChange={(next) => setSp(current => {
+        const params = new URLSearchParams(current);
+        params.delete('review');
+        if (next === 'appraisal') params.set('tab', 'appraisal');
+        else params.delete('tab');
+        return params;
+      })} tabs={[{ value: 'performance', label: 'Performance' }, { value: 'appraisal', label: 'Appraisal Policy' }]} />
+      {tab === 'performance' ? <PerformanceWorkflow /> : <AppraisalPolicy />}
+    </div>
+  );
+}
+
+function PerformanceWorkflow() {
   const { isHR, vertical, isEmployeeOnly } = useApp();
   const [sp, setSp] = useSearchParams();
   const [cycle, setCycle] = useState('');
@@ -32,7 +51,7 @@ export default function Performance() {
   return (
     <div>
       <div className="page-head">
-        <div><h1>Performance</h1><div className="sub">Goals, self reviews and manager reviews for every cycle. <VerticalFilterNote /></div></div>
+        <div><h2>Performance</h2><div className="sub">Goals, self reviews and manager reviews for every cycle.</div></div>
         <div className="filters">
           <select className="select" value={c?.id || ''} onChange={(e) => setCycle(e.target.value)} aria-label="Review cycle">{data.cycles.map((x) => <option key={x.id} value={x.id}>{x.name}{x.status !== 'Active' ? ` (${x.status})` : ''}</option>)}</select>
           {!isEmployeeOnly && <Select value={dept} onChange={(e) => setDept(e.target.value)} placeholder="All Departments" options={meta.departments.map((d) => ({ value: d.id, label: d.name }))} />}

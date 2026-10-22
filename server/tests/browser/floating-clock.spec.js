@@ -7,6 +7,7 @@ test.beforeAll(async () => { ctx = await boot({ serveClient: true }); });
 test.afterAll(async () => { await ctx?.close(); });
 
 async function prepareClock(page, mockPip = true, origin = ctx.base.replace(/\/api$/, '')) {
+  await page.route('**/api/auth/celebrations', route => route.fulfill({ json: { today: '2026-10-22', birthdays: [], holidays: [] } }));
   const login = await page.request.post(`${ctx.base}/auth/login`, {
     headers: { 'X-Requested-With': 'hrms' },
     data: { ...credentials(ctx.base, 'aarav.mehta@brainadz.com'), password: 'Brainadz@2026' },
@@ -29,7 +30,7 @@ async function prepareClock(page, mockPip = true, origin = ctx.base.replace(/\/a
     const start = new Date(Date.now() - 60000).toISOString();
     await route.fulfill({ response, json: {
       ...data, toExplain: 0, toApprove: 0, dayStatus: 'P',
-      workday: { ...data.workday, requiredMinutes: 480, workedMinutes: 0, openSince: start, breakSince: null, awaySince: null, sessions: [{ start, end: null, mode: 'office' }] },
+      workday: { ...data.workday, signedOutAway: false, requiredMinutes: 480, workedMinutes: 0, openSince: start, breakSince: null, awaySince: null, sessions: [{ start, end: null, mode: 'office' }] },
     } });
   });
   await page.goto(origin);
@@ -89,6 +90,24 @@ test('floating timer has a top-right size toggle, no custom back button, and fit
   expect(expanded.width).toBeGreaterThan(compact.width);
   expect(expanded.height).toBeGreaterThan(compact.height);
   await popup.close();
+});
+
+test('pause clock and sign out closes the floating window after successful logout', async ({ page }) => {
+  await prepareClock(page);
+  await page.getByRole('button', { name: 'Work clock', exact: true }).click();
+  const opened = page.waitForEvent('popup');
+  await page.getByRole('button', { name: 'Pop out clock', exact: true }).click();
+  const popup = await opened;
+  await expect(popup.getByLabel('Time worked')).toBeVisible();
+  await page.getByRole('button', { name: 'Account menu', exact: true }).click();
+  await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  const closed = popup.waitForEvent('close');
+  const request = page.waitForRequest(request => request.url().endsWith('/api/auth/logout'));
+  await page.getByRole('button', { name: 'Pause clock and sign out', exact: true }).click();
+  expect((await request).postDataJSON()).toEqual({ pause: true });
+  await closed;
+  expect(popup.isClosed()).toBeTruthy();
+  await expect(page.getByRole('heading', { name: 'Sign in', exact: true })).toBeVisible();
 });
 
 test('development refresh reconnects the existing native timer window', async ({ browser }) => {

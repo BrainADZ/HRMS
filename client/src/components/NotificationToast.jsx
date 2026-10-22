@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { CircleCheck, CircleAlert, Info, X } from 'lucide-react';
 
-const DURATION = 12000;
+const DURATION = 3000;
 export default function NotificationToast({ item, onClose }) {
   const [remaining, setRemaining] = useState(DURATION);
-  const [paused, setPaused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const paused = hovered || focused;
   useEffect(() => {
     if (paused) return;
     let previous = Date.now();
@@ -16,20 +18,24 @@ export default function NotificationToast({ item, onClose }) {
     return () => clearInterval(timer);
   }, [paused]);
   useEffect(() => { if (remaining === 0) onClose(item.id); }, [remaining, item.id, onClose]);
+  const ModuleIcon = item.module?.Icon;
   const Icon = item.kind === 'success' ? CircleCheck : item.kind === 'error' ? CircleAlert : Info;
   return (
-    <div className={`toast ${item.kind}`} role={item.kind === 'error' ? 'alert' : 'status'}>
+    <div className={`toast ${item.kind}`} style={item.module ? { '--module-color': item.module.color, '--module-soft': item.module.soft, '--module-ink': item.module.ink } : undefined} role={item.kind === 'error' ? 'alert' : 'status'}
+      onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+      onFocusCapture={() => setFocused(true)} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false); }}
+      onClick={event => { if (!event.target.closest('button, a') && item.onClick) { item.onClick(); onClose(item.id); } }}>
       <div className="toast-main">
+        {ModuleIcon && <span className="toast-module" title={item.module.label}><ModuleIcon size={24} /></span>}
         <Icon size={20} className="toast-icon" aria-hidden="true" />
         {item.onClick
           ? <button type="button" className="toast-message" onClick={() => { item.onClick(); onClose(item.id); }}>{item.text}</button>
           : <div className="toast-message">{item.text}</div>}
         <button type="button" className="toast-close" aria-label="Close notification" onClick={() => onClose(item.id)}><X size={17} /></button>
       </div>
-      <button type="button" className="toast-timer" onClick={() => setPaused((value) => !value)} aria-pressed={paused}>
+      <div className="toast-timer">
         {paused ? 'Auto-close paused.' : `This message will close in ${Math.ceil(remaining / 1000)} seconds.`}
-        {' '}<strong>{paused ? 'Click to resume.' : 'Click to stop.'}</strong>
-      </button>
+      </div>
       <div className="toast-progress" aria-hidden="true"><span style={{ width: `${remaining / DURATION * 100}%` }} /></div>
     </div>
   );

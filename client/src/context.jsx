@@ -1,4 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { moduleFor } from './components/icons.jsx';
 import { api } from './lib/api.js';
 import { setTimeZone } from './lib/format.js';
 import { clearWorkday } from './lib/workday.js';
@@ -22,13 +24,20 @@ export function AppProvider({ children }) {
   const [meta, setMeta] = useState(null);
   const [vertical, setVerticalState] = useState(readVertical);
   const [toasts, setToasts] = useState([]);
+  const { pathname, search } = useLocation();
+  const navigate = useNavigate();
+  const currentPath = useRef(pathname + search);
+  currentPath.current = pathname + search;
+  const currentUser = useRef(user);
+  currentUser.current = user;
   const [photoVersion, setPhotoVersion] = useState(0);
 
   const dismissToast = useCallback((id) => setToasts((items) => items.filter((item) => item.id !== id)), []);
   const toast = useCallback((text, kind = 'info', options = {}) => {
     const tid = Math.random().toString(36).slice(2);
-    setToasts((t) => [...t, { id: tid, text, kind, onClick: options.onClick }].slice(-4));
-  }, []);
+    const source = options.link || options.module || currentPath.current;
+    setToasts((t) => [...t, { id: tid, text, kind, module: moduleFor((options.module || source).split('?')[0]), onClick: options.onClick || (() => navigate(source)) }].slice(-4));
+  }, [navigate]);
 
   const loadMe = useCallback(async () => {
     try {
@@ -54,8 +63,13 @@ export function AppProvider({ children }) {
   useEffect(() => {
     loadMe();
     const h = () => { clearWorkday(); setUser(null); setMeta(null); };
+    const backOnline = () => { if (currentUser.current === null) loadMe(); };
     window.addEventListener('hrms:unauthorized', h);
-    return () => window.removeEventListener('hrms:unauthorized', h);
+    window.addEventListener('online', backOnline);
+    return () => {
+      window.removeEventListener('hrms:unauthorized', h);
+      window.removeEventListener('online', backOnline);
+    };
   }, [loadMe]);
 
   useEffect(() => {
@@ -80,6 +94,7 @@ export function AppProvider({ children }) {
   // pause: stop the work clock; the next sign-in asks the reason for the gap.
   const logout = useCallback(async ({ pause = false } = {}) => {
     await api.post('/auth/logout', { pause });
+    window.dispatchEvent(new Event('hrms:signed-out'));
     clearWorkday();
     setUser(null);
     setMeta(null);

@@ -2,22 +2,25 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   Search, ChevronDown,
-  Menu as MenuIcon, LogOut, KeyRound, User, LayoutGrid, CheckCheck, Camera,
+  Menu as MenuIcon, LogOut, KeyRound, User, LayoutGrid, CheckCheck, Camera, Smartphone, ChevronsLeft,
 } from 'lucide-react';
 import { useApp } from '../context.jsx';
 import { api } from '../lib/api.js';
-import { ago } from '../lib/format.js';
+import { ago, greeting } from '../lib/format.js';
 import { useClickOutside, useDebounced } from '../lib/hooks.js';
 import { Avatar, Button, Field, Input, Modal } from './ui.jsx';
 import WorkClock, { SignInPrompts, SignOutModal, LocationGuard } from './WorkClock.jsx';
 import { useWorkday } from '../lib/workday.js';
 import CompanyLogo from './CompanyLogo.jsx';
 import ProfilePhoto from './ProfilePhoto.jsx';
+import { BottomBar, MoreSheet } from './MobileNav.jsx';
+import { GetAppModal, InstallBanner } from './InstallApp.jsx';
+import { canOfferApp, useInstall } from '../lib/pwa.js';
 import FloatingNav from './FloatingNav.jsx';
 import {
   IconDashboard, IconMySpace, IconHiring, IconScreener, IconEmployees, IconDocuments,
   IconHolidays, IconPayroll, IconResignation, IconReports, IconSettings,
-  IconPolicies, IconPerformance, IconLeave, IconAttendance, IconPosh,
+  IconPerformance, IconAttendance, IconPosh,
   IconBell,
 } from './icons.jsx';
 
@@ -77,12 +80,9 @@ const NAV = [
   { to: '/screener', label: 'Resume Screener AI', icon: IconScreener, roles: ['admin', 'hr'] },
   { to: '/employees', label: 'Employees', icon: IconEmployees },
   { to: '/documents', label: 'Documents', icon: IconDocuments },
-  { label: 'Policies', icon: IconPolicies, children: [
-    { to: '/performance', label: 'Appraisal Policy', icon: IconPerformance },
-    { to: '/leave', label: 'Leave Policy', icon: IconLeave },
-    { to: '/attendance', label: 'Attendance Policy', icon: IconAttendance },
-    { to: '/posh', label: 'POSH Policy', icon: IconPosh },
-  ] },
+  { to: '/posh', label: 'POSH', icon: IconPosh },
+  { to: '/performance', label: 'Performance & Appraisal', icon: IconPerformance },
+  { to: '/attendance', aliases: ['/leave'], label: 'Attendance & Leave', icon: IconAttendance },
   { to: '/calendar', label: 'Holiday Calendar', icon: IconHolidays },
   { to: '/payroll', label: 'Payroll', icon: IconPayroll, roles: ['admin', 'hr'] },
   { to: '/resignation', label: 'Resignation', icon: IconResignation },
@@ -95,44 +95,29 @@ const readFloating = () => {
   try { return localStorage.getItem(NAV_LAYOUT_KEY) === 'floating'; } catch { return false; }
 };
 
-function Sidebar({ open, onClose, onFloat }) {
+function Sidebar({ open, onClose, onFloat, collapsed, onToggle }) {
   const { user, setVertical } = useApp();
   const { pathname } = useLocation();
-  const [policiesOpen, setPoliciesOpen] = useState(false);
-  const [policiesHovered, setPoliciesHovered] = useState(false);
-  const policiesActive = NAV.find((n) => n.children).children.some((n) => pathname === n.to);
-  const policiesExpanded = policiesOpen || policiesHovered;
-  useEffect(() => { setPoliciesOpen(policiesActive); }, [pathname, policiesActive]);
   const items = NAV.filter((n) => !n.roles || n.roles.includes(user.role));
   return (
     <>
       {open && <div className="scrim" onClick={onClose} />}
-      <aside className={`sidebar ${open ? 'open' : ''}`}>
-        <div className="brand"><Link to={user.role === 'employee' ? '/my' : '/'} onClick={() => { setVertical(null); onClose(); }} style={{ textDecoration: 'none' }} title="Show all BrainADZ verticals"><Logo showHrms={false} /></Link></div>
+      <aside className={`sidebar ${open ? 'open' : ''} ${collapsed ? 'collapsed' : ''}`}>
+        <div className="brand">
+          <Link className="sidebar-brand-home" to={user.role === 'employee' ? '/my' : '/'} onClick={() => { setVertical(null); onClose(); }} style={{ textDecoration: 'none' }} title="Show all BrainADZ verticals">
+            <span className="sidebar-brand-full"><Logo showHrms={false} /></span>
+            <img className="sidebar-brand-icon" src={`${import.meta.env.BASE_URL}icon.png`} alt="BrainADZ" width="40" height="40" />
+          </Link>
+          <button type="button" className="collapse-btn" onClick={onToggle} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!collapsed}><ChevronsLeft size={16} /></button>
+        </div>
         <nav className="nav" aria-label="Main">
-          {items.map((n) => n.children ? (
-            <div key={n.label} className="nav-group" onMouseEnter={() => setPoliciesHovered(true)} onMouseLeave={() => setPoliciesHovered(false)}>
-              <button type="button" className={`nav-group-toggle ${policiesActive ? 'active' : ''}`} aria-expanded={policiesExpanded} aria-controls="policies-submenu"
-                onClick={() => { setPoliciesHovered(false); setPoliciesOpen((value) => !value); }}
-                onKeyDown={(e) => { if (e.key === 'Escape') { setPoliciesOpen(false); setPoliciesHovered(false); } }}>
-                <n.icon size={21} strokeWidth={1.9} />{n.label}
-                <ChevronDown size={16} className={`nav-group-chevron ${policiesExpanded ? 'expanded' : ''}`} />
-              </button>
-              <div id="policies-submenu" className="nav-submenu" hidden={!policiesExpanded}>
-                {n.children.map((child) => (
-                  <NavLink key={child.to} to={child.to} onClick={onClose}>
-                    <child.icon size={17} strokeWidth={1.9} />{child.label}
-                  </NavLink>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <NavLink key={n.to} to={n.to} end={n.end} onClick={onClose}>
-              <n.icon size={21} strokeWidth={1.9} />{n.label}
+          {items.map((n) => (
+            <NavLink key={n.to} to={n.to} end={n.end} title={n.label} className={({ isActive }) => isActive || n.aliases?.includes(pathname) ? 'active' : undefined} onClick={onClose}>
+              <n.icon size={21} strokeWidth={1.9} /><span className="nav-label">{n.label}</span>
             </NavLink>
           ))}
           <button type="button" className="nav-act" onClick={() => { onClose(); onFloat(); }} title="Use a draggable floating menu">
-            <img className="nav-act-ic" src={`${import.meta.env.BASE_URL}icon.png`} alt="" width="26" height="26" />Floating menu
+            <img className="nav-act-ic" src={`${import.meta.env.BASE_URL}icon.png`} alt="" width="26" height="26" /><span className="nav-label">Floating menu</span>
           </button>
         </nav>
         <div className="leaf-card">
@@ -283,7 +268,7 @@ export function ChangePassword({ onClose, forced }) {
   );
 }
 
-function UserMenu() {
+function UserMenu({ onGetApp }) {
   const { user, logout, toast } = useApp();
   const workday = useWorkday();
   const [open, setOpen] = useState(false);
@@ -305,13 +290,14 @@ function UserMenu() {
         <ChevronDown size={18} className="muted" />
       </button>
       {open && (
-        <div className="dropdown" style={{ width: 240 }}>
+        <div className="dropdown account-menu">
           <div className="head" style={{ display: 'block' }}><div>{user.name}</div><div className="small muted" style={{ fontWeight: 400 }}>{user.email} · {user.role}</div></div>
-          <div className="item" onClick={() => { setOpen(false); nav('/my'); }}><LayoutGrid size={16} />My Space</div>
-          {user.employeeId && <div className="item" onClick={() => { setOpen(false); nav(`/employees/${user.employeeId}`); }}><User size={16} />My profile</div>}
-          <button type="button" className="item" style={{ width: '100%', border: 0, background: 'transparent', textAlign: 'left' }} onClick={() => { setOpen(false); setPhoto(true); }}><Camera size={16} />Change photo</button>
-          <div className="item" onClick={() => { setOpen(false); setPw(true); }}><KeyRound size={16} />Change password</div>
-          <div className="item" style={{ color: 'var(--red)' }} onClick={signOut}><LogOut size={16} />Sign out</div>
+          <button type="button" className="item" onClick={() => { setOpen(false); nav('/my'); }}><LayoutGrid size={16} />My Space</button>
+          {user.employeeId && <button type="button" className="item" onClick={() => { setOpen(false); nav(`/employees/${user.employeeId}`); }}><User size={16} />My profile</button>}
+          <button type="button" className="item" onClick={() => { setOpen(false); setPhoto(true); }}><Camera size={16} />Change photo</button>
+          <button type="button" className="item" onClick={() => { setOpen(false); setPw(true); }}><KeyRound size={16} />Change password</button>
+          {onGetApp && <button type="button" className="item" onClick={() => { setOpen(false); onGetApp(); }}><Smartphone size={16} />Get the mobile app</button>}
+          <button type="button" className="item" style={{ color: 'var(--red)' }} onClick={signOut}><LogOut size={16} />Sign out</button>
         </div>
       )}
       {pw && <ChangePassword onClose={() => setPw(false)} />}
@@ -326,6 +312,23 @@ export default function Layout({ children }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [floating, setFloating] = useState(readFloating);
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem('hrms.sidebar') === 'collapsed'; } catch { return false; }
+  });
+  const toggleCollapsed = useCallback(() => setCollapsed(value => {
+    try { localStorage.setItem('hrms.sidebar', value ? 'expanded' : 'collapsed'); } catch { /* storage unavailable */ }
+    return !value;
+  }), []);
+  useEffect(() => {
+    if (floating) return;
+    const onKey = event => {
+      if (event.key !== '[' || event.ctrlKey || event.metaKey || event.altKey || window.innerWidth <= 1100) return;
+      if (event.target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(event.target.tagName)) return;
+      toggleCollapsed();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [floating, toggleCollapsed]);
   const focusFloat = useRef(false);
   const goFloating = () => {
     focusFloat.current = true;
@@ -337,15 +340,23 @@ export default function Layout({ children }) {
     try { localStorage.setItem(NAV_LAYOUT_KEY, 'docked'); } catch { /* Storage unavailable */ }
     setTimeout(() => document.querySelector('.nav-act')?.focus({ preventScroll: true }), 60);
   };
-  const floatItems = NAV.filter((n) => !n.roles || n.roles.includes(user.role)).flatMap((n) => n.children || [n]);
+  const floatItems = NAV.filter((n) => !n.roles || n.roles.includes(user.role));
+  const [more, setMore] = useState(false);
+  const [getApp, setGetApp] = useState(false);
+  const app = useInstall();
+  const offerApp = canOfferApp() && !app.installed ? () => setGetApp(true) : null;
   const verticals = (meta?.verticals || []).filter((v) => v.short !== 'Corporate');
   return (
-    <div className={`app ${floating ? 'nav-floating' : ''}`}>
-      <Sidebar open={open} onClose={() => setOpen(false)} onFloat={goFloating} />
+    <div className={`app ${floating ? 'nav-floating' : ''} ${collapsed ? 'nav-collapsed' : ''}`}>
+      <Sidebar collapsed={collapsed} onToggle={toggleCollapsed} open={open} onClose={() => setOpen(false)} onFloat={goFloating} />
       {floating && <FloatingNav items={floatItems} onDock={dock} focusOnMount={focusFloat} />}
       <div className="main">
-        <header className="topbar no-print">
+        <header className={`topbar no-print${user.role === 'employee' ? ' employee-topbar' : ''}`}>
           <button type="button" className="icon-btn burger" aria-label="Open menu" onClick={() => setOpen(true)}><MenuIcon size={22} /></button>
+          {user.role === 'employee' && <div className="employee-greeting">
+            <h2>{greeting()}, {user.firstName}!</h2>
+            <div>Your attendance, leave, pay and requests in one place.</div>
+          </div>}
           {user.role !== 'employee' && (
             <div className="verticals">
               {verticals.map((v) => <VerticalLogo key={v.id} v={v} active={vertical === v.id} onClick={() => { setVertical(vertical === v.id ? null : v.id); navigate('/'); }} />)}
@@ -355,10 +366,13 @@ export default function Layout({ children }) {
           <GlobalSearch />
           <WorkClock />
           <Notifications />
-          <UserMenu />
+          <UserMenu onGetApp={offerApp} />
         </header>
-        <main className="content">{children}</main>
+        <main className="content"><InstallBanner onHow={() => setGetApp(true)} />{children}</main>
       </div>
+      <BottomBar items={floatItems} moreOpen={more} onMore={() => setMore(true)} />
+      {more && <MoreSheet items={floatItems} onClose={() => setMore(false)} onGetApp={offerApp} />}
+      {getApp && <GetAppModal onClose={() => setGetApp(false)} />}
       {user.mustChangePassword && <ChangePassword forced onClose={() => {}} />}
       <SignInPrompts />
       <LocationGuard />

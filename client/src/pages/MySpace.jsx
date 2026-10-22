@@ -50,6 +50,7 @@ import { NoticeBoard } from "./Dashboard.jsx";
 import { AttentionBanner } from "../components/WorkClock.jsx";
 import { useOnWorkdayChange } from "../lib/workday.js";
 import DailyAttendance from "../components/DailyAttendance.jsx";
+import CelebrationBoard from '../components/CelebrationBoard.jsx';
 import { EmployeeForm, Onboarding } from "./Employees.jsx";
 
 export default function MySpace() {
@@ -58,16 +59,18 @@ export default function MySpace() {
   const { user } = useApp();
   return (
     <div>
-      <div className="page-head">
+      {user.role !== 'employee' && <div className="page-head">
         <div>
           <h1>
-            {greeting()}, {user.firstName}! <span aria-hidden="true">👋</span>
+            {greeting()}, {user.firstName}!
           </h1>
           <div className="sub">
             Your attendance, leave, pay and requests in one place.
           </div>
         </div>
-      </div>
+      </div>}
+      {user.role === 'employee' && <h1 className="sr-only">My Space</h1>}
+      <CelebrationBoard />
       <Tabs
         value={tab}
         onChange={(t) => setSp(t === "overview" ? {} : { tab: t })}
@@ -104,14 +107,13 @@ function Overview() {
     <div>
       <AttentionBanner />
       <div className="grid">
-        <div className="span-8">
-          <DailyAttendance data={data} />
+        <div className="span-12">
+          <DailyAttendance data={data} compact />
         </div>
-        <Card className="span-4" title="Quick actions">
+        <Card className="span-12 quick-actions" title="Quick actions">
           <div
-            className="grid"
+            className="quick-actions-row"
             style={{
-              gridTemplateColumns: "repeat(2, 1fr)",
               gap: 10,
               marginBottom: 0,
             }}
@@ -296,25 +298,6 @@ function Overview() {
               <Empty icon={Wallet} text="No payslips yet" />
             )}
           </Card>
-          <Card title="Upcoming holidays">
-            {data.holidays.length ? (
-              data.holidays.map((h) => (
-                <div
-                  key={h.id}
-                  className="list-item"
-                  style={{ padding: "7px 0" }}
-                >
-                  <span className="grow">{h.name}</span>
-                  <Badge tone={h.type === "Company" ? "blue" : "pink"}>
-                    {h.type}
-                  </Badge>
-                  <span className="small muted nowrap">{fmtDay(h.date)}</span>
-                </div>
-              ))
-            ) : (
-              <Empty text="No upcoming holidays" />
-            )}
-          </Card>
         </div>
       </div>
 
@@ -391,9 +374,10 @@ function Overview() {
           )}
         </Card>
         <div className="span-4 col" style={{ gap: 16 }}>
-          <Card title="Celebrations">
+          {data.celebrations.some((c) => c.kind !== "Birthday" && c.date === data.today) && <>
+          <Card title="Work anniversaries today">
             {data.celebrations.length ? (
-              data.celebrations.map((c) => (
+              data.celebrations.filter((c) => c.kind !== "Birthday" && c.date === data.today).map((c) => (
                 <div
                   key={`${c.id}${c.kind}`}
                   className="list-item"
@@ -422,6 +406,7 @@ function Overview() {
               <Empty text="No celebrations in the next 2 weeks" />
             )}
           </Card>
+          </>}
           <div className="card tight">
             <NoticeBoard notices={data.notices} onChange={reload} compact />
           </div>

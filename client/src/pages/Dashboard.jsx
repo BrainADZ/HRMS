@@ -58,6 +58,7 @@ import {
 import { BrandBanner } from "../components/Layout.jsx";
 import { AttentionBanner } from "../components/WorkClock.jsx";
 import DailyAttendance from "../components/DailyAttendance.jsx";
+import CelebrationBoard from '../components/CelebrationBoard.jsx';
 
 const NOTICE_ICON = {
   health: HeartPulse,
@@ -285,7 +286,7 @@ export default function Dashboard() {
       <div className="page-head">
         <div>
           <h1>
-            {greeting()}, {user.firstName}! <span aria-hidden="true">👋</span>
+            {greeting()}, {user.firstName}!
           </h1>
           <div className="sub">
             Here's what's happening across{" "}
@@ -297,6 +298,7 @@ export default function Dashboard() {
         </div>
         <BrandBanner />
       </div>
+      <CelebrationBoard />
       <AttentionBanner />
       {user.employeeId && <div className="mb-16"><DailyAttendance /></div>}
 

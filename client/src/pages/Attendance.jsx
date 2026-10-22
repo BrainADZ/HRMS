@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { UserCheck, House, Clock, UserX, CalendarX, AlarmClock, CircleDashed, Download, CheckCheck, MapPin } from 'lucide-react';
 import { fmtDistance } from '../lib/location.js';
 import { useApp } from '../context.jsx';
-import { useApi, useAction, useClickOutside } from '../lib/hooks.js';
+import { useApi, useAction } from '../lib/hooks.js';
 import { api, download } from '../lib/api.js';
 import { fmtTime, fmtDay, addMonths, fmtMonth, dowOf } from '../lib/format.js';
 import { Card, Kpi, Badge, Button, Tabs, Empty, Loading, ErrorBox, Person, Select, Input, Modal, Field, Textarea, Progress, Seg } from '../components/ui.jsx';
@@ -14,7 +14,7 @@ import { useWorkday, useNow, workedNow, clockText, useOnWorkdayChange, refreshWo
 const LABEL = { P: 'Present', WFH: 'WFH', HD: 'Half day', A: 'Absent', L: 'On leave', H: 'Holiday', WO: 'Weekly off', U: 'Not marked', F: 'Not marked yet', NA: '—' };
 const TONE = { P: 'green', WFH: 'amber', HD: 'amber', A: 'red', L: 'purple', H: 'blue', WO: 'gray', U: 'gray', F: 'gray' };
 
-export default function Attendance() {
+export default function Attendance({ embedded = false }) {
   const [sp, setSp] = useSearchParams();
   const { isHR, isManager, isAdmin } = useApp();
   const s = useWorkday();
@@ -23,9 +23,9 @@ export default function Attendance() {
   const shortCount = (s?.toExplain || 0) + (s?.toApprove || 0);
   return (
     <div>
-      <div className="page-head">
+      {!embedded && <div className="page-head">
         <div><h1>Attendance</h1><div className="sub">Check-ins, work from home and the monthly register that feeds payroll. <VerticalFilterNote /></div></div>
-      </div>
+      </div>}
       <Tabs value={tab} onChange={(t) => setSp({ tab: t })} tabs={[{ value: 'today', label: 'Today' }, { value: 'month', label: team ? 'Monthly Register' : 'My Attendance' }, { value: 'short', label: shortCount ? `Short hours (${shortCount})` : 'Short hours' }, { value: 'corrections', label: 'Corrections' }, { value: 'locations', label: 'Location log' }]} />
       {tab === 'today' && <Today />}
       {tab === 'month' && <Register />}
@@ -97,13 +97,15 @@ function Today() {
       )}
       {s && (
         <>
-          <div className="kpis" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
+          <div className="attendance-summary">
+          <div className="kpis attendance-kpis">
             <Kpi icon={UserCheck} tone="green" label="Present" value={s.present} onClick={() => setFilter(filter === 'P' ? '' : 'P')} />
             <Kpi icon={House} tone="amber" label="Work From Home" value={s.wfh} onClick={() => setFilter(filter === 'WFH' ? '' : 'WFH')} />
             <Kpi icon={CalendarX} tone="purple" label="On Leave" value={s.onLeave} onClick={() => setFilter(filter === 'L' ? '' : 'L')} />
             <Kpi icon={UserX} tone="red" label="Absent" value={s.absent} onClick={() => setFilter(filter === 'A' ? '' : 'A')} />
             <Kpi icon={CircleDashed} tone="gray" label="Not Marked" value={s.notMarked} onClick={() => setFilter(filter === 'NM' ? '' : 'NM')} />
             <Kpi icon={AlarmClock} tone="red" label="Late Check-ins" value={s.late} onClick={() => setFilter(filter === 'late' ? '' : 'late')} />
+          </div>
           </div>
           <Card flush title={<>{isHR ? 'Everyone' : 'My team'} today {filter && <Badge tone="blue">{filter === 'NM' ? 'Not marked' : filter === 'late' ? 'Late' : LABEL[filter]} <button type="button" style={{ border: 0, background: 'none', cursor: 'pointer', color: 'inherit' }} onClick={() => setFilter('')}>✕</button></Badge>}</>}
             action={(isHR || isManager) && unmarked.length > 0 && <Button size="sm" icon={CheckCheck} loading={busy} style={{ marginRight: 18 }} onClick={async () => { if (await run(() => api.post('/attendance/bulk', { date: data.today, status: 'P', employee_ids: unmarked.map((r) => r.id) }), (o) => `Marked ${o.count} present`)) reload(); }}>Mark {unmarked.length} unmarked present</Button>}>
@@ -143,10 +145,9 @@ function Register() {
   const [q, setQ] = useState('');
   const { data, error, reload, setData } = useApi(`/attendance/register?month=${month}${vertical ? `&vertical=${vertical}` : ''}${dept ? `&department=${dept}` : ''}`);
   const [pick, setPick] = useState(null);
-  const [run] = useAction(toast);
+  const [run, busy] = useAction(toast);
   const rows = useMemo(() => (data?.rows || []).filter((r) => !q || r.name.toLowerCase().includes(q.toLowerCase())), [data, q]);
   const close = useCallback(() => setPick(null), []);
-  const ref = useClickOutside(close);
   if (error && !data) return <ErrorBox error={error} onRetry={reload} />;
   const team = isHR || isManager;
   const setMark = async (row, date, status) => {
@@ -172,47 +173,68 @@ function Register() {
         {['P', 'WFH', 'HD', 'A', 'L', 'H', 'U'].map((c) => <span key={c} className="row gap-4"><span className={`cell c-${c}`} style={{ width: 22, height: 18, borderRadius: 5, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 700 }}>{c === 'U' ? '·' : c === 'L' ? 'L' : c.slice(0, 2)}</span>{LABEL[c]}</span>)}
         {team && <span className="muted">· Click a past day to change it. Unmarked past days are paid as {data?.unmarkedAs || 'present'}.</span>}
       </div>
-      {!data ? <Loading /> : (
-        <div className="card" style={{ padding: 0 }}>
-          <div className="table-wrap" style={{ maxHeight: '70vh', overflow: 'auto' }}>
-            <table className="reg">
-              <thead><tr>
-                <th className="name" style={{ paddingLeft: 14 }}>Employee</th>
-                {data.days.map((d) => <th key={d} className={data.weeklyOffs.includes(dowOf(d)) ? 'we' : ''}>{Number(d.slice(8))}<div style={{ fontWeight: 500, fontSize: 9.5 }}>{new Date(`${d}T00:00:00Z`).toLocaleString('en-US', { weekday: 'narrow', timeZone: 'UTC' })}</div></th>)}
-                {['P', 'WFH', 'L', 'A', 'LOP'].map((h) => <th key={h} style={{ minWidth: 40, padding: '6px 6px' }}>{h}</th>)}
-              </tr></thead>
-              <tbody>{rows.map((r) => (
-                <tr key={r.id}>
-                  <td className="name" style={{ paddingLeft: 14 }}><Person name={r.name} sub={r.code} id={r.id} hasPhoto={r.has_photo} size={26} /></td>
-                  {r.days.map((d) => {
-                    const can = r.canMark && d.date <= data.today && !['H', 'WO', 'L', 'NA'].includes(d.code);
-                    const title = `${d.date}: ${d.code === 'L' ? d.leave : LABEL[d.code]}${d.in ? ` · in ${d.in}` : ''}${d.out ? ` · out ${d.out}` : ''}${d.late ? ' · late' : ''}`;
-                    return (
-                      <td key={d.date} className={data.weeklyOffs.includes(dowOf(d.date)) ? 'we' : ''} style={{ position: 'relative' }}>
-                        <button type="button" className={`cell c-${d.code} ${can ? 'can' : ''}`} title={title} disabled={!can} onClick={() => can && setPick({ row: r, date: d.date })}
-                          style={d.late ? { boxShadow: 'inset 0 -2px 0 #f2a600' } : undefined}>
-                          {d.code === 'L' ? d.leave : d.code === 'WO' || d.code === 'F' || d.code === 'NA' ? '' : d.code === 'U' ? '·' : d.code === 'WFH' ? 'W' : d.code}
-                        </button>
-                        {pick && pick.row.id === r.id && pick.date === d.date && (
-                          <div ref={ref} className="dropdown" style={{ left: 0, right: 'auto', minWidth: 130, top: '100%' }}>
-                            {['P', 'WFH', 'HD', 'A'].map((c) => <div key={c} className="item" onClick={() => setMark(r, d.date, c)}><span className={`cell c-${c}`} style={{ width: 22, height: 18, borderRadius: 5, display: 'inline-block' }} />{LABEL[c]}</div>)}
-                            <div className="item muted" onClick={() => setMark(r, d.date, null)}>Clear</div>
-                          </div>
-                        )}
-                      </td>
-                    );
-                  })}
-                  <td className="b6">{r.summary.P}</td><td>{r.summary.WFH}</td><td>{r.summary.L}</td><td className={r.summary.A ? 'red b6' : ''}>{r.summary.A}</td><td className={r.summary.lop ? 'red b6' : 'muted'}>{r.summary.lop}</td>
-                </tr>
-              ))}</tbody>
-            </table>
-            {!rows.length && <Empty text="No employees" />}
-          </div>
+      {!data ? <Loading /> : !team ? <PersonalAttendance rows={rows} data={data} /> : <EmployeeRegisterCards rows={rows} data={data} onPick={setPick} />}
+      {pick && <Modal title={`Mark attendance · ${pick.row.name}`} size="narrow" onClose={close}>
+        <p className="small muted mb-12">{fmtDay(pick.date)} · {LABEL[pick.row.days.find(day => day.date === pick.date)?.code] || 'Not marked'}</p>
+        <div className="row wrap gap-8">{['P', 'WFH', 'HD', 'A'].map(code => <Button key={code} disabled={busy} onClick={() => setMark(pick.row, pick.date, code)}>{LABEL[code]}</Button>)}
+          <Button disabled={busy} onClick={() => setMark(pick.row, pick.date, null)}>Clear</Button>
         </div>
-      )}
+      </Modal>}
       <div className="small muted mt-12"><Clock size={13} style={{ verticalAlign: -2 }} /> LOP = loss-of-pay days used by payroll (absent, half days, unpaid leave).</div>
     </div>
   );
+}
+
+function EmployeeRegisterCards({ rows, data, onPick }) {
+  const offset = data.days.length ? (new Date(`${data.days[0]}T00:00:00Z`).getUTCDay() + 6) % 7 : 0;
+  return <div className="employee-register">
+    <div className="employee-register-grid">
+      {rows.map(row => <section key={row.id} className="card employee-register-card" aria-label={`${row.name} attendance`}>
+        <div className="employee-register-heading"><Person name={row.name} sub={row.code} id={row.id} hasPhoto={row.has_photo} size={30} /><div className="xs muted">{data.label}</div></div>
+        <div className="employee-register-calendar" aria-label={`${row.name} monthly calendar`}>
+          {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, index) => <span key={`week-${index}`} className="employee-register-weekday">{day}</span>)}
+          {Array.from({ length: offset }, (_, index) => <span key={`blank-${index}`} aria-hidden="true" />)}
+          {row.days.map(day => {
+            const canMark = row.canMark && day.date <= data.today && !['H', 'WO', 'L', 'NA'].includes(day.code);
+            const label = `${row.name}, ${day.date}: ${day.code === 'L' ? day.leave : LABEL[day.code] || day.code}${day.in ? ` · in ${day.in}` : ''}${day.out ? ` · out ${day.out}` : ''}${day.late ? ' · late' : ''}`;
+            const code = day.code === 'L' ? day.leave || 'L' : ['U', 'F', 'NA'].includes(day.code) ? '—' : day.code;
+            return <button key={day.date} type="button" className={`employee-register-day c-${day.code} ${day.date === data.today ? 'is-today' : ''} ${day.late ? 'is-late' : ''}`} title={label} aria-label={label} disabled={!canMark} onClick={() => onPick({ row, date: day.date })}>
+              <time dateTime={day.date}>{Number(day.date.slice(8))}</time><span>{code}</span>
+            </button>;
+          })}
+        </div>
+        <div className="employee-register-totals">
+          <span>Present <b>{row.summary.P}</b></span><span>WFH <b>{row.summary.WFH}</b></span><span>Leave <b>{row.summary.L}</b></span><span>Absent <b>{row.summary.A}</b></span><span>LOP <b>{row.summary.lop}</b></span>
+        </div>
+      </section>)}
+    </div>
+    {!rows.length && <Empty text="No employees match these filters" />}
+  </div>;
+}
+
+function PersonalAttendance({ rows, data }) {
+  return <div className="personal-attendance">
+    {rows.map(row => {
+      const offset = (new Date(`${data.days[0]}T00:00:00Z`).getUTCDay() + 6) % 7;
+      return <Card key={row.id} title="My attendance" sub={data.label}>
+        <div className="row wrap gap-12 mb-16 small">
+          <span>Present <b>{row.summary.P}</b></span><span>WFH <b>{row.summary.WFH}</b></span>
+          <span>Leave <b>{row.summary.L}</b></span><span>Absent <b>{row.summary.A}</b></span><span>LOP <b>{row.summary.lop}</b></span>
+        </div>
+        <div className="attendance-calendar" aria-label="Monthly attendance calendar">
+          {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => <div key={day} className="attendance-weekday">{day}</div>)}
+          {Array.from({ length: offset }, (_, index) => <div key={`space-${index}`} aria-hidden="true" />)}
+          {row.days.map(day => <div key={day.date} className={`attendance-day ${day.date === data.today ? 'is-today' : ''} ${['H', 'WO'].includes(day.code) ? 'is-off' : ''}`} aria-label={`${day.date}: ${LABEL[day.code] || day.code}`}>
+            <time dateTime={day.date}>{Number(day.date.slice(8))}</time>
+            <Badge tone={TONE[day.code]}>{day.code === 'L' ? day.leave || 'On leave' : LABEL[day.code] || day.code}</Badge>
+            {(day.in || day.out) && <div className="attendance-day-times"><span>In {day.in || '—'}</span><span>Out {day.out || '—'}</span></div>}
+            {day.late && <span className="xs amber">Late</span>}
+          </div>)}
+        </div>
+      </Card>;
+    })}
+    {!rows.length && <Empty text="No attendance records for this month" />}
+  </div>;
 }
 
 // ---------- short hours ----------

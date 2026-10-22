@@ -40,7 +40,7 @@ const keepOnScreen = (p, w, h) => {
   const vp = viewport();
   return { ...p, x: clamp(p.x, MARGIN, vp.w - w - MARGIN), y: clamp(p.y, MARGIN, vp.h - h - MARGIN) };
 };
-const isActivePath = (n, path) => (n.end ? path === n.to : path === n.to || path.startsWith(`${n.to}/`));
+const isActivePath = (n, path) => n.aliases?.includes(path) || (n.end ? path === n.to : path === n.to || path.startsWith(`${n.to}/`));
 const typing = (t) => t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName);
 
 function usePref(key, fallback) {
