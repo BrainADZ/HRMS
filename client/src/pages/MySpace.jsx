@@ -306,8 +306,8 @@ function Overview() {
           className="span-4"
           title={data.cycle ? `My goals · ${data.cycle.name}` : "My goals"}
           action={
-            <Link className="link" to="/performance">
-              Open <ArrowRight size={14} />
+            <Link className="link" to={data.cycle?.status === 'Active' && data.review?.status !== 'Completed' ? `/performance?goal=new&cycle=${data.cycle.id}` : '/performance'}>
+              {data.cycle?.status === 'Active' && data.review?.status !== 'Completed' ? 'Set goal' : 'Open'} <ArrowRight size={14} />
             </Link>
           }
         >

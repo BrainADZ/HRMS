@@ -31,9 +31,9 @@ export default function Performance() {
 }
 
 function PerformanceWorkflow() {
-  const { isHR, vertical, isEmployeeOnly } = useApp();
+  const { isHR, vertical, isEmployeeOnly, user } = useApp();
   const [sp, setSp] = useSearchParams();
-  const [cycle, setCycle] = useState('');
+  const [cycle, setCycle] = useState(() => sp.get('cycle') || '');
   const [dept, setDept] = useState('');
   const [newCycle, setNewCycle] = useState(false);
   const [q, setQ] = useState('');
@@ -48,6 +48,9 @@ function PerformanceWorkflow() {
   if (!data) return <Loading />;
   const s = data.summary;
   const c = data.cycle;
+  const goalTargets = data.reviews.filter(r => r.status !== 'Completed').map(r => ({ value: r.employee_id, label: r.name }));
+  if (user.employeeId && !data.reviews.some(r => r.mine)) goalTargets.unshift({ value: user.employeeId, label: `${user.name} (me)` });
+  const closeGoal = () => setSp(current => { const params = new URLSearchParams(current); params.delete('goal'); return params; });
   return (
     <div>
       <div className="page-head">
@@ -55,12 +58,13 @@ function PerformanceWorkflow() {
         <div className="filters">
           <select className="select" value={c?.id || ''} onChange={(e) => setCycle(e.target.value)} aria-label="Review cycle">{data.cycles.map((x) => <option key={x.id} value={x.id}>{x.name}{x.status !== 'Active' ? ` (${x.status})` : ''}</option>)}</select>
           {!isEmployeeOnly && <Select value={dept} onChange={(e) => setDept(e.target.value)} placeholder="All Departments" options={meta.departments.map((d) => ({ value: d.id, label: d.name }))} />}
+          {c?.status === 'Active' && goalTargets.length > 0 && <Button variant="primary" icon={Plus} onClick={() => setSp(current => { const params = new URLSearchParams(current); params.set('goal', 'new'); return params; })}>Set goal</Button>}
           {isHR && <Button icon={Download} onClick={() => download('/reports/performance.csv')}>Export</Button>}
           {isHR && <Button variant="primary" icon={Plus} onClick={() => setNewCycle(true)}>New cycle</Button>}
           {isHR && c?.status === 'Active' && <Button onClick={async () => { if (await confirm({ title: `Close ${c.name}?`, text: 'Goals and reviews become read-only.', confirmLabel: 'Close cycle' })) { await run(() => api.put(`/performance/cycles/${c.id}`, { status: 'Closed' }), 'Cycle closed'); reload(); } }}>Close cycle</Button>}
         </div>
       </div>
-      {!c ? <Card><Empty text="No review cycles yet" /></Card> : (
+      {!c ? <Card><Empty text={isHR ? 'Create a review cycle to start setting goals.' : 'No review cycle yet. Ask HR to start a cycle so you can set goals.'} /></Card> : (
         <>
           {data.mine && (
             <div className="card mb-16 row wrap" style={{ gap: 20, background: 'linear-gradient(135deg, #fff, #eef4ff)' }}>
@@ -137,16 +141,44 @@ function PerformanceWorkflow() {
       )}
       {open && <ReviewModal id={open} onClose={() => setSp({})} onChanged={reload} />}
       {newCycle && <NewCycle onClose={() => setNewCycle(false)} onDone={reload} />}
+      {sp.get('goal') === 'new' && c?.status === 'Active' && goalTargets.length > 0 && <Modal title="Set performance goal" onClose={closeGoal}>
+        <GoalForm key={c.id} cycle={c} targets={goalTargets} employeeId={data.mine?.status !== 'Completed' ? user.employeeId : null} onDone={() => { reload(); closeGoal(); }} />
+      </Modal>}
       {confirmEl}
     </div>
   );
+}
+
+function GoalForm({ cycle, targets, employeeId, onDone }) {
+  const { toast } = useApp();
+  const [run, busy] = useAction(toast);
+  const initial = { title: '', description: '', weight: 25, due_date: cycle.end_date?.slice(0, 10) || '' };
+  const [goal, setGoal] = useState(initial);
+  const [target, setTarget] = useState(() => targets.some(t => Number(t.value) === Number(employeeId)) ? employeeId : targets[0]?.value || '');
+  const change = key => event => setGoal(current => ({ ...current, [key]: event.target.value }));
+  return <form onSubmit={async event => {
+    event.preventDefault();
+    if (busy) return;
+    if (await run(() => api.post('/performance/goals', { ...goal, title: goal.title.trim(), weight: Number(goal.weight), cycle_id: cycle.id, employee_id: Number(target) }), 'Goal added')) {
+      setGoal(initial);
+      onDone();
+    }
+  }}>
+    <div className="form-grid mt-8">
+      {targets.length > 1 && <Field label="Employee" className="full"><Select required value={target} onChange={e => setTarget(e.target.value)} options={targets} /></Field>}
+      <Field label="Goal title" className="full"><Input required maxLength={150} value={goal.title} onChange={change('title')} placeholder="e.g. Launch 4 campaigns" /></Field>
+      <Field label="Description / success criteria" className="full"><Textarea maxLength={500} value={goal.description} onChange={change('description')} placeholder="What will you achieve and how will success be measured?" /></Field>
+      <Field label="Weight (%)" hint="Aim for 100% total across all goals."><Input required type="number" min="5" max="100" step="1" value={goal.weight} onChange={change('weight')} /></Field>
+      <Field label="Due date"><Input type="date" value={goal.due_date} onChange={change('due_date')} /></Field>
+      <div className="full"><Button type="submit" variant="primary" icon={Plus} loading={busy} disabled={!goal.title.trim() || !target}>Add goal</Button></div>
+    </div>
+  </form>;
 }
 
 function ReviewModal({ id, onClose, onChanged }) {
   const { toast } = useApp();
   const { data, error, reload } = useApi(`/performance/reviews/${id}`);
   const [run, busy] = useAction(toast);
-  const [goal, setGoal] = useState({ title: '', weight: 25 });
   const [self, setSelf] = useState(null);
   const [mgr, setMgr] = useState({ rating: 3, comments: '' });
   const refresh = () => { reload(); onChanged(); };
@@ -162,7 +194,7 @@ function ReviewModal({ id, onClose, onChanged }) {
       <div className="row between mb-8"><b>Goals</b><span className={`small ${totalWeight === 100 ? 'muted' : 'amber'}`}>Total weight {totalWeight}%{totalWeight !== 100 ? ' (should be 100%)' : ''}</span></div>
       {data.goals.length ? data.goals.map((g) => (
         <div key={g.id} className="list-item">
-          <div className="grow" style={{ minWidth: 0 }}><div className="b6 small">{g.title}</div><div className="xs muted">Weight {g.weight}%{g.due_date ? ` · due ${fmtDate(g.due_date)}` : ''}</div></div>
+          <div className="grow" style={{ minWidth: 0 }}><div className="b6 small">{g.title}</div>{g.description && <div className="small muted">{g.description}</div>}<div className="xs muted">Weight {g.weight}%{g.due_date ? ` · due ${fmtDate(g.due_date)}` : ''}</div></div>
           {data.canEditGoals ? (
             <>
               <input type="range" min="0" max="100" step="5" defaultValue={g.progress} style={{ width: 140 }} aria-label={`Progress for ${g.title}`}
@@ -175,13 +207,7 @@ function ReviewModal({ id, onClose, onChanged }) {
           ) : <><div style={{ width: 140 }}><Progress value={g.progress} color="var(--green)" /></div><b className="small" style={{ width: 40 }}>{g.progress}%</b></>}
         </div>
       )) : <Empty text="No goals yet" />}
-      {data.canEditGoals && (
-        <div className="row mt-8" style={{ gap: 8 }}>
-          <Input className="sm" value={goal.title} onChange={(e) => setGoal({ ...goal, title: e.target.value })} placeholder="New goal, e.g. Launch 4 campaigns" />
-          <Input className="sm" type="number" min="5" max="100" value={goal.weight} onChange={(e) => setGoal({ ...goal, weight: e.target.value })} style={{ width: 80 }} aria-label="Weight" />
-          <Button size="sm" icon={Plus} loading={busy} onClick={async () => { if (await run(() => api.post('/performance/goals', { cycle_id: data.cycle.id, employee_id: r.employee_id, ...goal }), 'Goal added')) { setGoal({ title: '', weight: 25 }); refresh(); } }}>Add</Button>
-        </div>
-      )}
+      {data.canEditGoals && (data.goals.length < 8 ? <GoalForm cycle={data.cycle} employeeId={r.employee_id} targets={[{ value: r.employee_id, label: r.name }]} onDone={refresh} /> : <div className="small muted mt-8">Maximum 8 goals per review. Remove a goal to add another.</div>)}
       <div className="divider" />
       <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 0 }}>
         <div>
