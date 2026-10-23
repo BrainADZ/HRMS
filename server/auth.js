@@ -2,7 +2,8 @@
 import crypto from 'node:crypto';
 import { fail, fullName } from './core.js';
 
-const COOKIE = 'hrms_session';
+const COOKIE = process.env.SESSION_COOKIE_NAME || 'hrms_session';
+if (!/^[A-Za-z0-9_-]+$/.test(COOKIE)) throw new Error('Invalid SESSION_COOKIE_NAME');
 const SESSION_DAYS = 7;
 
 export function hashPassword(password) {

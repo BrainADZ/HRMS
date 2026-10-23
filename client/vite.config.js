@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const apiTarget = process.env.HRMS_API_PROXY_TARGET || 'http://127.0.0.1:3000';
+const apiTarget = process.env.HRMS_API_PROXY_TARGET || 'http://127.0.0.1:3001';
 
 if (!/^https?:\/\//.test(apiTarget)) {
   throw new Error('HRMS_API_PROXY_TARGET must be an HTTP(S) URL');
@@ -16,6 +16,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    strictPort: true,
     host: '127.0.0.1',
     proxy: { '/api': apiTarget },
   },
