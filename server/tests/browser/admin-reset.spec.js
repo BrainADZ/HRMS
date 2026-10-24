@@ -3,12 +3,19 @@ import { boot } from '../helpers.js';
 
 let ctx;
 const emails = [];
-const mailer = { appUrl: 'http://localhost', send: async (message) => { emails.push(message); } };
+const mailer = {
+  appUrl: 'http://localhost',
+  send: async (message) => {
+    emails.push(message);
+  },
+};
 test.beforeAll(async () => {
   ctx = await boot({ serveClient: true, passwordResetMailer: mailer });
   mailer.appUrl = ctx.base.replace(/\/api$/, '');
 });
-test.afterAll(async () => { await ctx?.close(); });
+test.afterAll(async () => {
+  await ctx?.close();
+});
 
 test('admin follows the emailed link, confirms a new password and signs in', async ({ page }) => {
   await page.goto(mailer.appUrl);

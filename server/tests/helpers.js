@@ -10,12 +10,22 @@ import { postgresConfig } from '../db.js';
 const fixtures = new Map();
 export function credentials(base, identifier) {
   const user = fixtures.get(base)?.find((u) => u.email === identifier);
-  if (user) return user.role === 'admin' ? { loginType: 'admin', email: user.email } : { loginType: 'employee', username: user.username };
-  return String(identifier).includes('@') ? { loginType: 'admin', email: identifier } : { loginType: 'employee', username: identifier };
+  if (user)
+    return user.role === 'admin'
+      ? { loginType: 'admin', email: user.email }
+      : { loginType: 'employee', username: user.username };
+  return String(identifier).includes('@')
+    ? { loginType: 'admin', email: identifier }
+    : { loginType: 'employee', username: identifier };
 }
 
 // Boots an app on a random port with a fresh demo database in a temp dir.
-export async function boot({ serveClient = false, clientOrigin, relativeDataDir = false, passwordResetMailer = null } = {}) {
+export async function boot({
+  serveClient = false,
+  clientOrigin,
+  relativeDataDir = false,
+  passwordResetMailer = null,
+} = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hrms-test-'));
   let cleanup = async () => {};
   let database;
@@ -24,19 +34,45 @@ export async function boot({ serveClient = false, clientOrigin, relativeDataDir 
     const owner = new pg.Pool(config);
     const schema = `hrms_test_${crypto.randomBytes(8).toString('hex')}`;
     await owner.query(`CREATE SCHEMA ${schema}`);
-    cleanup = async () => { try { await owner.query(`DROP SCHEMA ${schema} CASCADE`); } finally { await owner.end(); } };
-    try { database = await openDb({ pool: new pg.Pool({ ...config, options: `-c search_path=${schema}`, max: 4 }) }); }
-    catch (error) { await cleanup(); throw error; }
+    cleanup = async () => {
+      try {
+        await owner.query(`DROP SCHEMA ${schema} CASCADE`);
+      } finally {
+        await owner.end();
+      }
+    };
+    try {
+      database = await openDb({
+        pool: new pg.Pool({ ...config, options: `-c search_path=${schema}`, max: 4 }),
+      });
+    } catch (error) {
+      await cleanup();
+      throw error;
+    }
   } else {
     const { PGlite } = await import('@electric-sql/pglite');
     database = await openDb({ queryClient: new PGlite() });
   }
-  const { app, db, close: closeApp } = await createApp({ database, dataDir: relativeDataDir ? path.relative(process.cwd(), dir) : dir, serveClient, clientOrigin, passwordResetMailer });
-  const server = await new Promise((resolve) => {const s = app.listen(0, () => resolve(s));});
+  const {
+    app,
+    db,
+    close: closeApp,
+  } = await createApp({
+    database,
+    dataDir: relativeDataDir ? path.relative(process.cwd(), dir) : dir,
+    serveClient,
+    clientOrigin,
+    passwordResetMailer,
+  });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, () => resolve(s));
+  });
   const base = `http://127.0.0.1:${server.address().port}/api`;
   fixtures.set(base, await db.all('SELECT email, username, role FROM users'));
   const close = async () => {
-    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    await new Promise((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
     await closeApp();
     await cleanup();
     fixtures.delete(base);
@@ -51,13 +87,19 @@ export function client(base) {
     const h = { 'X-Requested-With': 'hrms', ...headers };
     if (cookie) h.Cookie = cookie;
     let payload;
-    if (form) payload = form;else
-    if (body !== undefined) {h['Content-Type'] = 'application/json';payload = JSON.stringify(body);}
+    if (form) payload = form;
+    else if (body !== undefined) {
+      h['Content-Type'] = 'application/json';
+      payload = JSON.stringify(body);
+    }
     const res = await fetch(base + p, { method, headers: h, body: payload });
     const set = res.headers.get('set-cookie');
     if (set) cookie = set.split(';')[0];
     const type = res.headers.get('content-type') || '';
-    return { status: res.status, body: type.includes('json') ? await res.json() : await res.text() };
+    return {
+      status: res.status,
+      body: type.includes('json') ? await res.json() : await res.text(),
+    };
   };
   return {
     get: async (p) => await call('GET', p),
@@ -69,7 +111,7 @@ export function client(base) {
       const r = await call('POST', '/auth/login', { ...credentials(base, email), password });
       if (r.status !== 200) throw new Error(`login failed for ${email}: ${JSON.stringify(r.body)}`);
       return this;
-    }
+    },
   };
 }
 

@@ -5,17 +5,30 @@ import path from 'node:path';
 import { boot, as, client } from './helpers.js';
 import { hashPassword } from '../auth.js';
 
-const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
+const png = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',
+  'base64',
+);
 const form = (bytes = png, name = 'portrait.png') => {
-  const body = new FormData(); body.append('photo', new Blob([bytes], { type: 'image/png' }), name); return body;
+  const body = new FormData();
+  body.append('photo', new Blob([bytes], { type: 'image/png' }), name);
+  return body;
 };
 let ctx;
 // Match DATA_DIR=./data: Express sendFile needs absolute paths even when storage is configured relatively.
-before(async () => { ctx = await boot({ relativeDataDir: true }); });
-after(async () => { await ctx?.close(); });
+before(async () => {
+  ctx = await boot({ relativeDataDir: true });
+});
+after(async () => {
+  await ctx?.close();
+});
 
 test('admin, manager and employee upload their own photo; auth, profile and protected image agree', async () => {
-  for (const email of ['rajiv.malhotra@brainadz.com', 'vikram.patel@brainadz.com', 'aarav.mehta@brainadz.com']) {
+  for (const email of [
+    'rajiv.malhotra@brainadz.com',
+    'vikram.patel@brainadz.com',
+    'aarav.mehta@brainadz.com',
+  ]) {
     const c = await as(ctx.base, email);
     const user = (await c.get('/auth/me')).body.user;
     assert.equal((await c.post('/profile/photo', undefined, { form: form() })).status, 200);
@@ -30,7 +43,11 @@ test('admin, manager and employee upload their own photo; auth, profile and prot
 });
 
 test('standalone administrators can save a photo without creating an employee', async () => {
-  const uid = await ctx.db.insert('users', { email: 'portrait.admin@example.com', role: 'admin', password_hash: hashPassword('Portrait2026') });
+  const uid = await ctx.db.insert('users', {
+    email: 'portrait.admin@example.com',
+    role: 'admin',
+    password_hash: hashPassword('Portrait2026'),
+  });
   const c = await as(ctx.base, 'portrait.admin@example.com', 'Portrait2026');
   assert.equal((await c.post('/profile/photo', undefined, { form: form() })).status, 200);
   const user = (await c.get('/auth/me')).body.user;
@@ -48,11 +65,22 @@ test('rejected uploads preserve the current photo and cannot change another empl
   const before = await ctx.db.value('SELECT photo FROM employees WHERE id=?', me.employeeId);
   const folder = path.join(ctx.dir, 'uploads', 'photos');
   const count = fs.readdirSync(folder).length;
-  assert.equal((await emp.post('/profile/photo', undefined, { form: form('fake image') })).status, 400);
+  assert.equal(
+    (await emp.post('/profile/photo', undefined, { form: form('fake image') })).status,
+    400,
+  );
   assert.equal((await emp.post('/profile/photo')).status, 400);
-  const ceo = await ctx.db.value("SELECT employee_id FROM users WHERE role='admin' AND employee_id IS NOT NULL LIMIT 1");
-  assert.equal((await emp.post(`/employees/${ceo}/photo`, undefined, { form: form() })).status, 403);
-  assert.equal((await client(ctx.base).post('/profile/photo', undefined, { form: form() })).status, 401);
+  const ceo = await ctx.db.value(
+    "SELECT employee_id FROM users WHERE role='admin' AND employee_id IS NOT NULL LIMIT 1",
+  );
+  assert.equal(
+    (await emp.post(`/employees/${ceo}/photo`, undefined, { form: form() })).status,
+    403,
+  );
+  assert.equal(
+    (await client(ctx.base).post('/profile/photo', undefined, { form: form() })).status,
+    401,
+  );
   assert.equal(await ctx.db.value('SELECT photo FROM employees WHERE id=?', me.employeeId), before);
   assert.equal(fs.readdirSync(folder).length, count);
 });
@@ -62,9 +90,17 @@ test('HR photo replacement updates the profile URL and removes the obsolete imag
   const employee = await as(ctx.base, 'aarav.mehta@brainadz.com');
   const before = (await employee.get('/auth/me')).body.user;
   const old = await ctx.db.value('SELECT photo FROM employees WHERE id=?', before.employeeId);
-  assert.equal((await hr.post(`/employees/${before.employeeId}/photo`, undefined, { form: form() })).status, 200);
+  assert.equal(
+    (await hr.post(`/employees/${before.employeeId}/photo`, undefined, { form: form() })).status,
+    200,
+  );
   const after = (await employee.get('/auth/me')).body.user;
   assert.notEqual(after.photoUrl, before.photoUrl);
-  for (let retry = 0; retry < 20 && fs.existsSync(path.join(ctx.dir, 'uploads', 'photos', old)); retry++) await new Promise((resolve) => setTimeout(resolve, 20));
+  for (
+    let retry = 0;
+    retry < 20 && fs.existsSync(path.join(ctx.dir, 'uploads', 'photos', old));
+    retry++
+  )
+    await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(fs.existsSync(path.join(ctx.dir, 'uploads', 'photos', old)), false);
 });

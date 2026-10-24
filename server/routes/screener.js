@@ -5,11 +5,25 @@ import { json } from '../db.js';
 import { aiEnabled, screenWithClaude, askClaude, AI_MODEL } from '../services/ai.js';
 import { extractResumeText, RESUME_EXTS } from '../services/resume.js';
 import { heuristicScreen, extractFields, searchResume } from '../lib/screener.js';
-import { JOB_SELECT, shapeJob, shapeCandidate, logActivity, assertCandidateAccess, assertRecruiting, STAGES } from './hiring.js';
+import {
+  JOB_SELECT,
+  shapeJob,
+  shapeCandidate,
+  logActivity,
+  assertCandidateAccess,
+  assertRecruiting,
+  STAGES,
+} from './hiring.js';
 import { workflow } from '../database/workflows.js';
 
-const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-const phoneKey = (s) => String(s || '').replace(/\D/g, '').slice(-10);
+const norm = (s) =>
+  String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+const phoneKey = (s) =>
+  String(s || '')
+    .replace(/\D/g, '')
+    .slice(-10);
 
 export default async function screenerRoutes(r, { db, uploads, upload, onClose }) {
   // ---------- background screening queue ----------
@@ -17,38 +31,55 @@ export default async function screenerRoutes(r, { db, uploads, upload, onClose }
   const scheduled = new Set();
   const pending = new Set();
   let stopped = false;
-  onClose?.(async () => { stopped = true; await Promise.allSettled([...pending]); });
+  onClose?.(async () => {
+    stopped = true;
+    await Promise.allSettled([...pending]);
+  });
   let running = 0;
   const CONCURRENCY = 3;
   const pump = async () => {
     while (!stopped && running < CONCURRENCY && queue.length) {
       const cid = queue.shift();
       running++;
-      const task = (db.exclusive ? db.exclusive(cid, () => screenCandidate(cid)) : screenCandidate(cid)).catch(async (e) => {
-        console.error('screening failed', e);
-        await db.update('candidates', cid, { screen_status: 'error', screen_error: 'Screening failed. Please retry.' });
-      }).catch((e) => console.error('Could not record screening failure', e)).finally(() => {
-        running--;
-        scheduled.delete(cid);
-        pending.delete(task);
-        void pump();
-      });
+      const task = (
+        db.exclusive ? db.exclusive(cid, () => screenCandidate(cid)) : screenCandidate(cid)
+      )
+        .catch(async (e) => {
+          console.error('screening failed', e);
+          await db.update('candidates', cid, {
+            screen_status: 'error',
+            screen_error: 'Screening failed. Please retry.',
+          });
+        })
+        .catch((e) => console.error('Could not record screening failure', e))
+        .finally(() => {
+          running--;
+          scheduled.delete(cid);
+          pending.delete(task);
+          void pump();
+        });
       pending.add(task);
     }
   };
   const enqueue = async (cid) => {
     if (scheduled.has(cid)) return;
-    await db.run("UPDATE candidates SET screen_status = 'queued', screen_error = NULL WHERE id = ?", cid);
+    await db.run(
+      "UPDATE candidates SET screen_status = 'queued', screen_error = NULL WHERE id = ?",
+      cid,
+    );
     const schedule = () => {
       if (scheduled.has(cid)) return;
       queue.push(cid);
       scheduled.add(cid);
       setImmediate(pump);
     };
-    if (db.afterCommit) db.afterCommit(schedule); else schedule();
+    if (db.afterCommit) db.afterCommit(schedule);
+    else schedule();
   };
   // Resume anything left mid-screening by a previous run of the server.
-  for (const c of await db.all("SELECT id FROM candidates WHERE screen_status IN ('queued','processing')")) {
+  for (const c of await db.all(
+    "SELECT id FROM candidates WHERE screen_status IN ('queued','processing')",
+  )) {
     queue.push(c.id);
     scheduled.add(c.id);
   }
@@ -59,7 +90,10 @@ export default async function screenerRoutes(r, { db, uploads, upload, onClose }
     if (!c) return;
     const jobRow = c.job_id ? await db.get(`${JOB_SELECT} WHERE j.id = ?`, c.job_id) : null;
     if (!jobRow) {
-      await db.update('candidates', cid, { screen_status: 'error', screen_error: 'Candidate is not linked to a job' });
+      await db.update('candidates', cid, {
+        screen_status: 'error',
+        screen_error: 'Candidate is not linked to a job',
+      });
       return;
     }
     await db.update('candidates', cid, { screen_status: 'processing' });
@@ -70,7 +104,10 @@ export default async function screenerRoutes(r, { db, uploads, upload, onClose }
     try {
       if (!text && file) text = await extractResumeText(file, path.extname(file).toLowerCase());
     } catch (e) {
-      await db.update('candidates', cid, { screen_status: 'error', screen_error: `Could not read the resume: ${e.message}` });
+      await db.update('candidates', cid, {
+        screen_status: 'error',
+        screen_error: `Could not read the resume: ${e.message}`,
+      });
       return;
     }
     const fields = extractFields(text, { fileName: c.resume_name });
@@ -80,7 +117,9 @@ export default async function screenerRoutes(r, { db, uploads, upload, onClose }
     if (aiEnabled()) {
       try {
         const isPdf = file && path.extname(file).toLowerCase() === '.pdf';
-        const resume = isPdf ? { pdfBase64: (await fs.promises.readFile(file)).toString('base64') } : { text: text || '(empty resume)' };
+        const resume = isPdf
+          ? { pdfBase64: (await fs.promises.readFile(file)).toString('base64') }
+          : { text: text || '(empty resume)' };
         analysis = await screenWithClaude(jobInfo, resume);
         engine = AI_MODEL;
       } catch (e) {
@@ -89,40 +128,49 @@ export default async function screenerRoutes(r, { db, uploads, upload, onClose }
     }
     if (!analysis) analysis = heuristicScreen(jobInfo, text, fields);
     const x = analysis.extracted || {};
-    const pickVal = (cur, ...vals) => cur != null && cur !== '' ? cur : vals.find((v) => v != null && v !== '') ?? null;
+    const pickVal = (cur, ...vals) =>
+      cur != null && cur !== '' ? cur : (vals.find((v) => v != null && v !== '') ?? null);
     await workflow(db, async () => {
-    const fresh = await db.get('SELECT * FROM candidates WHERE id = ?', cid);
-    if (!fresh) return;
-    const placeholderName = !fresh.name || fresh.name === fresh.resume_name || /^Candidate \d+$/.test(fresh.name);
-    await db.update('candidates', cid, {
-      ai: analysis,
-      ai_score: analysis.score,
-      ai_engine: engine,
-      screen_status: 'done',
-      screen_error: note,
-      resume_text: text || fresh.resume_text,
-      name: placeholderName ? x.name || fields.name || fresh.name : fresh.name,
-      email: pickVal(fresh.email, x.email, fields.email),
-      phone: pickVal(fresh.phone, x.phone, fields.phone),
-      location: pickVal(fresh.location, x.location, fields.location),
-      current_company: pickVal(fresh.current_company, x.currentCompany, fields.currentCompany),
-      current_title: pickVal(fresh.current_title, x.currentTitle, fields.currentTitle),
-      experience: pickVal(fresh.experience, x.experienceYears, fields.experience),
-      education: pickVal(fresh.education, x.education, fields.education),
-      expected_ctc: pickVal(fresh.expected_ctc, x.expectedCtcLpa, fields.expectedCtc),
-      notice_days: pickVal(fresh.notice_days, x.noticePeriodDays, fields.noticeDays),
-      linkedin: pickVal(fresh.linkedin, x.linkedin, fields.linkedin),
-      skills: (analysis.skills || []).filter((s) => s.score > 0).map((s) => s.skill),
-      stage: fresh.stage === 'Applied' ? 'AI Screened' : fresh.stage,
-      max_stage: Math.max(fresh.max_stage, 1),
-      updated_at: new Date().toISOString()
-    });
-    await logActivity(db, cid, `Resume screened · ${analysis.score}% match (${engine === 'rules' ? 'rule-based' : 'Claude AI'})`, { name: 'Resume Screener AI' });
+      const fresh = await db.get('SELECT * FROM candidates WHERE id = ?', cid);
+      if (!fresh) return;
+      const placeholderName =
+        !fresh.name || fresh.name === fresh.resume_name || /^Candidate \d+$/.test(fresh.name);
+      await db.update('candidates', cid, {
+        ai: analysis,
+        ai_score: analysis.score,
+        ai_engine: engine,
+        screen_status: 'done',
+        screen_error: note,
+        resume_text: text || fresh.resume_text,
+        name: placeholderName ? x.name || fields.name || fresh.name : fresh.name,
+        email: pickVal(fresh.email, x.email, fields.email),
+        phone: pickVal(fresh.phone, x.phone, fields.phone),
+        location: pickVal(fresh.location, x.location, fields.location),
+        current_company: pickVal(fresh.current_company, x.currentCompany, fields.currentCompany),
+        current_title: pickVal(fresh.current_title, x.currentTitle, fields.currentTitle),
+        experience: pickVal(fresh.experience, x.experienceYears, fields.experience),
+        education: pickVal(fresh.education, x.education, fields.education),
+        expected_ctc: pickVal(fresh.expected_ctc, x.expectedCtcLpa, fields.expectedCtc),
+        notice_days: pickVal(fresh.notice_days, x.noticePeriodDays, fields.noticeDays),
+        linkedin: pickVal(fresh.linkedin, x.linkedin, fields.linkedin),
+        skills: (analysis.skills || []).filter((s) => s.score > 0).map((s) => s.skill),
+        stage: fresh.stage === 'Applied' ? 'AI Screened' : fresh.stage,
+        max_stage: Math.max(fresh.max_stage, 1),
+        updated_at: new Date().toISOString(),
+      });
+      await logActivity(
+        db,
+        cid,
+        `Resume screened · ${analysis.score}% match (${engine === 'rules' ? 'rule-based' : 'Claude AI'})`,
+        { name: 'Resume Screener AI' },
+      );
     });
   }
 
   async function duplicatesFor(jobId) {
-    const all = await db.all('SELECT c.id, c.name, c.email, c.phone, c.job_id, c.stage, j.title FROM candidates c LEFT JOIN jobs j ON j.id = c.job_id');
+    const all = await db.all(
+      'SELECT c.id, c.name, c.email, c.phone, c.job_id, c.stage, j.title FROM candidates c LEFT JOIN jobs j ON j.id = c.job_id',
+    );
     const groups = new Map();
     const add = (key, c) => {
       if (!key) return;
@@ -140,10 +188,20 @@ export default async function screenerRoutes(r, { db, uploads, upload, onClose }
       if (m.size < 2) continue;
       const list = [...m.values()];
       if (!list.some((c) => c.job_id === jobId)) continue;
-      const sig = list.map((c) => c.id).sort().join(',');
+      const sig = list
+        .map((c) => c.id)
+        .sort()
+        .join(',');
       if (seen.has(sig)) continue;
       seen.add(sig);
-      out.push({ reason: key.startsWith('e:') ? 'Same email' : key.startsWith('p:') ? 'Same phone' : 'Same name', candidates: list });
+      out.push({
+        reason: key.startsWith('e:')
+          ? 'Same email'
+          : key.startsWith('p:')
+            ? 'Same phone'
+            : 'Same name',
+        candidates: list,
+      });
     }
     return out;
   }
@@ -151,108 +209,195 @@ export default async function screenerRoutes(r, { db, uploads, upload, onClose }
   r.get('/screener', async (req, res) => {
     requireHR(req);
     const vertical = req.query.vertical ? Number(req.query.vertical) : null;
-    const jobs = (await db.all(`${JOB_SELECT} WHERE j.status != 'Closed' ${vertical ? 'AND j.vertical_id = ?' : ''} ORDER BY j.posted_on DESC`, ...(vertical ? [vertical] : []))).map(shapeJob);
-    const active = jobs.filter((j) => j.status === 'Active').sort((a, b) => b.applicants - a.applicants);
+    const jobs = (
+      await db.all(
+        `${JOB_SELECT} WHERE j.status != 'Closed' ${vertical ? 'AND j.vertical_id = ?' : ''} ORDER BY j.posted_on DESC`,
+        ...(vertical ? [vertical] : []),
+      )
+    ).map(shapeJob);
+    const active = jobs
+      .filter((j) => j.status === 'Active')
+      .sort((a, b) => b.applicants - a.applicants);
     const jobId = req.query.job ? id(req.query.job) : active[0]?.id || jobs[0]?.id;
-    let job = jobId ? await db.get(`${JOB_SELECT} WHERE j.id = ? ${vertical ? 'AND j.vertical_id = ?' : ''}`, jobId, ...(vertical ? [vertical] : [])) : null;
-    if (!job && vertical && jobs.length) job = await db.get(`${JOB_SELECT} WHERE j.id = ?`, active[0]?.id || jobs[0].id);
+    let job = jobId
+      ? await db.get(
+          `${JOB_SELECT} WHERE j.id = ? ${vertical ? 'AND j.vertical_id = ?' : ''}`,
+          jobId,
+          ...(vertical ? [vertical] : []),
+        )
+      : null;
+    if (!job && vertical && jobs.length)
+      job = await db.get(`${JOB_SELECT} WHERE j.id = ?`, active[0]?.id || jobs[0].id);
     if (!job) return res.json({ jobs, job: null, candidates: [], duplicates: [], ai: aiEnabled() });
-    const candidates = (await db.all(`SELECT * FROM candidates WHERE job_id = ? ORDER BY ai_score IS NULL, ai_score DESC, applied_on DESC`, job.id)).map(shapeCandidate);
+    const candidates = (
+      await db.all(
+        `SELECT * FROM candidates WHERE job_id = ? ORDER BY ai_score IS NULL, ai_score DESC, applied_on DESC`,
+        job.id,
+      )
+    ).map(shapeCandidate);
     res.json({
       jobs,
       job: shapeJob(job),
       candidates,
       duplicates: await duplicatesFor(job.id),
       totals: {
-        uploaded: await db.value(`SELECT COUNT(*) FROM candidates c JOIN jobs j ON j.id = c.job_id WHERE (c.resume_file IS NOT NULL OR c.resume_text IS NOT NULL) ${vertical ? 'AND j.vertical_id = ?' : ''}`, ...(vertical ? [vertical] : [])),
+        uploaded: await db.value(
+          `SELECT COUNT(*) FROM candidates c JOIN jobs j ON j.id = c.job_id WHERE (c.resume_file IS NOT NULL OR c.resume_text IS NOT NULL) ${vertical ? 'AND j.vertical_id = ?' : ''}`,
+          ...(vertical ? [vertical] : []),
+        ),
         forJob: candidates.length,
-        processing: candidates.filter((c) => ['queued', 'processing'].includes(c.screen_status)).length
+        processing: candidates.filter((c) => ['queued', 'processing'].includes(c.screen_status))
+          .length,
       },
       ai: aiEnabled(),
-      model: aiEnabled() ? AI_MODEL : null
+      model: aiEnabled() ? AI_MODEL : null,
     });
   });
 
   const resumeUpload = upload('resumes', { maxMb: 10, exts: RESUME_EXTS }).array('files', 25);
-  r.post('/screener/jobs/:id/upload', async (req, _res, next) => {
-    requireHR(req);
-    if (!await db.value('SELECT id FROM jobs WHERE id=?', id(req.params.id))) notFound('Job');
-    next();
-  }, resumeUpload, async (req, res) => {
-    requireHR(req);
-    const job = (await db.get('SELECT * FROM jobs WHERE id = ?', id(req.params.id))) || notFound('Job');
-    if (!req.files?.length) fail(400, 'Choose at least one resume (PDF, DOCX or TXT)');
-    const created = [];
-    for (const f of req.files) {
-      const ext = path.extname(f.originalname).toLowerCase();
-      let text = '';
-      try {
-        text = await extractResumeText(f.path, ext);
-      } catch {
-        text = '';
+  r.post(
+    '/screener/jobs/:id/upload',
+    async (req, _res, next) => {
+      requireHR(req);
+      if (!(await db.value('SELECT id FROM jobs WHERE id=?', id(req.params.id)))) notFound('Job');
+      next();
+    },
+    resumeUpload,
+    async (req, res) => {
+      requireHR(req);
+      const job =
+        (await db.get('SELECT * FROM jobs WHERE id = ?', id(req.params.id))) || notFound('Job');
+      if (!req.files?.length) fail(400, 'Choose at least one resume (PDF, DOCX or TXT)');
+      const created = [];
+      for (const f of req.files) {
+        const ext = path.extname(f.originalname).toLowerCase();
+        let text = '';
+        try {
+          text = await extractResumeText(f.path, ext);
+        } catch {
+          text = '';
+        }
+        const fields = extractFields(text, { fileName: f.originalname });
+        const cid = await db.insert('candidates', {
+          job_id: job.id,
+          name: fields.name || f.originalname.replace(/\.[a-z]+$/i, '').slice(0, 80),
+          email: fields.email,
+          phone: fields.phone,
+          source: oneOf(
+            req.body.source || 'Upload',
+            ['Upload', 'LinkedIn', 'Naukri', 'Indeed', 'Company Website', 'Referrals', 'Other'],
+            { name: 'Source' },
+          ),
+          stage: 'Applied',
+          applied_on: await today(db),
+          resume_file: f.filename,
+          resume_name: f.originalname.slice(0, 150),
+          resume_mime: f.mimetype,
+          resume_text: text || null,
+        });
+        await logActivity(db, cid, `Resume uploaded (${f.originalname})`, req.user);
+        await enqueue(cid);
+        created.push(cid);
       }
-      const fields = extractFields(text, { fileName: f.originalname });
-      const cid = await db.insert('candidates', {
-        job_id: job.id,
-        name: fields.name || f.originalname.replace(/\.[a-z]+$/i, '').slice(0, 80),
-        email: fields.email, phone: fields.phone, source: oneOf(req.body.source || 'Upload', ['Upload', 'LinkedIn', 'Naukri', 'Indeed', 'Company Website', 'Referrals', 'Other'], { name: 'Source' }),
-        stage: 'Applied', applied_on: await today(db),
-        resume_file: f.filename, resume_name: f.originalname.slice(0, 150), resume_mime: f.mimetype, resume_text: text || null
-      });
-      await logActivity(db, cid, `Resume uploaded (${f.originalname})`, req.user);
-      await enqueue(cid);
-      created.push(cid);
-    }
-    res.json({ created, ai: aiEnabled() });
-  });
+      res.json({ created, ai: aiEnabled() });
+    },
+  );
 
   r.post('/screener/candidates/:id/screen', async (req, res) => {
     requireHR(req);
-    const c = (await db.get('SELECT id FROM candidates WHERE id = ?', id(req.params.id))) || notFound('Candidate');
+    const c =
+      (await db.get('SELECT id FROM candidates WHERE id = ?', id(req.params.id))) ||
+      notFound('Candidate');
     await enqueue(c.id);
     res.json({ ok: true });
   });
 
   r.post('/screener/jobs/:id/screen-all', async (req, res) => {
     requireHR(req);
-    const ids = (await db.all("SELECT id FROM candidates WHERE job_id = ? AND (screen_status IS NULL OR screen_status = 'error') AND (resume_text IS NOT NULL OR resume_file IS NOT NULL)", id(req.params.id))).map((c) => c.id);
+    const ids = (
+      await db.all(
+        "SELECT id FROM candidates WHERE job_id = ? AND (screen_status IS NULL OR screen_status = 'error') AND (resume_text IS NOT NULL OR resume_file IS NOT NULL)",
+        id(req.params.id),
+      )
+    ).map((c) => c.id);
     for (const candidateId of ids) await enqueue(candidateId);
     res.json({ queued: ids.length });
   });
 
   r.post('/screener/candidates/:id/action', async (req, res) => {
     requireHR(req);
-    const c = (await db.get('SELECT * FROM candidates WHERE id = ?', id(req.params.id))) || notFound('Candidate');
+    const c =
+      (await db.get('SELECT * FROM candidates WHERE id = ?', id(req.params.id))) ||
+      notFound('Candidate');
     assertRecruiting(c);
-    const action = oneOf(req.body.action, ['shortlist', 'hold', 'reject', 'interview'], { required: true, name: 'Action' });
-    const map = { shortlist: ['Shortlisted', 'Shortlist'], hold: ['On Hold', 'Hold'], reject: ['Rejected', 'Reject'], interview: ['Interview 1', 'Shortlist'] };
+    const action = oneOf(req.body.action, ['shortlist', 'hold', 'reject', 'interview'], {
+      required: true,
+      name: 'Action',
+    });
+    const map = {
+      shortlist: ['Shortlisted', 'Shortlist'],
+      hold: ['On Hold', 'Hold'],
+      reject: ['Rejected', 'Reject'],
+      interview: ['Interview 1', 'Shortlist'],
+    };
     const [stage, decision] = map[action];
     const idx = STAGES.indexOf(stage);
-    await db.update('candidates', c.id, { stage, decision, max_stage: Math.max(c.max_stage, idx), reject_reason: action === 'reject' ? str(req.body.reason, { max: 200 }) || 'Not a match for the requirement' : c.reject_reason, updated_at: new Date().toISOString() });
-    await logActivity(db, c.id, `${decision === 'Shortlist' && action === 'interview' ? 'Moved to interview' : `Marked ${decision}`} from Resume Screener`, req.user);
+    await db.update('candidates', c.id, {
+      stage,
+      decision,
+      max_stage: Math.max(c.max_stage, idx),
+      reject_reason:
+        action === 'reject'
+          ? str(req.body.reason, { max: 200 }) || 'Not a match for the requirement'
+          : c.reject_reason,
+      updated_at: new Date().toISOString(),
+    });
+    await logActivity(
+      db,
+      c.id,
+      `${decision === 'Shortlist' && action === 'interview' ? 'Moved to interview' : `Marked ${decision}`} from Resume Screener`,
+      req.user,
+    );
     res.json({ ok: true, stage });
   });
 
   r.post('/screener/candidates/:id/ask', async (req, res) => {
-    const c = (await db.get('SELECT * FROM candidates WHERE id = ?', id(req.params.id))) || notFound('Candidate');
+    const c =
+      (await db.get('SELECT * FROM candidates WHERE id = ?', id(req.params.id))) ||
+      notFound('Candidate');
     await assertCandidateAccess(db, req.user, c);
     const question = str(req.body.question, { required: true, max: 500, name: 'Question' });
     const text = c.resume_text || '';
-    if (!aiEnabled()) return res.json({ answer: searchResume(text, question), engine: 'keyword search' });
-    const job = c.job_id ? shapeJob(await db.get(`${JOB_SELECT} WHERE j.id = ?`, c.job_id)) : { title: 'Unknown role' };
+    if (!aiEnabled())
+      return res.json({ answer: searchResume(text, question), engine: 'keyword search' });
+    const job = c.job_id
+      ? shapeJob(await db.get(`${JOB_SELECT} WHERE j.id = ?`, c.job_id))
+      : { title: 'Unknown role' };
     const file = c.resume_file ? path.join(uploads, 'resumes', path.basename(c.resume_file)) : null;
     const isPdf = file && path.extname(file).toLowerCase() === '.pdf' && fs.existsSync(file);
     try {
-      const resume = isPdf ? { pdfBase64: (await fs.promises.readFile(file)).toString('base64') } : { text: text || '(no resume text available)' };
-      const answer = await askClaude(job, { name: c.name, summary: json(c.ai, {})?.summary }, resume, question);
+      const resume = isPdf
+        ? { pdfBase64: (await fs.promises.readFile(file)).toString('base64') }
+        : { text: text || '(no resume text available)' };
+      const answer = await askClaude(
+        job,
+        { name: c.name, summary: json(c.ai, {})?.summary },
+        resume,
+        question,
+      );
       res.json({ answer, engine: AI_MODEL });
     } catch (e) {
-      res.json({ answer: `${searchResume(text, question)}\n\n(AI unavailable: ${e.message})`, engine: 'keyword search' });
+      res.json({
+        answer: `${searchResume(text, question)}\n\n(AI unavailable: ${e.message})`,
+        engine: 'keyword search',
+      });
     }
   });
 
   r.get('/candidates/:id/resume', async (req, res) => {
-    const c = (await db.get('SELECT * FROM candidates WHERE id = ?', id(req.params.id))) || notFound('Candidate');
+    const c =
+      (await db.get('SELECT * FROM candidates WHERE id = ?', id(req.params.id))) ||
+      notFound('Candidate');
     await assertCandidateAccess(db, req.user, c);
     if (c.resume_file) {
       const file = path.join(uploads, 'resumes', path.basename(c.resume_file));
@@ -260,7 +405,10 @@ export default async function screenerRoutes(r, { db, uploads, upload, onClose }
     }
     if (!c.resume_text) notFound('Resume');
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${(c.name || 'resume').replace(/[^A-Za-z0-9 _-]/g, '')}.txt"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${(c.name || 'resume').replace(/[^A-Za-z0-9 _-]/g, '')}.txt"`,
+    );
     res.send(c.resume_text);
   });
 

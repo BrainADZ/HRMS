@@ -15,14 +15,23 @@ export async function createTestClient() {
   const schema = `hrms_test_${crypto.randomBytes(8).toString('hex')}`;
   await owner.query(`CREATE SCHEMA ${schema}`);
   const connection = new pg.Client({ ...config, options: `-c search_path=${schema}` });
-  try { await connection.connect(); }
-  catch (error) { await owner.query(`DROP SCHEMA ${schema} CASCADE`); await owner.end(); throw error; }
+  try {
+    await connection.connect();
+  } catch (error) {
+    await owner.query(`DROP SCHEMA ${schema} CASCADE`);
+    await owner.end();
+    throw error;
+  }
   return {
     query: (...args) => connection.query(...args),
     exec: (sql) => connection.query(sql),
     async close() {
-      try { await connection.end(); await owner.query(`DROP SCHEMA ${schema} CASCADE`); }
-      finally { await owner.end(); }
+      try {
+        await connection.end();
+        await owner.query(`DROP SCHEMA ${schema} CASCADE`);
+      } finally {
+        await owner.end();
+      }
     },
   };
 }

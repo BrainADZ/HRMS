@@ -9,7 +9,9 @@ export default defineConfig({
   outputDir: '.test-results/browser',
   use: {
     headless: true,
-    launchOptions: process.env.HRMS_BROWSER_PATH ? { executablePath: process.env.HRMS_BROWSER_PATH } : {},
+    launchOptions: process.env.HRMS_BROWSER_PATH
+      ? { executablePath: process.env.HRMS_BROWSER_PATH }
+      : {},
     trace: 'retain-on-failure',
   },
 });

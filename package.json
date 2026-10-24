@@ -10,6 +10,8 @@
   "scripts": {
     "dev": "node server/scripts/dev.js",
     "build": "vite build --config client/vite.config.js",
+    "format": "prettier --write \"client/**/*.{js,jsx,css,html,json}\" \"server/**/*.js\" playwright.config.js",
+    "format:check": "prettier --check \"client/**/*.{js,jsx,css,html,json}\" \"server/**/*.js\" playwright.config.js",
     "start": "node --env-file-if-exists=.env --disable-warning=ExperimentalWarning server/index.js",
     "test": "node --v8-pool-size=1 --wasm-num-compilation-tasks=1 --test --test-concurrency=1 \"server/tests/*.test.js\"",
     "demo": "node server/demo.js",
@@ -25,7 +27,7 @@
     "lucide-react": "^1.55.0",
     "mammoth": "^1.13.0",
     "multer": "^2.4.0",
-    "nodemailer": "^10.1.7",
+    "nodemailer": "^10.2.1",
     "pg": "^8.23.1",
     "qrcode": "^1.5.4",
     "react": "^19.3.0",
@@ -36,7 +38,8 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.10",
-    "@playwright/test": "^1.64.1"
+    "@playwright/test": "^1.64.1",
+    "prettier": "^3.9.7"
   },
   "overrides": {
     "argparse": "^2.0.1"

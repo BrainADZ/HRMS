@@ -15,7 +15,10 @@ export function atomicRouter(router, db, onClose) {
   const track = (handler) => (req, res, next) => {
     const task = Promise.resolve().then(() => handler(req, res, next));
     pending.add(task);
-    task.then(() => pending.delete(task), () => pending.delete(task));
+    task.then(
+      () => pending.delete(task),
+      () => pending.delete(task),
+    );
     return task;
   };
   return new Proxy(router, {
@@ -30,29 +33,35 @@ export function atomicRouter(router, db, onClose) {
           return target[method](path, ...handlers, track(handler));
         }
         const handler = handlers.pop();
-        handlers.push(track(async (req, res, next) => {
-          const original = { json: res.json, send: res.send, end: res.end };
-          let reply;
-          for (const key of Object.keys(original)) res[key] = function (...args) {
-            reply = () => original[key].apply(res, args);
-            return res;
-          };
-          try {
-            await workflow(db, async () => {
-              if (req.user) {
-                req.user = null;
-                await sessionMiddleware(db)(req, res, () => {});
-                if (!req.user) fail(401, 'Please sign in');
-                if (req.user.mustChangePassword && !path.startsWith('/auth/')) fail(403, 'Change your temporary password before continuing');
-              }
-              return handler(req, res, next);
-            });
-          } catch (error) {
-            res.removeHeader?.('Set-Cookie');
-            throw error;
-          } finally { Object.assign(res, original); }
-          if (reply) reply();
-        }));
+        handlers.push(
+          track(async (req, res, next) => {
+            const original = { json: res.json, send: res.send, end: res.end };
+            let reply;
+            for (const key of Object.keys(original))
+              res[key] = function (...args) {
+                reply = () => original[key].apply(res, args);
+                return res;
+              };
+            try {
+              await workflow(db, async () => {
+                if (req.user) {
+                  req.user = null;
+                  await sessionMiddleware(db)(req, res, () => {});
+                  if (!req.user) fail(401, 'Please sign in');
+                  if (req.user.mustChangePassword && !path.startsWith('/auth/'))
+                    fail(403, 'Change your temporary password before continuing');
+                }
+                return handler(req, res, next);
+              });
+            } catch (error) {
+              res.removeHeader?.('Set-Cookie');
+              throw error;
+            } finally {
+              Object.assign(res, original);
+            }
+            if (reply) reply();
+          }),
+        );
         return target[method](path, ...handlers);
       };
     },

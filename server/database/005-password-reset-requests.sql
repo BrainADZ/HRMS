@@ -6,4 +6,6 @@ CREATE TABLE IF NOT EXISTS password_reset_requests (
   resolved_at TEXT,
   resolved_by INTEGER REFERENCES users(id) ON DELETE SET NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_password_reset_pending ON password_reset_requests(user_id) WHERE status = 'Pending';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_password_reset_pending
+  ON password_reset_requests(user_id)
+  WHERE status = 'Pending';

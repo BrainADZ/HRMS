@@ -1,4 +1,12 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { moduleFor } from './components/icons.jsx';
 import { api } from './lib/api.js';
@@ -32,19 +40,44 @@ export function AppProvider({ children }) {
   currentUser.current = user;
   const [photoVersion, setPhotoVersion] = useState(0);
 
-  const dismissToast = useCallback((id) => setToasts((items) => items.filter((item) => item.id !== id)), []);
-  const toast = useCallback((text, kind = 'info', options = {}) => {
-    const tid = Math.random().toString(36).slice(2);
-    const source = options.link || options.module || currentPath.current;
-    setToasts((t) => [...t, { id: tid, text, kind, module: moduleFor((options.module || source).split('?')[0]), onClick: options.onClick || (() => navigate(source)) }].slice(-4));
-  }, [navigate]);
+  const dismissToast = useCallback(
+    (id) => setToasts((items) => items.filter((item) => item.id !== id)),
+    [],
+  );
+  const toast = useCallback(
+    (text, kind = 'info', options = {}) => {
+      const tid = Math.random().toString(36).slice(2);
+      const source = options.link || options.module || currentPath.current;
+      setToasts((t) =>
+        [
+          ...t,
+          {
+            id: tid,
+            text,
+            kind,
+            module: moduleFor((options.module || source).split('?')[0]),
+            onClick: options.onClick || (() => navigate(source)),
+          },
+        ].slice(-4),
+      );
+    },
+    [navigate],
+  );
 
   const loadMe = useCallback(async () => {
     try {
       const me = await api.get('/auth/me');
       setUser(me.user);
-      setInfo({ companyName: me.companyName, demo: me.demo, ai: me.ai, sessionExpiresAt: me.sessionExpiresAt });
-      if (me.user.mustChangePassword) { setMeta(null); return; }
+      setInfo({
+        companyName: me.companyName,
+        demo: me.demo,
+        ai: me.ai,
+        sessionExpiresAt: me.sessionExpiresAt,
+      });
+      if (me.user.mustChangePassword) {
+        setMeta(null);
+        return;
+      }
       const m = await api.get('/meta');
       setTimeZone(m.settings.timezone);
       setMeta(m);
@@ -62,8 +95,14 @@ export function AppProvider({ children }) {
 
   useEffect(() => {
     loadMe();
-    const h = () => { clearWorkday(); setUser(null); setMeta(null); };
-    const backOnline = () => { if (currentUser.current === null) loadMe(); };
+    const h = () => {
+      clearWorkday();
+      setUser(null);
+      setMeta(null);
+    };
+    const backOnline = () => {
+      if (currentUser.current === null) loadMe();
+    };
     window.addEventListener('hrms:unauthorized', h);
     window.addEventListener('online', backOnline);
     return () => {
@@ -76,11 +115,18 @@ export function AppProvider({ children }) {
     if (!user) return;
     const expire = () => window.dispatchEvent(new Event('hrms:unauthorized'));
     const expiry = Date.parse(info.sessionExpiresAt);
-    const timeout = Number.isFinite(expiry) ? setTimeout(expire, Math.max(0, Math.min(2147483647, expiry - Date.now()))) : null;
+    const timeout = Number.isFinite(expiry)
+      ? setTimeout(expire, Math.max(0, Math.min(2147483647, expiry - Date.now())))
+      : null;
     const timer = setInterval(() => {
-      api.get('/auth/me').catch((error) => { if (error.status === 401) expire(); });
+      api.get('/auth/me').catch((error) => {
+        if (error.status === 401) expire();
+      });
     }, 60000);
-    return () => { clearTimeout(timeout); clearInterval(timer); };
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(timer);
+    };
   }, [user?.id, info.sessionExpiresAt]);
 
   const setVertical = useCallback((v) => {
@@ -88,7 +134,9 @@ export function AppProvider({ children }) {
     try {
       if (v) localStorage.setItem(VKEY, String(v));
       else localStorage.removeItem(VKEY);
-    } catch { /* storage unavailable */ }
+    } catch {
+      /* storage unavailable */
+    }
   }, []);
 
   // pause: stop the work clock; the next sign-in asks the reason for the gap.
@@ -102,9 +150,22 @@ export function AppProvider({ children }) {
 
   const value = useMemo(() => {
     const role = user?.role;
-    const visibleMeta = meta && vertical ? { ...meta, employees: meta.employees.filter((e) => e.vertical_id === vertical) } : meta;
+    const visibleMeta =
+      meta && vertical
+        ? { ...meta, employees: meta.employees.filter((e) => e.vertical_id === vertical) }
+        : meta;
     return {
-      user, info, meta: visibleMeta, vertical, setVertical, toast, loadMe, refreshMeta, refreshPhotos, photoVersion, logout,
+      user,
+      info,
+      meta: visibleMeta,
+      vertical,
+      setVertical,
+      toast,
+      loadMe,
+      refreshMeta,
+      refreshPhotos,
+      photoVersion,
+      logout,
       isHR: role === 'admin' || role === 'hr',
       isAdmin: role === 'admin',
       isManager: role === 'manager',
@@ -112,13 +173,27 @@ export function AppProvider({ children }) {
       employeeName: (eid) => meta?.employees.find((e) => e.id === eid)?.name || '',
       verticalById: (vid) => meta?.verticals.find((v) => v.id === vid),
     };
-  }, [user, info, meta, vertical, setVertical, toast, loadMe, refreshMeta, refreshPhotos, photoVersion, logout]);
+  }, [
+    user,
+    info,
+    meta,
+    vertical,
+    setVertical,
+    toast,
+    loadMe,
+    refreshMeta,
+    refreshPhotos,
+    photoVersion,
+    logout,
+  ]);
 
   return (
     <AppCtx.Provider value={value}>
       {children}
       <div className="toasts">
-        {toasts.map((t) => <NotificationToast key={t.id} item={t} onClose={dismissToast} />)}
+        {toasts.map((t) => (
+          <NotificationToast key={t.id} item={t} onClose={dismissToast} />
+        ))}
       </div>
     </AppCtx.Provider>
   );

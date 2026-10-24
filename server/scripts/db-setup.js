@@ -7,7 +7,8 @@ try {
   const config = postgresConfig();
   const target = new URL(config.connectionString);
   const name = decodeURIComponent(target.pathname.slice(1));
-  if (!name || !/^[a-zA-Z_][a-zA-Z0-9_-]{0,62}$/.test(name)) throw new Error('Choose a valid PostgreSQL database name in DATABASE_URL');
+  if (!name || !/^[a-zA-Z_][a-zA-Z0-9_-]{0,62}$/.test(name))
+    throw new Error('Choose a valid PostgreSQL database name in DATABASE_URL');
   const adminUrl = new URL(process.env.DATABASE_ADMIN_URL || config.connectionString);
   if (!process.env.DATABASE_ADMIN_URL) adminUrl.pathname = '/postgres';
   admin = new pg.Client({ ...config, connectionString: adminUrl.toString() });
@@ -23,4 +24,7 @@ try {
 } catch (error) {
   console.error(`Database setup failed: ${error.message}`);
   process.exitCode = 1;
-} finally { await db?.close(); await admin?.end(); }
+} finally {
+  await db?.close();
+  await admin?.end();
+}

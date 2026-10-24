@@ -2,7 +2,7 @@
 // the X-Requested-With header the server uses as its CSRF guard.
 const apiBase = (import.meta.env?.VITE_API_BASE_URL || '/api').replace(/\/+$/, '');
 export const apiUrl = (path) => `${apiBase}${path}`;
-export const apiAssetUrl = (url) => url?.startsWith('/api/') ? apiUrl(url.slice(4)) : url;
+export const apiAssetUrl = (url) => (url?.startsWith('/api/') ? apiUrl(url.slice(4)) : url);
 
 export async function api(path, { method = 'GET', body, form } = {}) {
   const opts = { method, credentials: 'include', headers: { 'X-Requested-With': 'hrms' } };
@@ -12,11 +12,14 @@ export async function api(path, { method = 'GET', body, form } = {}) {
     opts.body = JSON.stringify(body);
   }
   const res = await fetch(apiUrl(path), opts);
-  if (res.status === 401 && !path.startsWith('/auth')) window.dispatchEvent(new Event('hrms:unauthorized'));
+  if (res.status === 401 && !path.startsWith('/auth'))
+    window.dispatchEvent(new Event('hrms:unauthorized'));
   const type = res.headers.get('content-type') || '';
   const data = type.includes('application/json') ? await res.json() : await res.text();
   if (!res.ok) {
-    const err = new Error((data && (data.error || data.message)) || `Request failed (${res.status})`);
+    const err = new Error(
+      (data && (data.error || data.message)) || `Request failed (${res.status})`,
+    );
     err.status = res.status;
     err.code = data?.code;
     err.data = data;
@@ -46,7 +49,12 @@ export function download(path) {
 
 // Saves the body of a POST response (e.g. a generated CSV) as a file.
 export async function postDownload(path, body, filename) {
-  const res = await fetch(apiUrl(path), { method: 'POST', credentials: 'include', headers: { 'X-Requested-With': 'hrms', 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  const res = await fetch(apiUrl(path), {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'X-Requested-With': 'hrms', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body || {}),
+  });
   if (!res.ok) {
     const j = await res.json().catch(() => ({}));
     throw new Error(j.error || 'Download failed');

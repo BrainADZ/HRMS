@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   CalendarCheck,
   FileText,
@@ -14,18 +14,11 @@ import {
   Receipt,
   Wallet,
   Trash2,
-} from "lucide-react";
-import { useApp } from "../context.jsx";
-import { useApi, useAction } from "../lib/hooks.js";
-import { api, apiUrl, download } from "../lib/api.js";
-import {
-  greeting,
-  fmtDate,
-  fmtShort,
-  inr,
-  fmtMonth,
-  fmtDay,
-} from "../lib/format.js";
+} from 'lucide-react';
+import { useApp } from '../context.jsx';
+import { useApi, useAction } from '../lib/hooks.js';
+import { api, apiUrl, download } from '../lib/api.js';
+import { greeting, fmtDate, fmtShort, inr, fmtMonth, fmtDay } from '../lib/format.js';
 import {
   Card,
   Badge,
@@ -40,56 +33,52 @@ import {
   Modal,
   SimpleMarkdown,
   useConfirm,
-} from "../components/ui.jsx";
-import {
-  ApplyLeaveModal,
-  RaiseRequestModal,
-  ClaimModal,
-} from "../components/forms.jsx";
-import { NoticeBoard } from "./Dashboard.jsx";
-import { AttentionBanner } from "../components/WorkClock.jsx";
-import { useOnWorkdayChange } from "../lib/workday.js";
-import DailyAttendance from "../components/DailyAttendance.jsx";
+} from '../components/ui.jsx';
+import { ApplyLeaveModal, RaiseRequestModal, ClaimModal } from '../components/forms.jsx';
+import { NoticeBoard } from './Dashboard.jsx';
+import { AttentionBanner } from '../components/WorkClock.jsx';
+import { useOnWorkdayChange } from '../lib/workday.js';
+import DailyAttendance from '../components/DailyAttendance.jsx';
 import CelebrationBoard from '../components/CelebrationBoard.jsx';
-import { EmployeeForm, Onboarding } from "./Employees.jsx";
+import { EmployeeForm, Onboarding } from './Employees.jsx';
 
 export default function MySpace() {
   const [sp, setSp] = useSearchParams();
-  const tab = sp.get("tab") || "overview";
+  const tab = sp.get('tab') || 'overview';
   const { user } = useApp();
   return (
     <div>
-      {user.role !== 'employee' && <div className="page-head">
-        <div>
-          <h1>
-            {greeting()}, {user.firstName}!
-          </h1>
-          <div className="sub">
-            Your attendance, leave, pay and requests in one place.
+      {user.role !== 'employee' && (
+        <div className="page-head">
+          <div>
+            <h1>
+              {greeting()}, {user.firstName}!
+            </h1>
+            <div className="sub">Your attendance, leave, pay and requests in one place.</div>
           </div>
         </div>
-      </div>}
+      )}
       {user.role === 'employee' && <h1 className="sr-only">My Space</h1>}
       <CelebrationBoard />
       <Tabs
         value={tab}
-        onChange={(t) => setSp(t === "overview" ? {} : { tab: t })}
+        onChange={(t) => setSp(t === 'overview' ? {} : { tab: t })}
         tabs={[
-          { value: "overview", label: "Overview" },
-          { value: "payslips", label: "Payslips & Claims" },
-          { value: "requests", label: "My Requests" },
+          { value: 'overview', label: 'Overview' },
+          { value: 'payslips', label: 'Payslips & Claims' },
+          { value: 'requests', label: 'My Requests' },
         ]}
       />
-      {tab === "overview" && <Overview />}
-      {tab === "payslips" && <Payslips />}
-      {tab === "requests" && <MyRequests />}
+      {tab === 'overview' && <Overview />}
+      {tab === 'payslips' && <Payslips />}
+      {tab === 'requests' && <MyRequests />}
     </div>
   );
 }
 
 function Overview() {
   const { toast } = useApp();
-  const { data, error, reload } = useApi("/dashboard/me");
+  const { data, error, reload } = useApi('/dashboard/me');
   const [modal, setModal] = useState(null);
   const [policy, setPolicy] = useState(null);
   const [run] = useAction(toast);
@@ -118,16 +107,16 @@ function Overview() {
               marginBottom: 0,
             }}
           >
-            <Button icon={CalendarCheck} onClick={() => setModal("leave")}>
+            <Button icon={CalendarCheck} onClick={() => setModal('leave')}>
               Apply leave
             </Button>
-            <Button icon={FileText} onClick={() => setModal("request")}>
+            <Button icon={FileText} onClick={() => setModal('request')}>
               Raise request
             </Button>
-            <Button icon={Receipt} onClick={() => setModal("claim")}>
+            <Button icon={Receipt} onClick={() => setModal('claim')}>
               Claim expense
             </Button>
-            <Button icon={User} onClick={() => setModal("profile")}>
+            <Button icon={User} onClick={() => setModal('profile')}>
               Update profile
             </Button>
           </div>
@@ -141,10 +130,10 @@ function Overview() {
       )}
 
       {data.pendingPolicies.length > 0 && (
-        <div className="alert warn mb-16" style={{ alignItems: "center" }}>
+        <div className="alert warn mb-16" style={{ alignItems: 'center' }}>
           <CircleAlert size={18} />
           <span className="grow">
-            Please read and acknowledge:{" "}
+            Please read and acknowledge:{' '}
             {data.pendingPolicies.map((p) => (
               <button
                 key={p.id}
@@ -163,8 +152,8 @@ function Overview() {
         <div className="alert info mb-16">
           <CircleAlert size={18} />
           <span>
-            You have not completed POSH awareness training.{" "}
-            <Link to="/posh">Take it now</Link> (10 minutes).
+            You have not completed POSH awareness training. <Link to="/posh">Take it now</Link> (10
+            minutes).
           </span>
         </div>
       )}
@@ -182,7 +171,7 @@ function Overview() {
           <div
             className="grid"
             style={{
-              gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))",
+              gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
               gap: 10,
               marginBottom: 0,
             }}
@@ -193,26 +182,20 @@ function Overview() {
                 <div
                   key={b.code}
                   className="card tight"
-                  style={{ boxShadow: "none", textAlign: "center" }}
+                  style={{ boxShadow: 'none', textAlign: 'center' }}
                 >
-                  <div className="small" style={{ color: "var(--text-2)" }}>
+                  <div className="small" style={{ color: 'var(--text-2)' }}>
                     {b.name}
                   </div>
-                  <div
-                    style={{ fontSize: 20, fontWeight: 700, margin: "4px 0" }}
-                  >
+                  <div style={{ fontSize: 20, fontWeight: 700, margin: '4px 0' }}>
                     {b.available}
                     <span className="small muted" style={{ fontWeight: 500 }}>
-                      {" "}
+                      {' '}
                       / {b.entitled + b.carried}
                     </span>
                   </div>
                   <Progress
-                    value={
-                      ((b.used + b.pending) /
-                        Math.max(1, b.entitled + b.carried)) *
-                      100
-                    }
+                    value={((b.used + b.pending) / Math.max(1, b.entitled + b.carried)) * 100}
                     color={b.color}
                     height={6}
                   />
@@ -229,33 +212,30 @@ function Overview() {
                 <span className="grow">
                   {r.type}
                   <span className="small muted">
-                    {" "}
+                    {' '}
                     · {fmtShort(r.from_date)}
-                    {r.to_date !== r.from_date
-                      ? ` – ${fmtShort(r.to_date)}`
-                      : ""}{" "}
-                    ({r.days} day{r.days === 1 ? "" : "s"})
+                    {r.to_date !== r.from_date ? ` – ${fmtShort(r.to_date)}` : ''} ({r.days} day
+                    {r.days === 1 ? '' : 's'})
                   </span>
                 </span>
                 <Badge>{r.status}</Badge>
-                {["Pending", "Approved"].includes(r.status) &&
-                  r.from_date > data.today && (
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      onClick={async () => {
-                        if (
-                          await run(
-                            () => api.post(`/leave/requests/${r.id}/cancel`),
-                            "Request cancelled",
-                          )
+                {['Pending', 'Approved'].includes(r.status) && r.from_date > data.today && (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    onClick={async () => {
+                      if (
+                        await run(
+                          () => api.post(`/leave/requests/${r.id}/cancel`),
+                          'Request cancelled',
                         )
-                          reload();
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  )}
+                      )
+                        reload();
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                )}
               </div>
             ))
           ) : (
@@ -274,15 +254,9 @@ function Overview() {
             {data.payslip ? (
               <div className="row between">
                 <div>
-                  <div className="muted small">
-                    {fmtMonth(data.payslip.month)}
-                  </div>
-                  <div style={{ fontSize: 24, fontWeight: 700 }}>
-                    {inr(data.payslip.net)}
-                  </div>
-                  <div className="small muted">
-                    Net pay · Gross {inr(data.payslip.gross)}
-                  </div>
+                  <div className="muted small">{fmtMonth(data.payslip.month)}</div>
+                  <div style={{ fontSize: 24, fontWeight: 700 }}>{inr(data.payslip.net)}</div>
+                  <div className="small muted">Net pay · Gross {inr(data.payslip.gross)}</div>
                 </div>
                 <a
                   className="btn sm"
@@ -304,10 +278,20 @@ function Overview() {
       <div className="grid">
         <Card
           className="span-4"
-          title={data.cycle ? `My goals · ${data.cycle.name}` : "My goals"}
+          title={data.cycle ? `My goals · ${data.cycle.name}` : 'My goals'}
           action={
-            <Link className="link" to={data.cycle?.status === 'Active' && data.review?.status !== 'Completed' ? `/performance?goal=new&cycle=${data.cycle.id}` : '/performance'}>
-              {data.cycle?.status === 'Active' && data.review?.status !== 'Completed' ? 'Set goal' : 'Open'} <ArrowRight size={14} />
+            <Link
+              className="link"
+              to={
+                data.cycle?.status === 'Active' && data.review?.status !== 'Completed'
+                  ? `/performance?goal=new&cycle=${data.cycle.id}`
+                  : '/performance'
+              }
+            >
+              {data.cycle?.status === 'Active' && data.review?.status !== 'Completed'
+                ? 'Set goal'
+                : 'Open'}{' '}
+              <ArrowRight size={14} />
             </Link>
           }
         >
@@ -320,7 +304,7 @@ function Overview() {
                 </div>
                 <Progress
                   value={g.progress}
-                  color={g.progress >= 80 ? "var(--green)" : "var(--blue)"}
+                  color={g.progress >= 80 ? 'var(--green)' : 'var(--blue)'}
                   height={6}
                 />
               </div>
@@ -338,16 +322,11 @@ function Overview() {
           {data.teamOnLeave.length > 0 && (
             <div className="mb-12">
               {data.teamOnLeave.map((l) => (
-                <div
-                  key={`${l.employee_id}${l.from_date}`}
-                  className="small mb-8"
-                >
-                  <b>{l.name}</b>{" "}
+                <div key={`${l.employee_id}${l.from_date}`} className="small mb-8">
+                  <b>{l.name}</b>{' '}
                   <span className="muted">
                     · {l.type} · {fmtShort(l.from_date)}
-                    {l.to_date !== l.from_date
-                      ? ` – ${fmtShort(l.to_date)}`
-                      : ""}
+                    {l.to_date !== l.from_date ? ` – ${fmtShort(l.to_date)}` : ''}
                   </span>
                 </div>
               ))}
@@ -355,11 +334,7 @@ function Overview() {
           )}
           {data.team.length ? (
             data.team.slice(0, 6).map((t) => (
-              <div
-                key={t.id}
-                className="list-item"
-                style={{ padding: "6px 0" }}
-              >
+              <div key={t.id} className="list-item" style={{ padding: '6px 0' }}>
                 <Person
                   name={t.name}
                   sub={t.designation}
@@ -374,63 +349,53 @@ function Overview() {
           )}
         </Card>
         <div className="span-4 col" style={{ gap: 16 }}>
-          {data.celebrations.some((c) => c.kind !== "Birthday" && c.date === data.today) && <>
-          <Card title="Work anniversaries today">
-            {data.celebrations.length ? (
-              data.celebrations.filter((c) => c.kind !== "Birthday" && c.date === data.today).map((c) => (
-                <div
-                  key={`${c.id}${c.kind}`}
-                  className="list-item"
-                  style={{ padding: "7px 0" }}
-                >
-                  <Avatar name={c.name} size={30} />
-                  <span className="grow small">
-                    <b>{c.name}</b>
-                    <div className="muted">
-                      {c.kind === "Birthday"
-                        ? "Birthday"
-                        : `${c.years} year${c.years === 1 ? "" : "s"} at BrainADZ`}
-                    </div>
-                  </span>
-                  {c.kind === "Birthday" ? (
-                    <Cake size={18} className="red" />
-                  ) : (
-                    <PartyPopper size={18} className="amber" />
-                  )}
-                  <span className="small muted">
-                    {c.date === data.today ? "Today" : fmtShort(c.date)}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <Empty text="No celebrations in the next 2 weeks" />
-            )}
-          </Card>
-          </>}
+          {data.celebrations.some((c) => c.kind !== 'Birthday' && c.date === data.today) && (
+            <>
+              <Card title="Work anniversaries today">
+                {data.celebrations.length ? (
+                  data.celebrations
+                    .filter((c) => c.kind !== 'Birthday' && c.date === data.today)
+                    .map((c) => (
+                      <div
+                        key={`${c.id}${c.kind}`}
+                        className="list-item"
+                        style={{ padding: '7px 0' }}
+                      >
+                        <Avatar name={c.name} size={30} />
+                        <span className="grow small">
+                          <b>{c.name}</b>
+                          <div className="muted">
+                            {c.kind === 'Birthday'
+                              ? 'Birthday'
+                              : `${c.years} year${c.years === 1 ? '' : 's'} at BrainADZ`}
+                          </div>
+                        </span>
+                        {c.kind === 'Birthday' ? (
+                          <Cake size={18} className="red" />
+                        ) : (
+                          <PartyPopper size={18} className="amber" />
+                        )}
+                        <span className="small muted">
+                          {c.date === data.today ? 'Today' : fmtShort(c.date)}
+                        </span>
+                      </div>
+                    ))
+                ) : (
+                  <Empty text="No celebrations in the next 2 weeks" />
+                )}
+              </Card>
+            </>
+          )}
           <div className="card tight">
             <NoticeBoard notices={data.notices} onChange={reload} compact />
           </div>
         </div>
       </div>
-      {modal === "leave" && (
-        <ApplyLeaveModal onClose={() => setModal(null)} onDone={reload} />
-      )}
-      {modal === "request" && (
-        <RaiseRequestModal onClose={() => setModal(null)} onDone={reload} />
-      )}
-      {modal === "claim" && (
-        <ClaimModal onClose={() => setModal(null)} onDone={reload} />
-      )}
-      {modal === "profile" && (
-        <ProfileLoader id={e.id} onClose={() => setModal(null)} />
-      )}
-      {policy && (
-        <PolicyModal
-          id={policy}
-          onClose={() => setPolicy(null)}
-          onDone={reload}
-        />
-      )}
+      {modal === 'leave' && <ApplyLeaveModal onClose={() => setModal(null)} onDone={reload} />}
+      {modal === 'request' && <RaiseRequestModal onClose={() => setModal(null)} onDone={reload} />}
+      {modal === 'claim' && <ClaimModal onClose={() => setModal(null)} onDone={reload} />}
+      {modal === 'profile' && <ProfileLoader id={e.id} onClose={() => setModal(null)} />}
+      {policy && <PolicyModal id={policy} onClose={() => setPolicy(null)} onDone={reload} />}
     </div>
   );
 }
@@ -447,17 +412,14 @@ export function PolicyModal({ id, onClose, onDone }) {
   const [run, busy] = useAction(toast);
   return (
     <Modal
-      title={data ? `${data.title} · v${data.version}` : "Policy"}
+      title={data ? `${data.title} · v${data.version}` : 'Policy'}
       size="wide"
       onClose={onClose}
       footer={
         data && (
           <>
             {data.hasFile && (
-              <Button
-                icon={Download}
-                onClick={() => download(`/policies/${id}/file`)}
-              >
+              <Button icon={Download} onClick={() => download(`/policies/${id}/file`)}>
                 Download document
               </Button>
             )}
@@ -475,7 +437,7 @@ export function PolicyModal({ id, onClose, onDone }) {
                     if (
                       await run(
                         () => api.post(`/policies/${id}/ack`),
-                        "Thank you for acknowledging",
+                        'Thank you for acknowledging',
                       )
                     ) {
                       onDone?.();
@@ -503,9 +465,7 @@ export function PolicyModal({ id, onClose, onDone }) {
           ) : (
             <Empty text="See the attached document" />
           )}
-          <div className="small muted mt-16">
-            Last updated {fmtDate(data.updated_at)}
-          </div>
+          <div className="small muted mt-16">Last updated {fmtDate(data.updated_at)}</div>
         </div>
       )}
     </Modal>
@@ -514,7 +474,7 @@ export function PolicyModal({ id, onClose, onDone }) {
 
 function Payslips() {
   const { toast } = useApp();
-  const { data, reload } = useApi("/payroll/my");
+  const { data, reload } = useApi('/payroll/my');
   const [claim, setClaim] = useState(false);
   const [run] = useAction(toast);
   const [confirm, confirmEl] = useConfirm();
@@ -559,10 +519,7 @@ function Payslips() {
           </table>
         ) : (
           <div style={{ padding: 18 }}>
-            <Empty
-              icon={Wallet}
-              text="Payslips appear here once payroll is paid"
-            />
+            <Empty icon={Wallet} text="Payslips appear here once payroll is paid" />
           </div>
         )}
       </Card>
@@ -570,12 +527,7 @@ function Payslips() {
         className="span-5"
         title="Reimbursement claims"
         action={
-          <Button
-            size="sm"
-            variant="primary"
-            icon={Plus}
-            onClick={() => setClaim(true)}
-          >
+          <Button size="sm" variant="primary" icon={Plus} onClick={() => setClaim(true)}>
             New claim
           </Button>
         }
@@ -585,16 +537,24 @@ function Payslips() {
             <div key={c.id} className="list-item">
               <div className="grow">
                 <div className="b6">
-                  {inr(c.amount)}{" "}
-                  <span className="small muted">· {c.kind}</span>
+                  {inr(c.amount)} <span className="small muted">· {c.kind}</span>
                 </div>
                 <div className="small muted">
-                  {c.note || "—"} · {fmtMonth(c.month)}
+                  {c.note || '—'} · {fmtMonth(c.month)}
                 </div>
               </div>
-              {c.proof_file && <a className="small link" href={apiUrl(`/payroll/adjustments/${c.id}/proof`)} target="_blank" rel="noreferrer">Download proof</a>}
+              {c.proof_file && (
+                <a
+                  className="small link"
+                  href={apiUrl(`/payroll/adjustments/${c.id}/proof`)}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Download proof
+                </a>
+              )}
               <Badge>{c.status}</Badge>
-              {c.status === "Pending" && (
+              {c.status === 'Pending' && (
                 <Button
                   size="xs"
                   variant="ghost"
@@ -603,16 +563,13 @@ function Payslips() {
                   onClick={async () => {
                     if (
                       await confirm({
-                        title: "Withdraw claim?",
+                        title: 'Withdraw claim?',
                         text: `${inr(c.amount)} · ${c.note || c.kind}`,
                         danger: true,
-                        confirmLabel: "Withdraw",
+                        confirmLabel: 'Withdraw',
                       })
                     ) {
-                      await run(
-                        () => api.del(`/payroll/adjustments/${c.id}`),
-                        "Claim withdrawn",
-                      );
+                      await run(() => api.del(`/payroll/adjustments/${c.id}`), 'Claim withdrawn');
                       reload();
                     }
                   }}
@@ -623,9 +580,7 @@ function Payslips() {
         ) : (
           <Empty icon={Receipt} text="No claims yet" />
         )}
-        <div className="small muted mt-12">
-          Approved claims are paid with that month's salary.
-        </div>
+        <div className="small muted mt-12">Approved claims are paid with that month's salary.</div>
       </Card>
       {claim && <ClaimModal onClose={() => setClaim(false)} onDone={reload} />}
       {confirmEl}
@@ -634,49 +589,30 @@ function Payslips() {
 }
 
 function MyRequests() {
-  const { data, reload } = useApi("/requests?mine=1");
+  const { data, reload } = useApi('/requests?mine=1');
   const [open, setOpen] = useState(false);
   if (!data) return <Loading />;
   return (
     <Card
       title="Helpdesk requests"
       action={
-        <Button
-          size="sm"
-          variant="primary"
-          icon={Plus}
-          onClick={() => setOpen(true)}
-        >
+        <Button size="sm" variant="primary" icon={Plus} onClick={() => setOpen(true)}>
           Raise a request
         </Button>
       }
     >
       {data.items.length ? (
         data.items.map((r) => (
-          <div
-            key={r.id}
-            className="list-item"
-            style={{ alignItems: "flex-start" }}
-          >
+          <div key={r.id} className="list-item" style={{ alignItems: 'flex-start' }}>
             <Badge tone="blue">{r.category}</Badge>
             <div className="grow">
               <div className="b6">{r.subject}</div>
-              {r.description && (
-                <div className="small muted">{r.description}</div>
-              )}
-              {r.response && (
-                <div className="small green mt-8">HR: {r.response}</div>
-              )}
+              {r.description && <div className="small muted">{r.description}</div>}
+              {r.response && <div className="small green mt-8">HR: {r.response}</div>}
             </div>
             <span className="small muted">{fmtDate(r.created_at)}</span>
             <Badge
-              tone={
-                r.status === "Resolved"
-                  ? "green"
-                  : r.status === "Open"
-                    ? "amber"
-                    : "blue"
-              }
+              tone={r.status === 'Resolved' ? 'green' : r.status === 'Open' ? 'amber' : 'blue'}
             >
               {r.status}
             </Badge>
@@ -685,9 +621,7 @@ function MyRequests() {
       ) : (
         <Empty text="You have not raised any requests" />
       )}
-      {open && (
-        <RaiseRequestModal onClose={() => setOpen(false)} onDone={reload} />
-      )}
+      {open && <RaiseRequestModal onClose={() => setOpen(false)} onDone={reload} />}
     </Card>
   );
 }

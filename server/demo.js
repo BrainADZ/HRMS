@@ -1,4 +1,5 @@
 // Start a disposable local demo with the real API, React client, and sample data.
+
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -40,8 +41,12 @@ async function stop(code = 0) {
   process.exit(code);
 }
 
-process.on('SIGINT', () => { stop().catch(console.error); });
-process.on('SIGTERM', () => { stop().catch(console.error); });
+process.on('SIGINT', () => {
+  stop().catch(console.error);
+});
+process.on('SIGTERM', () => {
+  stop().catch(console.error);
+});
 readline.createInterface({ input: process.stdin }).on('line', (line) => {
   if (line.trim().toLowerCase() === 'q') stop().catch(console.error);
 });
@@ -70,18 +75,23 @@ try {
     'ADMIN_PASSWORD',
     'ANTHROPIC_API_KEY',
     'ANTHROPIC_AUTH_TOKEN',
-  ]) delete clientEnv[key];
+  ])
+    delete clientEnv[key];
 
-  vite = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--config', 'client/vite.config.js'], {
-    cwd: root,
-    env: {
-      ...clientEnv,
-      HRMS_API_PROXY_TARGET: `http://127.0.0.1:${apiPort}`,
-      VITE_API_BASE_URL: '/api',
+  vite = spawn(
+    process.execPath,
+    ['node_modules/vite/bin/vite.js', '--config', 'client/vite.config.js'],
+    {
+      cwd: root,
+      env: {
+        ...clientEnv,
+        HRMS_API_PROXY_TARGET: `http://127.0.0.1:${apiPort}`,
+        VITE_API_BASE_URL: '/api',
+      },
+      stdio: ['ignore', 'inherit', 'inherit'],
+      windowsHide: true,
     },
-    stdio: ['ignore', 'inherit', 'inherit'],
-    windowsHide: true,
-  });
+  );
 
   vite.on('error', (error) => {
     console.error(`Demo client could not start: ${error.message}`);
@@ -91,7 +101,9 @@ try {
     if (!stopping) stop(code || 1).catch(console.error);
   });
 
-  console.log('\n  Demo data is temporary. Open the Vite URL printed below. Press q + Enter to stop.\n');
+  console.log(
+    '\n  Demo data is temporary. Open the Vite URL printed below. Press q + Enter to stop.\n',
+  );
 } catch (error) {
   console.error(`Demo could not start: ${error.message}`);
   await stop(1);

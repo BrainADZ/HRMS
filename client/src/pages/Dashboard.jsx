@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Users,
   UserRound,
@@ -15,17 +15,11 @@ import {
   Trash2,
   Video,
   Building2,
-} from "lucide-react";
-import { useApp } from "../context.jsx";
-import { useApi, useAction } from "../lib/hooks.js";
-import { api } from "../lib/api.js";
-import {
-  fmtShort,
-  fmtTime,
-  greeting,
-  fmtMonth,
-  fmtDate,
-} from "../lib/format.js";
+} from 'lucide-react';
+import { useApp } from '../context.jsx';
+import { useApi, useAction } from '../lib/hooks.js';
+import { api } from '../lib/api.js';
+import { fmtShort, fmtTime, greeting, fmtMonth, fmtDate } from '../lib/format.js';
 import {
   Card,
   Kpi,
@@ -44,7 +38,7 @@ import {
   DateBox,
   Menu,
   useConfirm,
-} from "../components/ui.jsx";
+} from '../components/ui.jsx';
 import {
   Donut,
   Legend,
@@ -54,10 +48,10 @@ import {
   HBars,
   Ring,
   STATUS,
-} from "../components/charts.jsx";
-import { BrandBanner } from "../components/Layout.jsx";
-import { AttentionBanner } from "../components/WorkClock.jsx";
-import DailyAttendance from "../components/DailyAttendance.jsx";
+} from '../components/charts.jsx';
+import { BrandBanner } from '../components/Layout.jsx';
+import { AttentionBanner } from '../components/WorkClock.jsx';
+import DailyAttendance from '../components/DailyAttendance.jsx';
 import CelebrationBoard from '../components/CelebrationBoard.jsx';
 
 const NOTICE_ICON = {
@@ -68,11 +62,11 @@ const NOTICE_ICON = {
   general: Megaphone,
 };
 const NOTICE_TONE = {
-  health: "var(--red)",
-  policy: "var(--blue)",
-  award: "var(--green)",
-  event: "var(--purple)",
-  general: "var(--amber)",
+  health: 'var(--red)',
+  policy: 'var(--blue)',
+  award: 'var(--green)',
+  event: 'var(--purple)',
+  general: 'var(--amber)',
 };
 
 export function VerticalFilterNote() {
@@ -80,16 +74,9 @@ export function VerticalFilterNote() {
   const v = vertical && verticalById(vertical);
   if (!v) return null;
   return (
-    <span
-      className="chip"
-      style={{ background: "#fff", border: "1px solid var(--border)" }}
-    >
+    <span className="chip" style={{ background: '#fff', border: '1px solid var(--border)' }}>
       Showing {v.name}
-      <button
-        type="button"
-        onClick={() => setVertical(null)}
-        aria-label="Clear vertical filter"
-      >
+      <button type="button" onClick={() => setVertical(null)} aria-label="Clear vertical filter">
         ✕
       </button>
     </span>
@@ -100,22 +87,15 @@ export function NoticeBoard({ notices, onChange, compact }) {
   const { isHR, toast } = useApp();
   const [all, setAll] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [f, setF] = useState({ title: "", body: "", kind: "general" });
+  const [f, setF] = useState({ title: '', body: '', kind: 'general' });
   const [run, busy] = useAction(toast);
   const [confirm, confirmEl] = useConfirm();
   const list = (items) =>
     items.map((n) => {
       const Icon = NOTICE_ICON[n.kind] || Megaphone;
       return (
-        <div
-          key={n.id}
-          className="list-item"
-          style={{ padding: compact ? "7px 0" : undefined }}
-        >
-          <Icon
-            size={18}
-            style={{ color: NOTICE_TONE[n.kind], flexShrink: 0 }}
-          />
+        <div key={n.id} className="list-item" style={{ padding: compact ? '7px 0' : undefined }}>
+          <Icon size={18} style={{ color: NOTICE_TONE[n.kind], flexShrink: 0 }} />
           <div className="grow" style={{ minWidth: 0 }}>
             <div className="ellipsis" style={{ fontSize: 13.5 }}>
               {n.title}
@@ -136,16 +116,13 @@ export function NoticeBoard({ notices, onChange, compact }) {
               onClick={async () => {
                 if (
                   await confirm({
-                    title: "Delete notice?",
+                    title: 'Delete notice?',
                     text: n.title,
                     danger: true,
-                    confirmLabel: "Delete",
+                    confirmLabel: 'Delete',
                   })
                 ) {
-                  await run(
-                    () => api.del(`/notices/${n.id}`),
-                    "Notice deleted",
-                  );
+                  await run(() => api.del(`/notices/${n.id}`), 'Notice deleted');
                   onChange?.();
                 }
               }}
@@ -162,11 +139,7 @@ export function NoticeBoard({ notices, onChange, compact }) {
         <h3>Notice Board</h3>
         <div className="row">
           {isHR && (
-            <button
-              type="button"
-              className="link"
-              onClick={() => setAdding(true)}
-            >
+            <button type="button" className="link" onClick={() => setAdding(true)}>
               <Plus size={14} />
               Post
             </button>
@@ -176,11 +149,7 @@ export function NoticeBoard({ notices, onChange, compact }) {
           </button>
         </div>
       </div>
-      {notices.length ? (
-        list(notices.slice(0, 3))
-      ) : (
-        <Empty text="No notices yet" />
-      )}
+      {notices.length ? list(notices.slice(0, 3)) : <Empty text="No notices yet" />}
       {all && <NoticeList onClose={() => setAll(false)} render={list} />}
       {adding && (
         <Modal
@@ -193,11 +162,9 @@ export function NoticeBoard({ notices, onChange, compact }) {
                 variant="primary"
                 loading={busy}
                 onClick={async () => {
-                  if (
-                    await run(() => api.post("/notices", f), "Notice posted")
-                  ) {
+                  if (await run(() => api.post('/notices', f), 'Notice posted')) {
                     setAdding(false);
-                    setF({ title: "", body: "", kind: "general" });
+                    setF({ title: '', body: '', kind: 'general' });
                     onChange?.();
                   }
                 }}
@@ -220,23 +187,18 @@ export function NoticeBoard({ notices, onChange, compact }) {
                 value={f.kind}
                 onChange={(e) => setF({ ...f, kind: e.target.value })}
                 options={[
-                  { value: "general", label: "General" },
-                  { value: "event", label: "Event" },
-                  { value: "policy", label: "Policy" },
-                  { value: "health", label: "Health & wellness" },
-                  { value: "award", label: "Awards" },
+                  { value: 'general', label: 'General' },
+                  { value: 'event', label: 'Event' },
+                  { value: 'policy', label: 'Policy' },
+                  { value: 'health', label: 'Health & wellness' },
+                  { value: 'award', label: 'Awards' },
                 ]}
               />
             </Field>
             <Field label="Details">
-              <Textarea
-                value={f.body}
-                onChange={(e) => setF({ ...f, body: e.target.value })}
-              />
+              <Textarea value={f.body} onChange={(e) => setF({ ...f, body: e.target.value })} />
             </Field>
-            <div className="small muted">
-              Everyone with a login gets a notification.
-            </div>
+            <div className="small muted">Everyone with a login gets a notification.</div>
           </div>
         </Modal>
       )}
@@ -246,7 +208,7 @@ export function NoticeBoard({ notices, onChange, compact }) {
 }
 
 function NoticeList({ onClose, render }) {
-  const { data } = useApi("/notices");
+  const { data } = useApi('/notices');
   return (
     <Modal title="Notice board" size="wide" onClose={onClose}>
       {data ? data.items.length ? render(data.items) : <Empty /> : <Loading />}
@@ -257,10 +219,8 @@ function NoticeList({ onClose, render }) {
 export default function Dashboard() {
   const { user, vertical, toast, info } = useApp();
   const nav = useNavigate();
-  const { data, error, reload } = useApi(
-    `/dashboard${vertical ? `?vertical=${vertical}` : ""}`,
-  );
-  const [tab, setTab] = useState("departments");
+  const { data, error, reload } = useApi(`/dashboard${vertical ? `?vertical=${vertical}` : ''}`);
+  const [tab, setTab] = useState('departments');
   const [run] = useAction(toast);
   if (error && !data) return <ErrorBox error={error} onRetry={reload} />;
   if (!data) return <Loading />;
@@ -269,7 +229,7 @@ export default function Dashboard() {
     if (
       await run(
         () => api.post(`/leave/requests/${id}/decision`, { action }),
-        action === "approve" ? "Leave approved" : "Leave rejected",
+        action === 'approve' ? 'Leave approved' : 'Leave rejected',
       )
     )
       reload();
@@ -289,27 +249,29 @@ export default function Dashboard() {
             {greeting()}, {user.firstName}!
           </h1>
           <div className="sub">
-            Here's what's happening across{" "}
-            {data.scope === "team"
-              ? "your team"
-              : info.companyName || "BrainADZ"}{" "}
-            today. <VerticalFilterNote />
+            Here's what's happening across{' '}
+            {data.scope === 'team' ? 'your team' : info.companyName || 'BrainADZ'} today.{' '}
+            <VerticalFilterNote />
           </div>
         </div>
         <BrandBanner />
       </div>
       <CelebrationBoard />
       <AttentionBanner />
-      {user.employeeId && <div className="mb-16"><DailyAttendance /></div>}
+      {user.employeeId && (
+        <div className="mb-16">
+          <DailyAttendance />
+        </div>
+      )}
 
       <div className="kpis">
         <Kpi
           icon={Users}
           tone="blue"
-          label={data.scope === "team" ? "Team Members" : "Total Employees"}
+          label={data.scope === 'team' ? 'Team Members' : 'Total Employees'}
           value={k.headcount}
           delta={k.headcountChange}
-          onClick={() => nav("/employees")}
+          onClick={() => nav('/employees')}
         />
         <Kpi
           icon={UserRound}
@@ -317,7 +279,7 @@ export default function Dashboard() {
           label="Open Positions"
           value={k.openPositions}
           delta={k.openChange}
-          onClick={() => nav("/hiring")}
+          onClick={() => nav('/hiring')}
         />
         <Kpi
           icon={UserPlus}
@@ -333,23 +295,20 @@ export default function Dashboard() {
           value={k.onLeave}
           extra={
             <span className="delta">
-              <span className="d" style={{ color: "var(--text-2)" }}>
+              <span className="d" style={{ color: 'var(--text-2)' }}>
                 {k.onLeavePct}%
               </span>
               <small>of total employees</small>
             </span>
           }
-          onClick={() => nav("/leave?tab=manage")}
+          onClick={() => nav('/leave?tab=manage')}
         />
       </div>
 
       <div className="grid">
         <Card className="span-4" title="Employee Distribution by Vertical">
           <div className="row donut-row" style={{ gap: 22 }}>
-            <Donut
-              data={data.byVertical}
-              center={{ value: k.headcount, label: "Employees" }}
-            />
+            <Donut data={data.byVertical} center={{ value: k.headcount, label: 'Employees' }} />
             <Legend
               items={data.byVertical.map((v) => ({
                 label: v.label,
@@ -360,19 +319,28 @@ export default function Dashboard() {
           </div>
         </Card>
         <Card className="span-4" title={`Managers (${data.managers?.length || 0})`}>
-          {data.managers?.length ? data.managers.slice(0, 6).map((manager) => <div key={manager.id} className="list-item">
-            <div className="grow"><b>{manager.name}</b><div className="small muted">{manager.designation || 'Manager'}</div></div>
-            <span className="badge b-blue">{manager.team} team</span>
-          </div>) : <Empty text="No managers in this view" />}
+          {data.managers?.length ? (
+            data.managers.slice(0, 6).map((manager) => (
+              <div key={manager.id} className="list-item">
+                <div className="grow">
+                  <b>{manager.name}</b>
+                  <div className="small muted">{manager.designation || 'Manager'}</div>
+                </div>
+                <span className="badge b-blue">{manager.team} team</span>
+              </div>
+            ))
+          ) : (
+            <Empty text="No managers in this view" />
+          )}
         </Card>
         <Card className="span-4" title="Employee Lifecycle Funnel">
           <Funnel
             steps={[
-              { label: "Applications", value: data.funnel.applications || 0 },
-              { label: "Screened (AI)", value: data.funnel.screened || 0 },
-              { label: "Interviews", value: data.funnel.interviews || 0 },
-              { label: "Offers", value: data.funnel.offers || 0 },
-              { label: "Hired", value: data.funnel.hired || 0 },
+              { label: 'Applications', value: data.funnel.applications || 0 },
+              { label: 'Screened (AI)', value: data.funnel.screened || 0 },
+              { label: 'Interviews', value: data.funnel.interviews || 0 },
+              { label: 'Offers', value: data.funnel.offers || 0 },
+              { label: 'Hired', value: data.funnel.hired || 0 },
             ]}
           />
         </Card>
@@ -388,11 +356,11 @@ export default function Dashboard() {
           <div style={{ paddingTop: 10 }}>
             <PipelineDots
               items={[
-                { label: "Open Positions", value: data.pipeline.open },
-                { label: "Screening", value: data.pipeline.screening },
-                { label: "Interviews", value: data.pipeline.interviews },
-                { label: "Offers", value: data.pipeline.offers },
-                { label: "Hired", value: data.pipeline.hired },
+                { label: 'Open Positions', value: data.pipeline.open },
+                { label: 'Screening', value: data.pipeline.screening },
+                { label: 'Interviews', value: data.pipeline.interviews },
+                { label: 'Offers', value: data.pipeline.offers },
+                { label: 'Hired', value: data.pipeline.hired },
               ]}
             />
           </div>
@@ -421,7 +389,7 @@ export default function Dashboard() {
                   <div className="small muted ellipsis">{i.title}</div>
                 </div>
                 <Badge tone="blue">
-                  {i.mode === "Virtual" ? (
+                  {i.mode === 'Virtual' ? (
                     <>
                       <Video size={12} />
                       {i.round}
@@ -433,7 +401,7 @@ export default function Dashboard() {
                 <Menu
                   items={[
                     {
-                      label: "Open candidate",
+                      label: 'Open candidate',
                       onClick: () => nav(`/hiring?candidate=${i.candidate_id}`),
                     },
                   ]}
@@ -448,13 +416,10 @@ export default function Dashboard() {
           className="span-4"
           title={
             <>
-              Leave Requests{" "}
+              Leave Requests{' '}
               <span className="sub">
                 (Pending Approval
-                {data.pendingLeaveCount > 5
-                  ? ` · ${data.pendingLeaveCount}`
-                  : ""}
-                )
+                {data.pendingLeaveCount > 5 ? ` · ${data.pendingLeaveCount}` : ''})
               </span>
             </>
           }
@@ -476,7 +441,7 @@ export default function Dashboard() {
                         <span
                           className="dot"
                           style={{
-                            background: l.vertical_color || "var(--amber)",
+                            background: l.vertical_color || 'var(--amber)',
                           }}
                         />
                         {l.vertical} • {l.department}
@@ -486,27 +451,17 @@ export default function Dashboard() {
                 </div>
                 <div className="small hide-sm" style={{ width: 96 }}>
                   <div className="b6">
-                    {l.days} day{l.days === 1 ? "" : "s"}
+                    {l.days} day{l.days === 1 ? '' : 's'}
                   </div>
                   <div className="muted">
                     {fmtShort(l.from_date)}
-                    {l.to_date !== l.from_date
-                      ? ` – ${fmtShort(l.to_date)}`
-                      : ""}
+                    {l.to_date !== l.from_date ? ` – ${fmtShort(l.to_date)}` : ''}
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant="success"
-                  onClick={() => decide(l.id, "approve")}
-                >
+                <Button size="sm" variant="success" onClick={() => decide(l.id, 'approve')}>
                   Approve
                 </Button>
-                <Button
-                  size="sm"
-                  variant="reject"
-                  onClick={() => decide(l.id, "reject")}
-                >
+                <Button size="sm" variant="reject" onClick={() => decide(l.id, 'reject')}>
                   Reject
                 </Button>
               </div>
@@ -520,8 +475,7 @@ export default function Dashboard() {
             className="span-4"
             title={
               <>
-                Payroll Status{" "}
-                <span className="sub">({fmtMonth(p.month)})</span>
+                Payroll Status <span className="sub">({fmtMonth(p.month)})</span>
               </>
             }
             action={
@@ -535,47 +489,47 @@ export default function Dashboard() {
                 size={150}
                 thickness={20}
                 data={[
-                  { label: "Paid", value: p.paid, color: STATUS.good },
+                  { label: 'Paid', value: p.paid, color: STATUS.good },
                   {
-                    label: "Processed (awaiting payment)",
+                    label: 'Processed (awaiting payment)',
                     value: p.processed,
                     color: STATUS.info,
                   },
-                  { label: "On hold", value: p.onHold, color: STATUS.bad },
+                  { label: 'On hold', value: p.onHold, color: STATUS.bad },
                   {
-                    label: "Not applicable",
+                    label: 'Not applicable',
                     value: p.notApplicable,
                     color: STATUS.neutral,
                   },
                 ]}
                 center={{
                   value: `${Math.round(p.percent)}%`,
-                  label: p.status === "Completed" ? "Paid" : "Processed",
+                  label: p.status === 'Completed' ? 'Paid' : 'Processed',
                 }}
               />
               <Legend
                 showPct={false}
                 items={[
                   {
-                    label: "Paid",
+                    label: 'Paid',
                     value: p.paid,
                     color: STATUS.good,
                     showPct: false,
                   },
                   {
-                    label: "Processed",
+                    label: 'Processed',
                     value: p.processed,
                     color: STATUS.info,
                     showPct: false,
                   },
                   {
-                    label: "On hold",
+                    label: 'On hold',
                     value: p.onHold,
                     color: STATUS.bad,
                     showPct: false,
                   },
                   {
-                    label: "Not applicable",
+                    label: 'Not applicable',
                     value: p.notApplicable,
                     color: STATUS.neutral,
                     showPct: false,
@@ -598,11 +552,11 @@ export default function Dashboard() {
         <Card className="span-3" title="Attrition vs Hiring Trend">
           <div className="row small mb-8" style={{ gap: 14 }}>
             <span className="row gap-6">
-              <span className="dot" style={{ background: "#1A6DF0" }} />
+              <span className="dot" style={{ background: '#1A6DF0' }} />
               New Joiners
             </span>
             <span className="row gap-6">
-              <span className="dot" style={{ background: "#E5243B" }} />
+              <span className="dot" style={{ background: '#E5243B' }} />
               Attrition
             </span>
           </div>
@@ -611,13 +565,13 @@ export default function Dashboard() {
             categories={data.trend.map((t) => t.label)}
             series={[
               {
-                name: "New Joiners",
-                color: "#1A6DF0",
+                name: 'New Joiners',
+                color: '#1A6DF0',
                 values: data.trend.map((t) => t.joiners),
               },
               {
-                name: "Attrition",
-                color: "#E5243B",
+                name: 'Attrition',
+                color: '#E5243B',
                 values: data.trend.map((t) => t.exits),
               },
             ]}
@@ -629,10 +583,10 @@ export default function Dashboard() {
             value={tab}
             onChange={setTab}
             options={[
-              { value: "departments", label: "Departments" },
-              { value: "tenure", label: "Tenure" },
-              { value: "location", label: "Location" },
-              { value: "gender", label: "Gender" },
+              { value: 'departments', label: 'Departments' },
+              { value: 'tenure', label: 'Tenure' },
+              { value: 'location', label: 'Location' },
+              { value: 'gender', label: 'Gender' },
             ]}
           />
           <div className="mt-12">
@@ -648,10 +602,7 @@ export default function Dashboard() {
             </Link>
           }
         >
-          <div
-            className="row"
-            style={{ justifyContent: "space-around", paddingTop: 6 }}
-          >
+          <div className="row" style={{ justifyContent: 'space-around', paddingTop: 6 }}>
             <Ring
               value={data.compliance.ackPct}
               color={STATUS.good}
@@ -694,17 +645,12 @@ export default function Dashboard() {
 }
 
 function TeamQuick() {
-  const { data } = useApi("/employees?team=1&pageSize=8");
+  const { data } = useApi('/employees?team=1&pageSize=8');
   if (!data) return <Loading />;
   return data.items.length ? (
     data.items.map((e) => (
       <div key={e.id} className="list-item">
-        <Person
-          name={e.name}
-          id={e.id}
-          hasPhoto={e.has_photo}
-          sub={e.designation}
-        />
+        <Person name={e.name} id={e.id} hasPhoto={e.has_photo} sub={e.designation} />
         <span className="grow" />
         <Badge>{e.status}</Badge>
       </div>

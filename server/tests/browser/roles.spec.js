@@ -3,20 +3,47 @@ import { boot, credentials } from '../helpers.js';
 import { hashPassword } from '../../auth.js';
 
 let ctx, origin;
-test.beforeAll(async () => { ctx = await boot({ serveClient: true }); origin = ctx.base.replace(/\/api$/, ''); });
-test.afterAll(async () => { await ctx?.close(); });
+test.beforeAll(async () => {
+  ctx = await boot({ serveClient: true });
+  origin = ctx.base.replace(/\/api$/, '');
+});
+test.afterAll(async () => {
+  await ctx?.close();
+});
 
-const common = ['/my', '/employees', '/documents', '/leave', '/calendar', '/performance', '/attendance', '/posh', '/resignation'];
+const common = [
+  '/my',
+  '/employees',
+  '/documents',
+  '/leave',
+  '/calendar',
+  '/performance',
+  '/attendance',
+  '/posh',
+  '/resignation',
+];
 for (const [role, email, routes] of [
-  ['admin', 'rajiv.malhotra@brainadz.com', ['/', '/hiring', '/screener', '/payroll', '/reports', '/settings', ...common]],
-  ['hr', 'priya.sharma@brainadz.com', ['/', '/hiring', '/screener', '/payroll', '/reports', '/settings', ...common]],
+  [
+    'admin',
+    'rajiv.malhotra@brainadz.com',
+    ['/', '/hiring', '/screener', '/payroll', '/reports', '/settings', ...common],
+  ],
+  [
+    'hr',
+    'priya.sharma@brainadz.com',
+    ['/', '/hiring', '/screener', '/payroll', '/reports', '/settings', ...common],
+  ],
   ['manager', 'vikram.patel@brainadz.com', ['/', '/hiring', ...common]],
   ['employee', 'aarav.mehta@brainadz.com', common],
 ]) {
   test(`${role}: sign in and render permitted pages`, async ({ page }) => {
-    const errors = [], failures = [];
+    const errors = [],
+      failures = [];
     page.on('pageerror', (error) => errors.push(error.message));
-    page.on('response', (response) => { if (response.url().includes('/api/') && response.status() >= 500) failures.push(`${response.status()} ${new URL(response.url()).pathname}`); });
+    page.on('response', (response) => {
+      if (response.url().includes('/api/') && response.status() >= 500)
+        failures.push(`${response.status()} ${new URL(response.url()).pathname}`);
+    });
     await page.goto(origin);
     const login = credentials(ctx.base, email);
     if (role === 'admin') {
@@ -30,7 +57,7 @@ for (const [role, email, routes] of [
     // Seeded employees may first receive the normal short-hours reminder.
     for (let prompt = 0; prompt < 2; prompt++) {
       const later = page.getByRole('button', { name: /^(Later|Not now, I'm done for today)$/ });
-      if (!await later.isVisible()) break;
+      if (!(await later.isVisible())) break;
       await later.click();
       await page.waitForLoadState('networkidle');
     }
@@ -38,15 +65,24 @@ for (const [role, email, routes] of [
     await expect(page.locator('.user-chip svg[role=img]')).toBeVisible();
     await page.getByRole('button', { name: 'Account menu', exact: true }).click();
     await page.getByRole('button', { name: 'Change photo', exact: true }).click();
-    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
-    await page.getByLabel('Profile image', { exact: true }).setInputFiles({ name: 'profile.png', mimeType: 'image/png', buffer: png });
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',
+      'base64',
+    );
+    await page
+      .getByLabel('Profile image', { exact: true })
+      .setInputFiles({ name: 'profile.png', mimeType: 'image/png', buffer: png });
     await page.getByRole('button', { name: 'Save photo', exact: true }).click();
     await expect(page.locator('.user-chip img')).toBeVisible();
-    await expect.poll(() => page.locator('.user-chip img').evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
+    await expect
+      .poll(() => page.locator('.user-chip img').evaluate((img) => img.naturalWidth))
+      .toBeGreaterThan(0);
     const oldSrc = await page.locator('.user-chip img').getAttribute('src');
     await page.getByRole('button', { name: 'Account menu', exact: true }).click();
     await page.getByRole('button', { name: 'Change photo', exact: true }).click();
-    await page.getByLabel('Profile image', { exact: true }).setInputFiles({ name: 'replacement.png', mimeType: 'image/png', buffer: png });
+    await page
+      .getByLabel('Profile image', { exact: true })
+      .setInputFiles({ name: 'replacement.png', mimeType: 'image/png', buffer: png });
     await page.getByRole('button', { name: 'Save photo', exact: true }).click();
     await expect(page.locator('.user-chip img')).not.toHaveAttribute('src', oldSrc);
     for (const route of routes) {
@@ -57,13 +93,21 @@ for (const [role, email, routes] of [
       await expect(page.locator('.user-chip img')).toBeVisible();
     }
     await page.goto(origin + '/attendance?tab=corrections');
-    await expect(page.getByRole('heading', { name: 'Request an attendance correction' })).toBeVisible();
-    await page.getByLabel('Correction reason', { exact: true }).fill(`${role} browser correction test`);
+    await expect(
+      page.getByRole('heading', { name: 'Request an attendance correction' }),
+    ).toBeVisible();
+    await page
+      .getByLabel('Correction reason', { exact: true })
+      .fill(`${role} browser correction test`);
     await page.getByRole('button', { name: 'Request correction', exact: true }).click();
     await expect(page.locator('td', { hasText: `${role} browser correction test` })).toBeVisible();
     if (role === 'admin' || role === 'hr') {
       await page.goto(origin + '/reports');
-      await page.getByLabel('Report employee', { exact: true }).selectOption(String((await ctx.db.get('SELECT id FROM employees WHERE email=?', email)).id));
+      await page
+        .getByLabel('Report employee', { exact: true })
+        .selectOption(
+          String((await ctx.db.get('SELECT id FROM employees WHERE email=?', email)).id),
+        );
       await expect(page.locator('main .alert.error')).toHaveCount(0);
       await expect(page.getByLabel('Report date', { exact: true })).toBeVisible();
     }
@@ -77,7 +121,11 @@ for (const [role, email, routes] of [
 }
 
 test('standalone admin uploads an account photo and it persists after reload', async ({ page }) => {
-  await ctx.db.insert('users', { email: 'browser.admin@example.com', role: 'admin', password_hash: hashPassword('BrowserPhoto2026') });
+  await ctx.db.insert('users', {
+    email: 'browser.admin@example.com',
+    role: 'admin',
+    password_hash: hashPassword('BrowserPhoto2026'),
+  });
   await page.goto(origin);
   await page.getByRole('button', { name: 'Admin login', exact: true }).click();
   await page.locator('input[type=email]').fill('browser.admin@example.com');
@@ -86,12 +134,21 @@ test('standalone admin uploads an account photo and it persists after reload', a
   await expect(page.locator('main')).toBeVisible();
   await page.getByRole('button', { name: 'Account menu', exact: true }).click();
   await page.getByRole('button', { name: 'Change photo', exact: true }).click();
-  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
-  await page.getByLabel('Profile image', { exact: true }).setInputFiles({ name: 'admin.png', mimeType: 'image/png', buffer: png });
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',
+    'base64',
+  );
+  await page
+    .getByLabel('Profile image', { exact: true })
+    .setInputFiles({ name: 'admin.png', mimeType: 'image/png', buffer: png });
   await page.getByRole('button', { name: 'Save photo', exact: true }).click();
   await expect(page.locator('.user-chip img')).toHaveAttribute('src', /\/api\/files\/avatar\//);
-  await expect.poll(() => page.locator('.user-chip img').evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
+  await expect
+    .poll(() => page.locator('.user-chip img').evaluate((img) => img.naturalWidth))
+    .toBeGreaterThan(0);
   await page.reload();
   await expect(page.locator('.user-chip img')).toBeVisible();
-  await expect.poll(() => page.locator('.user-chip img').evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
+  await expect
+    .poll(() => page.locator('.user-chip img').evaluate((img) => img.naturalWidth))
+    .toBeGreaterThan(0);
 });

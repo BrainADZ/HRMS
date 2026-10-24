@@ -3,8 +3,12 @@ import assert from 'node:assert/strict';
 import { boot, as } from './helpers.js';
 
 let ctx;
-before(async () => {ctx = await boot();});
-after(async () => {await ctx.close();});
+before(async () => {
+  ctx = await boot();
+});
+after(async () => {
+  await ctx.close();
+});
 
 const EMP = 'aarav.mehta@brainadz.com';
 const ADMIN = 'rajiv.malhotra@brainadz.com';
@@ -41,7 +45,11 @@ test('employees and managers only see their own documents and can upload their o
   assert.deepEqual(check.rows[0].missing, ['Address Proof']);
 
   const form = new FormData();
-  form.append('file', new Blob(['%PDF-1.4 rent agreement'], { type: 'application/pdf' }), 'rent-agreement.pdf');
+  form.append(
+    'file',
+    new Blob(['%PDF-1.4 rent agreement'], { type: 'application/pdf' }),
+    'rent-agreement.pdf',
+  );
   form.append('category', 'Address Proof');
   assert.equal((await emp.post(`/employees/${empId}/documents`, undefined, { form })).status, 200);
   assert.deepEqual((await emp.get('/documents/checklist')).body.rows[0].missing, []);
@@ -49,20 +57,32 @@ test('employees and managers only see their own documents and can upload their o
   const mgr = await as(ctx.base, MGR);
   const theirs = (await mgr.get('/documents?limit=200')).body.items;
   const mgrId = (await mgr.get('/auth/me')).body.user.employeeId;
-  assert.ok(theirs.every((d) => d.employee_id === mgrId), 'managers do not see their team\'s ID documents');
+  assert.ok(
+    theirs.every((d) => d.employee_id === mgrId),
+    "managers do not see their team's ID documents",
+  );
   assert.equal((await mgr.raw('GET', `/documents/${mine.items[0].id}/download`)).status, 403);
   const bad = new FormData();
   bad.append('file', new Blob(['x']), 'x.pdf');
-  assert.equal((await mgr.post(`/employees/${empId}/documents`, undefined, { form: bad })).status, 403);
+  assert.equal(
+    (await mgr.post(`/employees/${empId}/documents`, undefined, { form: bad })).status,
+    403,
+  );
 
   const hr = await as(ctx.base, HR);
   const hrId = (await hr.get('/auth/me')).body.user.employeeId;
   assert.ok((await hr.get('/documents?limit=200')).body.items.every((d) => d.employee_id === hrId));
-  assert.deepEqual((await hr.get('/documents/checklist')).body.rows.map((r) => r.id), [hrId]);
+  assert.deepEqual(
+    (await hr.get('/documents/checklist')).body.rows.map((r) => r.id),
+    [hrId],
+  );
   assert.equal((await hr.raw('GET', `/documents/${mine.items[0].id}/download`)).status, 403);
   assert.equal((await hr.get(`/employees/${empId}`)).body.canViewDocuments, false);
   assert.deepEqual((await hr.get(`/employees/${empId}`)).body.documents, []);
-  assert.equal((await hr.post(`/employees/${empId}/documents`, undefined, { form: bad })).status, 403);
+  assert.equal(
+    (await hr.post(`/employees/${empId}/documents`, undefined, { form: bad })).status,
+    403,
+  );
   assert.equal((await hr.del(`/documents/${mine.items[0].id}`)).status, 403);
   assert.equal((await emp.del(`/documents/${mine.items[0].id}`)).status, 403);
   assert.equal((await emp.get(`/employees/${empId}`)).body.canViewDocuments, true);
@@ -72,7 +92,7 @@ test('employees and managers only see their own documents and can upload their o
   assert.equal((await admin.raw('GET', `/documents/${mine.items[0].id}/download`)).status, 200);
 });
 
-test('the holiday calendar lists the year\'s holidays and your own leave', async () => {
+test("the holiday calendar lists the year's holidays and your own leave", async () => {
   const emp = await as(ctx.base, EMP);
   const year = Number((await emp.get('/meta')).body.today.slice(0, 4));
   const cal = (await emp.get(`/holidays/calendar?year=${year}`)).body;

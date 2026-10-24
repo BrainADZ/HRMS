@@ -10,9 +10,10 @@ let runtime;
 
 // Addresses other computers on the same network (office Wi-Fi) can open.
 function lanAddresses() {
-  return Object.values(os.networkInterfaces()).flat().
-  filter((i) => i && i.family === 'IPv4' && !i.internal).
-  map((i) => i.address);
+  return Object.values(os.networkInterfaces())
+    .flat()
+    .filter((i) => i && i.family === 'IPv4' && !i.internal)
+    .map((i) => i.address);
 }
 
 const preferredPort = process.env.PORT === undefined ? 3000 : Number(process.env.PORT);
@@ -36,7 +37,12 @@ try {
     await runtime.close();
     clearTimeout(timeout);
   };
-  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => shutdown().catch(() => { process.exitCode = 1; }));
+  for (const signal of ['SIGINT', 'SIGTERM'])
+    process.on(signal, () =>
+      shutdown().catch(() => {
+        process.exitCode = 1;
+      }),
+    );
   const port = server.address().port;
   process.send?.({ type: 'hrms:ready', port });
   console.log('\n  BrainADZ HRMS is running.\n');

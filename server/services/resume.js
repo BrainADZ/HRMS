@@ -15,18 +15,33 @@ const checkedText = (text) => {
 export function validateDocxArchive(buffer) {
   let end = -1;
   for (let offset = buffer.length - 22; offset >= Math.max(0, buffer.length - 65557); offset--) {
-    if (buffer.readUInt32LE(offset) === 0x06054b50 && offset + 22 + buffer.readUInt16LE(offset + 20) === buffer.length) { end = offset; break; }
+    if (
+      buffer.readUInt32LE(offset) === 0x06054b50 &&
+      offset + 22 + buffer.readUInt16LE(offset + 20) === buffer.length
+    ) {
+      end = offset;
+      break;
+    }
   }
   if (end < 0) throw new Error('Invalid DOCX ZIP directory');
-  const entries = buffer.readUInt16LE(end + 10), directorySize = buffer.readUInt32LE(end + 12);
-  let offset = buffer.readUInt32LE(end + 16), expanded = 0;
-  if (entries > 2000 || offset + directorySize > end) throw new Error('DOCX archive is too complex');
+  const entries = buffer.readUInt16LE(end + 10),
+    directorySize = buffer.readUInt32LE(end + 12);
+  let offset = buffer.readUInt32LE(end + 16),
+    expanded = 0;
+  if (entries > 2000 || offset + directorySize > end)
+    throw new Error('DOCX archive is too complex');
   for (let i = 0; i < entries; i++) {
-    if (offset + 46 > end || buffer.readUInt32LE(offset) !== 0x02014b50) throw new Error('Invalid DOCX archive entry');
-    if (buffer.readUInt16LE(offset + 8) & 1) throw new Error('Encrypted DOCX files are not supported');
+    if (offset + 46 > end || buffer.readUInt32LE(offset) !== 0x02014b50)
+      throw new Error('Invalid DOCX archive entry');
+    if (buffer.readUInt16LE(offset + 8) & 1)
+      throw new Error('Encrypted DOCX files are not supported');
     expanded += buffer.readUInt32LE(offset + 24);
     if (expanded > 20 * 1024 * 1024) throw new Error('Expanded DOCX exceeds the 20 MB limit');
-    offset += 46 + buffer.readUInt16LE(offset + 28) + buffer.readUInt16LE(offset + 30) + buffer.readUInt16LE(offset + 32);
+    offset +=
+      46 +
+      buffer.readUInt16LE(offset + 28) +
+      buffer.readUInt16LE(offset + 30) +
+      buffer.readUInt16LE(offset + 32);
   }
   if (offset > end) throw new Error('Invalid DOCX directory size');
 }
@@ -40,7 +55,9 @@ export async function extractResumeText(filePath, ext) {
       if (pdf.numPages > 100) throw new Error('Resume exceeds the 100 page limit');
       const { text } = await extractText(pdf, { mergePages: true });
       return checkedText(String(text || '').replace(/[ \t]+\n/g, '\n'));
-    } finally { await pdf.loadingTask.destroy(); }
+    } finally {
+      await pdf.loadingTask.destroy();
+    }
   }
   if (ext === '.docx') {
     validateDocxArchive(buf);

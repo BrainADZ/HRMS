@@ -2,8 +2,13 @@ import { test, expect } from '@playwright/test';
 import { boot, credentials } from '../helpers.js';
 
 let ctx, origin;
-test.beforeAll(async () => { ctx = await boot({ serveClient: true }); origin = ctx.base.replace(/\/api$/, ''); });
-test.afterAll(async () => { await ctx?.close(); });
+test.beforeAll(async () => {
+  ctx = await boot({ serveClient: true });
+  origin = ctx.base.replace(/\/api$/, '');
+});
+test.afterAll(async () => {
+  await ctx?.close();
+});
 
 test('employee sets a goal from Performance and My Space opens the same form', async ({ page }) => {
   const login = await page.request.post(`${ctx.base}/auth/login`, {
@@ -12,12 +17,25 @@ test('employee sets a goal from Performance and My Space opens the same form', a
   });
   expect(login.ok()).toBeTruthy();
   const me = await (await page.request.get(`${ctx.base}/auth/me`)).json();
-  const cycle = await ctx.db.get("SELECT * FROM review_cycles WHERE status = 'Active' ORDER BY start_date DESC LIMIT 1");
-  await ctx.db.run('DELETE FROM goals WHERE employee_id = ? AND cycle_id = ?', me.user.employeeId, cycle.id);
-  await ctx.db.run("UPDATE reviews SET status = 'Not Started' WHERE employee_id = ? AND cycle_id = ?", me.user.employeeId, cycle.id);
-  await page.route('**/api/attendance/workday', async route => {
+  const cycle = await ctx.db.get(
+    "SELECT * FROM review_cycles WHERE status = 'Active' ORDER BY start_date DESC LIMIT 1",
+  );
+  await ctx.db.run(
+    'DELETE FROM goals WHERE employee_id = ? AND cycle_id = ?',
+    me.user.employeeId,
+    cycle.id,
+  );
+  await ctx.db.run(
+    "UPDATE reviews SET status = 'Not Started' WHERE employee_id = ? AND cycle_id = ?",
+    me.user.employeeId,
+    cycle.id,
+  );
+  await page.route('**/api/attendance/workday', async (route) => {
     const response = await route.fetch();
-    await route.fulfill({ response, json: { ...await response.json(), toExplain: 0, toApprove: 0 } });
+    await route.fulfill({
+      response,
+      json: { ...(await response.json()), toExplain: 0, toApprove: 0 },
+    });
   });
   await page.goto(origin + '/performance');
   await page.getByRole('button', { name: 'Set goal', exact: true }).click();
@@ -30,7 +48,11 @@ test('employee sets a goal from Performance and My Space opens the same form', a
   await page.getByRole('button', { name: 'Update goals & self review' }).click();
   await expect(page.getByRole('dialog')).toContainText('Launch October campaign');
   await expect(page.getByRole('dialog')).toContainText('Generate 100 qualified leads');
-  const saved = await ctx.db.get('SELECT * FROM goals WHERE employee_id = ? AND cycle_id = ?', me.user.employeeId, cycle.id);
+  const saved = await ctx.db.get(
+    'SELECT * FROM goals WHERE employee_id = ? AND cycle_id = ?',
+    me.user.employeeId,
+    cycle.id,
+  );
   expect(saved.weight).toBe(100);
   expect(saved.due_date).toBe(cycle.end_date);
   await page.goto(origin + '/my');

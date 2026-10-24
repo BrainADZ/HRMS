@@ -10,14 +10,18 @@ export const IFSC_RE = /^[A-Z]{4}0[A-Z0-9]{6}$/;
 export const ACCOUNT_RE = /^\d{9,18}$/;
 
 export async function eligibleEmployees(db, month) {
-  return await db.all(`
+  return await db.all(
+    `
     SELECT e.*, d.name AS department, v.name AS vertical, v.short AS vertical_short, l.name AS location
     FROM employees e
     LEFT JOIN departments d ON d.id = e.department_id
     LEFT JOIN verticals v ON v.id = e.vertical_id
     LEFT JOIN locations l ON l.id = e.location_id
     WHERE e.join_date <= ? AND (e.exit_date IS NULL OR e.exit_date >= ?) AND e.status != 'Draft'
-    ORDER BY e.code`, monthEnd(month), monthStart(month));
+    ORDER BY e.code`,
+    monthEnd(month),
+    monthStart(month),
+  );
 }
 
 export async function buildPayroll(db, month, { today, settings } = {}) {
@@ -44,11 +48,18 @@ export async function buildPayroll(db, month, { today, settings } = {}) {
     const approved = adj.filter((a) => a.status === 'Approved');
     const exceptions = [];
     if (!e.ctc) exceptions.push({ type: 'salary', text: 'Salary (CTC) not set' });
-    if (unmarked > 0) exceptions.push({ type: 'attendance', text: `${unmarked} day(s) with no attendance mark` });
-    if (!e.pan || !e.uan) exceptions.push({ type: 'kyc', text: `Missing ${[!e.pan && 'PAN', !e.uan && 'UAN'].filter(Boolean).join(' & ')}` });
-    if (!e.bank_account || !ACCOUNT_RE.test(e.bank_account) || !e.ifsc || !IFSC_RE.test(e.ifsc)) exceptions.push({ type: 'bank', text: 'Bank account or IFSC invalid' });
+    if (unmarked > 0)
+      exceptions.push({ type: 'attendance', text: `${unmarked} day(s) with no attendance mark` });
+    if (!e.pan || !e.uan)
+      exceptions.push({
+        type: 'kyc',
+        text: `Missing ${[!e.pan && 'PAN', !e.uan && 'UAN'].filter(Boolean).join(' & ')}`,
+      });
+    if (!e.bank_account || !ACCOUNT_RE.test(e.bank_account) || !e.ifsc || !IFSC_RE.test(e.ifsc))
+      exceptions.push({ type: 'bank', text: 'Bank account or IFSC invalid' });
     const pendingAdj = adj.filter((a) => a.status === 'Pending');
-    if (pendingAdj.some((a) => a.kind === 'Reimbursement')) exceptions.push({ type: 'reimbursement', text: 'Reimbursement awaiting approval' });
+    if (pendingAdj.some((a) => a.kind === 'Reimbursement'))
+      exceptions.push({ type: 'reimbursement', text: 'Reimbursement awaiting approval' });
     if (!e.ctc) {
       lines.push({ employee: e, payslip: null, exceptions, unmarked });
       continue;
@@ -60,7 +71,7 @@ export async function buildPayroll(db, month, { today, settings } = {}) {
       employedDays,
       lopDays: lop,
       adjustments: approved,
-      rules: settings.payroll
+      rules: settings.payroll,
     });
     lines.push({ employee: e, payslip, exceptions, unmarked });
   }
@@ -80,7 +91,7 @@ function snapshot(e) {
     uan: e.uan,
     bankName: e.bank_name,
     bankAccount: e.bank_account ? `XXXX${String(e.bank_account).slice(-4)}` : null,
-    ifsc: e.ifsc
+    ifsc: e.ifsc,
   };
 }
 
@@ -96,9 +107,23 @@ export async function processRun(db, user, month, { today } = {}) {
     const approvals = [{ stage: 'Prepared by HR', by: user?.name || 'System', at: now }];
     if (run) {
       await db.run('DELETE FROM payslips WHERE run_id = ?', run.id);
-      await db.update('payroll_runs', run.id, { status: 'In Review', steps, approvals, bank_batch: null, updated_at: now });
+      await db.update('payroll_runs', run.id, {
+        status: 'In Review',
+        steps,
+        approvals,
+        bank_batch: null,
+        updated_at: now,
+      });
     } else {
-      const id = await db.insert('payroll_runs', { month, status: 'In Review', steps, approvals, created_by: user?.id ?? null, created_at: now, updated_at: now });
+      const id = await db.insert('payroll_runs', {
+        month,
+        status: 'In Review',
+        steps,
+        approvals,
+        created_by: user?.id ?? null,
+        created_at: now,
+        updated_at: now,
+      });
       run = { id };
     }
     for (const l of lines) {
@@ -112,7 +137,7 @@ export async function processRun(db, user, month, { today } = {}) {
         deductions: l.payslip.totalDeductions,
         net: l.payslip.net,
         employer_cost: l.payslip.employerCost,
-        status: hold ? 'On Hold' : 'Processed'
+        status: hold ? 'On Hold' : 'Processed',
       });
     }
     return await db.get('SELECT * FROM payroll_runs WHERE id = ?', run.id);
@@ -121,11 +146,14 @@ export async function processRun(db, user, month, { today } = {}) {
 
 export async function runSummary(db, run) {
   if (!run) return null;
-  const totals = await db.get(`
+  const totals = await db.get(
+    `
     SELECT COUNT(*) AS count, COALESCE(SUM(gross),0) AS gross, COALESCE(SUM(net),0) AS net,
            COALESCE(SUM(deductions),0) AS deductions, COALESCE(SUM(employer_cost),0) AS cost,
            SUM(CASE WHEN status = 'On Hold' THEN 1 ELSE 0 END) AS on_hold, SUM(CASE WHEN status = 'Paid' THEN 1 ELSE 0 END) AS paid
-    FROM payslips WHERE run_id = ?`, run.id);
+    FROM payslips WHERE run_id = ?`,
+    run.id,
+  );
   return {
     id: run.id,
     month: run.month,
@@ -135,9 +163,10 @@ export async function runSummary(db, run) {
     approvals: json(run.approvals, []),
     bankBatch: json(run.bank_batch, null),
     createdAt: run.created_at,
-    totals
+    totals,
   };
 }
 
-export const runRef = (month) => `PR-${new Date(`${month}-01T00:00:00Z`).toLocaleString('en-US', { month: 'short', timeZone: 'UTC' }).toUpperCase()}-${month.slice(0, 4)}-001`;
+export const runRef = (month) =>
+  `PR-${new Date(`${month}-01T00:00:00Z`).toLocaleString('en-US', { month: 'short', timeZone: 'UTC' }).toUpperCase()}-${month.slice(0, 4)}-001`;
 export const payDate = (month) => `${month}-${String(daysInMonth(month)).padStart(2, '0')}`;

@@ -17,13 +17,18 @@ export default function AttendanceLeave() {
       <div className="page-head">
         <div>
           <h1>Attendance &amp; Leave</h1>
-          <div className="sub">Daily attendance, work from home, leave requests, approvals and company policies.</div>
+          <div className="sub">
+            Daily attendance, work from home, leave requests, approvals and company policies.
+          </div>
         </div>
       </div>
       <Tabs
         value={leave ? 'leave' : 'attendance'}
         onChange={(section) => navigate(section === 'leave' ? '/leave' : '/attendance')}
-        tabs={[{ value: 'attendance', label: 'Attendance' }, { value: 'leave', label: 'Leave & Policies' }]}
+        tabs={[
+          { value: 'attendance', label: 'Attendance' },
+          { value: 'leave', label: 'Leave & Policies' },
+        ]}
       />
       {leave ? <Leave embedded /> : <Attendance embedded />}
     </div>

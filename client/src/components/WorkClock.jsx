@@ -4,28 +4,67 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate } from 'react-router-dom';
-import { Timer, LogIn, LogOut, House, PictureInPicture2, Minus, Maximize2, Pause, Coffee, TriangleAlert, CircleAlert, MapPin } from 'lucide-react';
+import {
+  Timer,
+  LogIn,
+  LogOut,
+  House,
+  PictureInPicture2,
+  Minus,
+  Maximize2,
+  Pause,
+  Coffee,
+  TriangleAlert,
+  CircleAlert,
+  MapPin,
+} from 'lucide-react';
 import { useApp } from '../context.jsx';
 import { api } from '../lib/api.js';
 import { useAction, useClickOutside } from '../lib/hooks.js';
 import { fmtTime, fmtDay } from '../lib/format.js';
-import { useWorkday, useNow, workedNow, breakNow, clockText, checkIn, checkOut, refreshWorkday } from '../lib/workday.js';
+import {
+  useWorkday,
+  useNow,
+  workedNow,
+  breakNow,
+  clockText,
+  checkIn,
+  checkOut,
+  refreshWorkday,
+} from '../lib/workday.js';
 import { getPosition, setLocationStatus, useLocationStatus, fmtDistance } from '../lib/location.js';
 import { Button, Modal, Field, Textarea, Progress, Badge } from './ui.jsx';
 
 const OFF_DAYS = ['H', 'WO', 'L'];
 const BASE_TITLE = 'BrainADZ HRMS';
 const POP_PREF = 'hrms.popOutOnCheckIn';
-const canPopOut = () => typeof window !== 'undefined' && 'documentPictureInPicture' in window && window.top === window;
-const readPref = () => { try { return localStorage.getItem(POP_PREF) !== 'off'; } catch { return true; } };
-const writePref = (on) => { try { localStorage.setItem(POP_PREF, on ? 'on' : 'off'); } catch { /* storage blocked */ } };
+const canPopOut = () =>
+  typeof window !== 'undefined' && 'documentPictureInPicture' in window && window.top === window;
+const readPref = () => {
+  try {
+    return localStorage.getItem(POP_PREF) !== 'off';
+  } catch {
+    return true;
+  }
+};
+const writePref = (on) => {
+  try {
+    localStorage.setItem(POP_PREF, on ? 'on' : 'off');
+  } catch {
+    /* storage blocked */
+  }
+};
 
 // ---------- floating clock (Document Picture-in-Picture) ----------
 // The browser window survives Vite module refreshes; recover it when this module reloads.
-const currentPipWindow = () => typeof window !== 'undefined' ? window.documentPictureInPicture?.window || null : null;
+const currentPipWindow = () =>
+  typeof window !== 'undefined' ? window.documentPictureInPicture?.window || null : null;
 let pipWindow = currentPipWindow();
 const pipListeners = new Set();
-const setPip = (w) => { pipWindow = w; pipListeners.forEach((f) => f(w)); };
+const setPip = (w) => {
+  pipWindow = w;
+  pipListeners.forEach((f) => f(w));
+};
 let pipGeneration = 0;
 function closeFloatingClock() {
   pipGeneration++;
@@ -65,8 +104,16 @@ export async function openFloatingClock() {
     return true;
   }
   const generation = pipGeneration;
-  const win = await window.documentPictureInPicture.requestWindow({ width: 300, height: 245, disallowReturnToOpener: true, preferInitialWindowPlacement: true });
-  if (generation !== pipGeneration) { win.close(); return false; }
+  const win = await window.documentPictureInPicture.requestWindow({
+    width: 300,
+    height: 245,
+    disallowReturnToOpener: true,
+    preferInitialWindowPlacement: true,
+  });
+  if (generation !== pipGeneration) {
+    win.close();
+    return false;
+  }
   syncFloatingStyles(win);
   win.document.title = 'Work clock';
   win.document.documentElement.classList.add('pip-root');
@@ -113,7 +160,9 @@ function FloatingClock({ s }) {
     const win = event.currentTarget.ownerDocument.defaultView;
     if (!win || win.closed) return;
     if (!minimized) expandedSize.current = { width: win.innerWidth, height: win.innerHeight };
-    const size = minimized ? expandedSize.current || { width: 300, height: 245 } : { width: 170, height: 80 };
+    const size = minimized
+      ? expandedSize.current || { width: 300, height: 245 }
+      : { width: 170, height: 80 };
     setMinimized(!minimized);
     try {
       win.resizeBy(size.width - win.innerWidth, size.height - win.innerHeight);
@@ -127,20 +176,55 @@ function FloatingClock({ s }) {
   return (
     <div className={`pip-clock${minimized ? ' minimized' : ''}`}>
       <div className="row between pip-summary">
-        <span className={`pip-state ${running ? 'on' : ''}`}>{running ? 'Working' : w.breakSince ? 'On break' : 'Paused'}</span>
-        <button type="button" className="btn xs pip-size-toggle" onClick={toggleSize} aria-label={minimized ? 'Expand timer' : 'Minimize timer'} title={minimized ? 'Expand timer' : 'Minimize timer'} aria-expanded={!minimized}>
+        <span className={`pip-state ${running ? 'on' : ''}`}>
+          {running ? 'Working' : w.breakSince ? 'On break' : 'Paused'}
+        </span>
+        <button
+          type="button"
+          className="btn xs pip-size-toggle"
+          onClick={toggleSize}
+          aria-label={minimized ? 'Expand timer' : 'Minimize timer'}
+          title={minimized ? 'Expand timer' : 'Minimize timer'}
+          aria-expanded={!minimized}
+        >
           {minimized ? <Maximize2 size={12} /> : <Minus size={12} />}
         </button>
       </div>
-      <div className="pip-time" aria-label="Time worked">{clockText(worked)}</div>
-      {!minimized && <>
-      <Progress value={Math.min(100, (worked / w.requiredMinutes) * 100)} color={worked >= w.requiredMinutes ? 'var(--green)' : 'var(--blue)'} height={6} />
-      <div className="row between mt-8">
-        <span className="xs muted">{running ? `Since ${fmtTime(w.openSince)}` : w.awaySince ? `Away since ${fmtTime(w.awaySince)}` : 'Not checked in'}</span>
-        {running && <button type="button" className="btn xs" onClick={() => checkOut().then(() => toast('Checked out. Your clock is paused.', 'success')).catch((e) => toast(e.message, 'error'))}>Check out</button>}
+      <div className="pip-time" aria-label="Time worked">
+        {clockText(worked)}
       </div>
-      <BreakControls s={s} />
-      </>}
+      {!minimized && (
+        <>
+          <Progress
+            value={Math.min(100, (worked / w.requiredMinutes) * 100)}
+            color={worked >= w.requiredMinutes ? 'var(--green)' : 'var(--blue)'}
+            height={6}
+          />
+          <div className="row between mt-8">
+            <span className="xs muted">
+              {running
+                ? `Since ${fmtTime(w.openSince)}`
+                : w.awaySince
+                  ? `Away since ${fmtTime(w.awaySince)}`
+                  : 'Not checked in'}
+            </span>
+            {running && (
+              <button
+                type="button"
+                className="btn xs"
+                onClick={() =>
+                  checkOut()
+                    .then(() => toast('Checked out. Your clock is paused.', 'success'))
+                    .catch((e) => toast(e.message, 'error'))
+                }
+              >
+                Check out
+              </button>
+            )}
+          </div>
+          <BreakControls s={s} />
+        </>
+      )}
     </div>
   );
 }
@@ -153,12 +237,43 @@ function BreakControls({ s }) {
   const w = s?.workday;
   if (!w?.sessions.length) return null;
   const total = breakNow(s, now);
-  const current = w.breakSince ? Math.max(0, (now + (s.offset || 0) - Date.parse(w.breakSince)) / 60000) : 0;
-  return <div className="col mt-8" style={{ gap: 6, alignItems: 'flex-start' }}>
-    {w.openSince && <Button size="sm" icon={Coffee} loading={busy} onClick={() => run(() => checkOut('break'), 'Break started. Your work timer is paused.')}>Break</Button>}
-    {w.breakSince && <Button size="sm" icon={LogIn} loading={busy} onClick={() => run(() => checkIn({ mode: w.mode || 'office' }), 'Work continued. Your break has been recorded.')}>Continue</Button>}
-    {(total > 0 || w.breakSince) && <span className="xs" role="status">{w.breakSince ? `On break: ${clockText(current)} · ` : ''}Total break: {clockText(total)}</span>}
-  </div>;
+  const current = w.breakSince
+    ? Math.max(0, (now + (s.offset || 0) - Date.parse(w.breakSince)) / 60000)
+    : 0;
+  return (
+    <div className="col mt-8" style={{ gap: 6, alignItems: 'flex-start' }}>
+      {w.openSince && (
+        <Button
+          size="sm"
+          icon={Coffee}
+          loading={busy}
+          onClick={() => run(() => checkOut('break'), 'Break started. Your work timer is paused.')}
+        >
+          Break
+        </Button>
+      )}
+      {w.breakSince && (
+        <Button
+          size="sm"
+          icon={LogIn}
+          loading={busy}
+          onClick={() =>
+            run(
+              () => checkIn({ mode: w.mode || 'office' }),
+              'Work continued. Your break has been recorded.',
+            )
+          }
+        >
+          Continue
+        </Button>
+      )}
+      {(total > 0 || w.breakSince) && (
+        <span className="xs" role="status">
+          {w.breakSince ? `On break: ${clockText(current)} · ` : ''}Total break: {clockText(total)}
+        </span>
+      )}
+    </div>
+  );
 }
 
 // ---------- reason for the gap ----------
@@ -171,33 +286,78 @@ export function GapReasonModal({ welcome, onClose }) {
   const [run, busy] = useAction(toast);
   const w = s?.workday;
   if (!w) return null;
-  const awayMin = w.awaySince ? Math.max(0, (now + (s.offset || 0) - Date.parse(w.awaySince)) / 60000) : 0;
+  const awayMin = w.awaySince
+    ? Math.max(0, (now + (s.offset || 0) - Date.parse(w.awaySince)) / 60000)
+    : 0;
   const resume = async () => {
-    const out = await run(() => checkIn({ mode: w.mode || 'office', gap_reason: reason, gap_note: note }), 'Welcome back. Your clock is running again.');
+    const out = await run(
+      () => checkIn({ mode: w.mode || 'office', gap_reason: reason, gap_note: note }),
+      'Welcome back. Your clock is running again.',
+    );
     if (out) {
       onClose(true);
       if (readPref()) openFloatingClock().catch(() => {});
     }
   };
   return (
-    <Modal title={welcome ? 'Welcome back' : 'Check in again'} size="narrow" onClose={() => onClose(false)}
-      footer={<>
-        <Button onClick={() => onClose(false)}>{welcome ? "Not now, I'm done for today" : 'Cancel'}</Button>
-        <Button variant="primary" icon={LogIn} loading={busy} disabled={!reason || (reason === 'Other' && !note.trim())} onClick={resume}>Resume work</Button>
-      </>}>
+    <Modal
+      title={welcome ? 'Welcome back' : 'Check in again'}
+      size="narrow"
+      onClose={() => onClose(false)}
+      footer={
+        <>
+          <Button onClick={() => onClose(false)}>
+            {welcome ? "Not now, I'm done for today" : 'Cancel'}
+          </Button>
+          <Button
+            variant="primary"
+            icon={LogIn}
+            loading={busy}
+            disabled={!reason || (reason === 'Other' && !note.trim())}
+            onClick={resume}
+          >
+            Resume work
+          </Button>
+        </>
+      }
+    >
       <div className="col" style={{ gap: 14 }}>
-        <div className="alert info"><Pause size={16} /><span>Your clock has been paused since <b>{fmtTime(w.awaySince)}</b>{awayMin >= 1 ? ` (${clockText(awayMin, false)})` : ''}. You have worked <b>{clockText(w.workedMinutes, false)}</b> today.</span></div>
+        <div className="alert info">
+          <Pause size={16} />
+          <span>
+            Your clock has been paused since <b>{fmtTime(w.awaySince)}</b>
+            {awayMin >= 1 ? ` (${clockText(awayMin, false)})` : ''}. You have worked{' '}
+            <b>{clockText(w.workedMinutes, false)}</b> today.
+          </span>
+        </div>
         <Field label="Reason for the gap">
           <div className="pick-chips" role="radiogroup" aria-label="Reason for the gap">
             {(s.gapReasons || []).map((r) => (
-              <button key={r} type="button" role="radio" aria-checked={reason === r} className={`pick-chip ${reason === r ? 'on' : ''}`} onClick={() => setReason(r)}>{r}</button>
+              <button
+                key={r}
+                type="button"
+                role="radio"
+                aria-checked={reason === r}
+                className={`pick-chip ${reason === r ? 'on' : ''}`}
+                onClick={() => setReason(r)}
+              >
+                {r}
+              </button>
             ))}
           </div>
         </Field>
         <Field label={reason === 'Other' ? 'Details' : 'Details (optional)'}>
-          <Textarea value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder="e.g. Brand review with the client at their office" />
+          <Textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={300}
+            placeholder="e.g. Brand review with the client at their office"
+          />
         </Field>
-        <div className="xs muted">Your manager sees this reason if you end the day short of {clockText(w.requiredMinutes, false)}.</div>
+        <div className="xs muted">
+          Your manager sees this reason if you end the day short of{' '}
+          {clockText(w.requiredMinutes, false)}.
+        </div>
       </div>
     </Modal>
   );
@@ -212,19 +372,47 @@ export function ClockActions({ light }) {
   const w = s?.workday;
   if (!w || (OFF_DAYS.includes(s.dayStatus) && !w.sessions.length)) return null;
   const start = async (mode) => {
-    if (await run(() => checkIn({ mode }), mode === 'wfh' ? 'Checked in (work from home)' : 'Checked in. Have a great day!')) {
+    if (
+      await run(
+        () => checkIn({ mode }),
+        mode === 'wfh' ? 'Checked in (work from home)' : 'Checked in. Have a great day!',
+      )
+    ) {
       if (readPref()) openFloatingClock().catch(() => {});
     }
   };
   return (
     <div className="col" style={{ gap: 6 }}>
       <div className="row">
-      {!w.sessions.length && <>
-        <Button variant="primary" icon={LogIn} loading={busy} onClick={() => start('office')}>Check in</Button>
-        <Button icon={House} loading={busy} onClick={() => start('wfh')}>Work from home</Button>
-      </>}
-      {w.openSince && <Button icon={LogOut} loading={busy} onClick={() => run(() => checkOut(), (r) => `Checked out after ${r.worked} today. Your clock is paused.`)}>Check out</Button>}
-      {!w.openSince && !w.breakSince && w.sessions.length > 0 && <Button variant={light ? '' : 'primary'} icon={LogIn} onClick={() => setAsk(true)}>Check in again</Button>}
+        {!w.sessions.length && (
+          <>
+            <Button variant="primary" icon={LogIn} loading={busy} onClick={() => start('office')}>
+              Check in
+            </Button>
+            <Button icon={House} loading={busy} onClick={() => start('wfh')}>
+              Work from home
+            </Button>
+          </>
+        )}
+        {w.openSince && (
+          <Button
+            icon={LogOut}
+            loading={busy}
+            onClick={() =>
+              run(
+                () => checkOut(),
+                (r) => `Checked out after ${r.worked} today. Your clock is paused.`,
+              )
+            }
+          >
+            Check out
+          </Button>
+        )}
+        {!w.openSince && !w.breakSince && w.sessions.length > 0 && (
+          <Button variant={light ? '' : 'primary'} icon={LogIn} onClick={() => setAsk(true)}>
+            Check in again
+          </Button>
+        )}
       </div>
       <BreakControls s={s} />
       {ask && <GapReasonModal onClose={() => setAsk(false)} />}
@@ -239,10 +427,32 @@ export function SessionList({ w, compact }) {
   w.sessions.forEach((x, i) => {
     if (i > 0) {
       const g = w.gaps[i - 1];
-      if (g) rows.push(<div key={`g${i}`} className="sess gap"><Coffee size={13} /><span>{g.leftBy === 'break' ? 'Break' : 'Away'} {clockText(g.leftBy === 'break' ? (Date.parse(g.to) - Date.parse(g.from)) / 60000 : g.minutes)}{g.reason && g.leftBy !== 'break' ? ` · ${g.reason}` : ''}{g.note && !compact ? ` (${g.note})` : ''}</span></div>);
+      if (g)
+        rows.push(
+          <div key={`g${i}`} className="sess gap">
+            <Coffee size={13} />
+            <span>
+              {g.leftBy === 'break' ? 'Break' : 'Away'}{' '}
+              {clockText(
+                g.leftBy === 'break' ? (Date.parse(g.to) - Date.parse(g.from)) / 60000 : g.minutes,
+              )}
+              {g.reason && g.leftBy !== 'break' ? ` · ${g.reason}` : ''}
+              {g.note && !compact ? ` (${g.note})` : ''}
+            </span>
+          </div>,
+        );
     }
     const mins = x.end ? (Date.parse(x.end) - Date.parse(x.start)) / 60000 : null;
-    rows.push(<div key={`s${i}`} className="sess"><span className={`dot ${x.end ? '' : 'live'}`} /><span>{fmtTime(x.start)} – {x.end ? fmtTime(x.end) : 'now'}</span>{mins != null && <span className="muted">{clockText(mins, false)}</span>}{x.mode === 'wfh' && <Badge tone="amber">WFH</Badge>}</div>);
+    rows.push(
+      <div key={`s${i}`} className="sess">
+        <span className={`dot ${x.end ? '' : 'live'}`} />
+        <span>
+          {fmtTime(x.start)} – {x.end ? fmtTime(x.end) : 'now'}
+        </span>
+        {mins != null && <span className="muted">{clockText(mins, false)}</span>}
+        {x.mode === 'wfh' && <Badge tone="amber">WFH</Badge>}
+      </div>,
+    );
   });
   return <div className="sess-list">{rows}</div>;
 }
@@ -265,50 +475,147 @@ export default function WorkClock() {
   // The running time in the tab title, so it shows even when the window is
   // minimised or another tab is in front.
   useEffect(() => {
-    if (!running) { document.title = BASE_TITLE; return undefined; }
+    if (!running) {
+      document.title = BASE_TITLE;
+      return undefined;
+    }
     document.title = `● ${clockText(worked, false)} · ${BASE_TITLE}`;
     return undefined;
   }, [running, Math.floor(worked)]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => () => { document.title = BASE_TITLE; }, []);
+  useEffect(
+    () => () => {
+      document.title = BASE_TITLE;
+    },
+    [],
+  );
 
   if (!user.employeeId || !w) return null;
   if (OFF_DAYS.includes(s.dayStatus) && !w.sessions.length) return null;
   const pct = Math.min(100, (worked / w.requiredMinutes) * 100);
   const left = w.requiredMinutes - worked;
-  const popOut = () => openFloatingClock().then((ok) => { if (!ok) toast('Use Chrome or Edge on a computer to pop out the clock.', 'error'); }).catch(() => toast('The floating clock could not open.', 'error'));
+  const popOut = () =>
+    openFloatingClock()
+      .then((ok) => {
+        if (!ok) toast('Use Chrome or Edge on a computer to pop out the clock.', 'error');
+      })
+      .catch(() => toast('The floating clock could not open.', 'error'));
   const start = async (mode) => {
-    if (await run(() => checkIn({ mode }), 'Checked in. Your clock is running.') && pref) popOut();
+    if ((await run(() => checkIn({ mode }), 'Checked in. Your clock is running.')) && pref)
+      popOut();
   };
 
   return (
     <div ref={ref} className="clock-wrap">
-      <button type="button" className={`work-clock ${running ? 'on' : w.sessions.length ? 'paused' : 'idle'}`} onClick={() => setOpen((o) => !o)} aria-label="Work clock">
-        {running ? <span className="pulse" /> : w.sessions.length ? <Pause size={14} /> : <Timer size={15} />}
+      <button
+        type="button"
+        className={`work-clock ${running ? 'on' : w.sessions.length ? 'paused' : 'idle'}`}
+        onClick={() => setOpen((o) => !o)}
+        aria-label="Work clock"
+      >
+        {running ? (
+          <span className="pulse" />
+        ) : w.sessions.length ? (
+          <Pause size={14} />
+        ) : (
+          <Timer size={15} />
+        )}
         <span className="t">{w.sessions.length ? clockText(worked) : 'Check in'}</span>
-        {w.sessions.length > 0 && <span className="lbl">{running ? 'Working' : w.breakSince ? 'On break' : 'Paused'}</span>}
+        {w.sessions.length > 0 && (
+          <span className="lbl">{running ? 'Working' : w.breakSince ? 'On break' : 'Paused'}</span>
+        )}
       </button>
       {open && (
         <div className="dropdown clock-panel">
           <div className="head" style={{ display: 'block' }}>
-            <div className="row between"><span>{fmtDay(s.today)}</span>{running ? <Badge tone="green">Working</Badge> : w.sessions.length ? <Badge tone="gray">{w.breakSince ? 'On break' : 'Paused'}</Badge> : null}</div>
+            <div className="row between">
+              <span>{fmtDay(s.today)}</span>
+              {running ? (
+                <Badge tone="green">Working</Badge>
+              ) : w.sessions.length ? (
+                <Badge tone="gray">{w.breakSince ? 'On break' : 'Paused'}</Badge>
+              ) : null}
+            </div>
           </div>
           <div style={{ padding: 14 }}>
             <div className="clock-big">{clockText(worked)}</div>
             <Progress value={pct} color={left <= 0 ? 'var(--green)' : 'var(--blue)'} />
-            <div className="xs muted mt-8">{left <= 0 ? `Target of ${clockText(w.requiredMinutes, false)} reached` : `${clockText(left, false)} to go of ${clockText(w.requiredMinutes, false)}`}</div>
+            <div className="xs muted mt-8">
+              {left <= 0
+                ? `Target of ${clockText(w.requiredMinutes, false)} reached`
+                : `${clockText(left, false)} to go of ${clockText(w.requiredMinutes, false)}`}
+            </div>
             <SessionList w={w} compact />
             <LocationLine />
             <div className="row wrap mt-16" style={{ gap: 8 }}>
-              {!w.sessions.length && <><Button size="sm" variant="primary" icon={LogIn} loading={busy} onClick={() => start('office')}>Check in</Button><Button size="sm" icon={House} loading={busy} onClick={() => start('wfh')}>From home</Button></>}
-              {running && <Button size="sm" icon={LogOut} loading={busy} onClick={() => run(() => checkOut(), (r) => `Checked out after ${r.worked}. Your clock is paused.`)}>Check out</Button>}
-              {!running && !w.breakSince && w.sessions.length > 0 && <Button size="sm" variant="primary" icon={LogIn} onClick={() => { setOpen(false); setAsk(true); }}>Check in again</Button>}
-              {canPopOut() && w.sessions.length > 0 && !pip && <Button size="sm" icon={PictureInPicture2} onClick={popOut}>Pop out clock</Button>}
+              {!w.sessions.length && (
+                <>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    icon={LogIn}
+                    loading={busy}
+                    onClick={() => start('office')}
+                  >
+                    Check in
+                  </Button>
+                  <Button size="sm" icon={House} loading={busy} onClick={() => start('wfh')}>
+                    From home
+                  </Button>
+                </>
+              )}
+              {running && (
+                <Button
+                  size="sm"
+                  icon={LogOut}
+                  loading={busy}
+                  onClick={() =>
+                    run(
+                      () => checkOut(),
+                      (r) => `Checked out after ${r.worked}. Your clock is paused.`,
+                    )
+                  }
+                >
+                  Check out
+                </Button>
+              )}
+              {!running && !w.breakSince && w.sessions.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={LogIn}
+                  onClick={() => {
+                    setOpen(false);
+                    setAsk(true);
+                  }}
+                >
+                  Check in again
+                </Button>
+              )}
+              {canPopOut() && w.sessions.length > 0 && !pip && (
+                <Button size="sm" icon={PictureInPicture2} onClick={popOut}>
+                  Pop out clock
+                </Button>
+              )}
             </div>
             <BreakControls s={s} />
             {canPopOut() && (
-              <label className="check xs mt-8"><input type="checkbox" checked={pref} onChange={(e) => { setPref(e.target.checked); writePref(e.target.checked); }} />Pop out the clock when I check in</label>
+              <label className="check xs mt-8">
+                <input
+                  type="checkbox"
+                  checked={pref}
+                  onChange={(e) => {
+                    setPref(e.target.checked);
+                    writePref(e.target.checked);
+                  }}
+                />
+                Pop out the clock when I check in
+              </label>
             )}
-            {canPopOut() && <div className="xs muted mt-8">The floating clock stays on top of other windows, even when this app is minimised.</div>}
+            {canPopOut() && (
+              <div className="xs muted mt-8">
+                The floating clock stays on top of other windows, even when this app is minimised.
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -324,8 +631,33 @@ export function AttentionBanner() {
   if (!s || (!s.toExplain && !s.toApprove)) return null;
   return (
     <div className="col mb-16" style={{ gap: 8 }}>
-      {s.toExplain > 0 && <div className="alert warn"><CircleAlert size={16} /><span className="grow">You have {s.toExplain === 1 ? 'a day' : `${s.toExplain} days`} with fewer hours than required. Tell your manager why so {s.toExplain === 1 ? 'it counts' : 'they count'} in full.</span><Link to="/attendance?tab=short" className="b6">Explain</Link></div>}
-      {s.toApprove > 0 && <div className="alert info"><CircleAlert size={16} /><span className="grow">{s.toApprove === 1 ? 'One short-hours explanation is' : `${s.toApprove} short-hours explanations are`} waiting for your approval.</span><Link to="/attendance?tab=short" className="b6">Review</Link></div>}
+      {s.toExplain > 0 && (
+        <div className="alert warn">
+          <CircleAlert size={16} />
+          <span className="grow">
+            You have {s.toExplain === 1 ? 'a day' : `${s.toExplain} days`} with fewer hours than
+            required. Tell your manager why so {s.toExplain === 1 ? 'it counts' : 'they count'} in
+            full.
+          </span>
+          <Link to="/attendance?tab=short" className="b6">
+            Explain
+          </Link>
+        </div>
+      )}
+      {s.toApprove > 0 && (
+        <div className="alert info">
+          <CircleAlert size={16} />
+          <span className="grow">
+            {s.toApprove === 1
+              ? 'One short-hours explanation is'
+              : `${s.toApprove} short-hours explanations are`}{' '}
+            waiting for your approval.
+          </span>
+          <Link to="/attendance?tab=short" className="b6">
+            Review
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
@@ -339,37 +671,58 @@ export function LocationGuard() {
   const s = useWorkday();
   const geo = meta?.geofence;
   const running = Boolean(s?.workday?.openSince);
-  const track = Boolean(geo && geo.mode !== 'off' && !geo.exempt && (geo.mode === 'strict' || running));
+  const track = Boolean(
+    geo && geo.mode !== 'off' && !geo.exempt && (geo.mode === 'strict' || running),
+  );
   const warned = useRef(false);
   const last = useRef(0);
   useEffect(() => {
-    if (!track) { setLocationStatus(null); return undefined; }
+    if (!track) {
+      setLocationStatus(null);
+      return undefined;
+    }
     let stop = false;
     const ping = async () => {
       last.current = Date.now();
       let pos;
-      try { pos = await getPosition({ maxAgeMs: 0 }); } catch (e) { if (!stop) setLocationStatus({ ok: false, error: true, message: e.message }); return; }
+      try {
+        pos = await getPosition({ maxAgeMs: 0 });
+      } catch (e) {
+        if (!stop) setLocationStatus({ ok: false, error: true, message: e.message });
+        return;
+      }
       try {
         const r = await api.post('/attendance/location', pos);
         if (stop) return;
         setLocationStatus(r);
         if (r.signedOut) {
-          try { sessionStorage.setItem('hrms.flash', r.message); } catch { /* storage blocked */ }
+          try {
+            sessionStorage.setItem('hrms.flash', r.message);
+          } catch {
+            /* storage blocked */
+          }
           await logout();
           return;
         }
         if (!r.ok && r.message && !warned.current) {
           warned.current = true;
-          toast(r.office && r.distance != null
-            ? `You seem to be outside the office (${fmtDistance(r.distance)} from ${r.office}). Your location is recorded while your clock runs.`
-            : r.message, 'error');
+          toast(
+            r.office && r.distance != null
+              ? `You seem to be outside the office (${fmtDistance(r.distance)} from ${r.office}). Your location is recorded while your clock runs.`
+              : r.message,
+            'error',
+          );
         }
         if (r.ok) warned.current = false;
-      } catch { /* offline: try again next time */ }
+      } catch {
+        /* offline: try again next time */
+      }
     };
     ping();
     const timer = setInterval(ping, 10 * 60000);
-    const onVisible = () => { if (document.visibilityState === 'visible' && Date.now() - last.current > 2 * 60000) ping(); };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && Date.now() - last.current > 2 * 60000) ping();
+    };
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('hrms:location-changed', ping);
     return () => {
@@ -391,26 +744,82 @@ function LocationLine() {
   let tone = 'muted';
   if (geo.exempt) text = `Location check not needed: ${geo.exempt.toLowerCase()}`;
   else if (!st) text = 'Location is checked while your clock runs';
-  else if (st.error) { text = st.message; tone = 'red'; }
-  else if (st.ok && st.method === 'network') { text = `On the office network · ${st.office}`; tone = 'green'; }
-  else if (st.ok) { text = `In the office · ${st.office}${st.distance != null ? ` (${fmtDistance(st.distance)})` : ''}`; tone = 'green'; }
-  else { text = st.message || 'Outside the office'; tone = 'red'; }
-  return <div className={`xs mt-8 row gap-6 ${tone}`}><MapPin size={13} /><span>{text}</span></div>;
+  else if (st.error) {
+    text = st.message;
+    tone = 'red';
+  } else if (st.ok && st.method === 'network') {
+    text = `On the office network · ${st.office}`;
+    tone = 'green';
+  } else if (st.ok) {
+    text = `In the office · ${st.office}${st.distance != null ? ` (${fmtDistance(st.distance)})` : ''}`;
+    tone = 'green';
+  } else {
+    text = st.message || 'Outside the office';
+    tone = 'red';
+  }
+  return (
+    <div className={`xs mt-8 row gap-6 ${tone}`}>
+      <MapPin size={13} />
+      <span>{text}</span>
+    </div>
+  );
 }
 
 // ---------- explain a short day ----------
 export function ExplainModal({ item, onClose, onDone }) {
   const { toast } = useApp();
-  const prefill = item.gaps.filter((g) => g.reason).map((g) => `${g.reason}${g.note ? ` (${g.note})` : ''}, ${fmtTime(g.from)}–${fmtTime(g.to)}`).join('; ');
+  const prefill = item.gaps
+    .filter((g) => g.reason)
+    .map((g) => `${g.reason}${g.note ? ` (${g.note})` : ''}, ${fmtTime(g.from)}–${fmtTime(g.to)}`)
+    .join('; ');
   const [reason, setReason] = useState(item.reason || prefill);
   const [run, busy] = useAction(toast);
   return (
-    <Modal title={`Short hours on ${fmtDay(item.date)}`} onClose={onClose}
-      footer={<><Button onClick={onClose}>Later</Button><Button variant="primary" loading={busy} disabled={!reason.trim()} onClick={async () => { if (await run(() => api.post(`/attendance/short-hours/${item.id}/explain`, { reason }), 'Sent to your manager for approval')) { onDone?.(); onClose(); } }}>Send to manager</Button></>}>
+    <Modal
+      title={`Short hours on ${fmtDay(item.date)}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose}>Later</Button>
+          <Button
+            variant="primary"
+            loading={busy}
+            disabled={!reason.trim()}
+            onClick={async () => {
+              if (
+                await run(
+                  () => api.post(`/attendance/short-hours/${item.id}/explain`, { reason }),
+                  'Sent to your manager for approval',
+                )
+              ) {
+                onDone?.();
+                onClose();
+              }
+            }}
+          >
+            Send to manager
+          </Button>
+        </>
+      }
+    >
       <div className="col" style={{ gap: 14 }}>
-        <div className="alert warn"><TriangleAlert size={16} /><span>You worked <b>{clockText(item.worked_minutes, false)}</b> of <b>{clockText(item.required_minutes, false)}</b>. Your reporting manager (or the CEO) approves the reason; if they don't, the day is marked as a half day.</span></div>
+        <div className="alert warn">
+          <TriangleAlert size={16} />
+          <span>
+            You worked <b>{clockText(item.worked_minutes, false)}</b> of{' '}
+            <b>{clockText(item.required_minutes, false)}</b>. Your reporting manager (or the CEO)
+            approves the reason; if they don't, the day is marked as a half day.
+          </span>
+        </div>
         <SessionList w={{ sessions: item.sessions.map((x) => ({ ...x })), gaps: item.gaps }} />
-        <Field label="Why were your hours short?"><Textarea value={reason} onChange={(e) => setReason(e.target.value)} maxLength={1000} placeholder="e.g. Client meeting at Thane ran late; I worked from home in the evening." /></Field>
+        <Field label="Why were your hours short?">
+          <Textarea
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            maxLength={1000}
+            placeholder="e.g. Client meeting at Thane ran late; I worked from home in the evening."
+          />
+        </Field>
       </div>
     </Modal>
   );
@@ -426,8 +835,21 @@ export function SignInPrompts() {
   const [short, setShort] = useState(null);
   const shown = useRef({ welcome: false, short: false });
   const key = (k) => `hrms.prompt.${k}.${user.id}.${s?.today}`;
-  const seen = (k) => { try { return sessionStorage.getItem(key(k)) === '1'; } catch { return shown.current[k]; } };
-  const markSeen = (k) => { shown.current[k] = true; try { sessionStorage.setItem(key(k), '1'); } catch { /* storage blocked */ } };
+  const seen = (k) => {
+    try {
+      return sessionStorage.getItem(key(k)) === '1';
+    } catch {
+      return shown.current[k];
+    }
+  };
+  const markSeen = (k) => {
+    shown.current[k] = true;
+    try {
+      sessionStorage.setItem(key(k), '1');
+    } catch {
+      /* storage blocked */
+    }
+  };
   useEffect(() => {
     if (!s?.workday || user.mustChangePassword) return;
     if (s.workday.signedOutAway && !shown.current.welcome && !seen('welcome')) {
@@ -437,10 +859,37 @@ export function SignInPrompts() {
     }
     if (welcome || short || shown.current.short || seen('short') || !s.toExplain) return;
     shown.current.short = true;
-    api.get('/attendance/short-hours?view=mine&status=Awaiting%20explanation').then((r) => { if (r.items[0]) setShort(r.items[0]); }).catch(() => {});
+    api
+      .get('/attendance/short-hours?view=mine&status=Awaiting%20explanation')
+      .then((r) => {
+        if (r.items[0]) setShort(r.items[0]);
+      })
+      .catch(() => {});
   }, [s, welcome, short]); // eslint-disable-line react-hooks/exhaustive-deps
-  if (welcome) return <GapReasonModal welcome onClose={() => { markSeen('welcome'); setWelcome(false); }} />;
-  if (short) return <ExplainModal item={short} onClose={() => { markSeen('short'); setShort(null); }} onDone={() => { refreshWorkday().catch(() => {}); navigate('/attendance?tab=short'); }} />;
+  if (welcome)
+    return (
+      <GapReasonModal
+        welcome
+        onClose={() => {
+          markSeen('welcome');
+          setWelcome(false);
+        }}
+      />
+    );
+  if (short)
+    return (
+      <ExplainModal
+        item={short}
+        onClose={() => {
+          markSeen('short');
+          setShort(null);
+        }}
+        onDone={() => {
+          refreshWorkday().catch(() => {});
+          navigate('/attendance?tab=short');
+        }}
+      />
+    );
   return null;
 }
 
@@ -464,16 +913,38 @@ export function SignOutModal({ onClose }) {
     }
   };
   return (
-    <Modal title="You're checked in" size="narrow" onClose={busy ? undefined : onClose}
-      footer={<>
-        <Button disabled={busy} onClick={onClose}>Cancel</Button>
-        <Button disabled={busy} onClick={() => go(false)}>Sign out (keep clock running)</Button>
-        <Button variant="primary" icon={Pause} loading={busy} onClick={() => go(true)}>Pause clock and sign out</Button>
-      </>}>
+    <Modal
+      title="You're checked in"
+      size="narrow"
+      onClose={busy ? undefined : onClose}
+      footer={
+        <>
+          <Button disabled={busy} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button disabled={busy} onClick={() => go(false)}>
+            Sign out (keep clock running)
+          </Button>
+          <Button variant="primary" icon={Pause} loading={busy} onClick={() => go(true)}>
+            Pause clock and sign out
+          </Button>
+        </>
+      }
+    >
       <div className="col" style={{ gap: 10 }}>
-        {error && <div className="alert error" role="alert">{error}</div>}
-        <p>Your work clock is at <b>{clockText(workedNow(s), false)}</b>. If you're stepping out (a meeting, lunch, an errand), pause it. When you sign in again you'll be asked the reason for the gap.</p>
-        <p className="small muted">Keep it running only if you're still working, for example switching to another computer.</p>
+        {error && (
+          <div className="alert error" role="alert">
+            {error}
+          </div>
+        )}
+        <p>
+          Your work clock is at <b>{clockText(workedNow(s), false)}</b>. If you're stepping out (a
+          meeting, lunch, an errand), pause it. When you sign in again you'll be asked the reason
+          for the gap.
+        </p>
+        <p className="small muted">
+          Keep it running only if you're still working, for example switching to another computer.
+        </p>
       </div>
     </Modal>
   );

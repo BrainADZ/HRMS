@@ -10,8 +10,11 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 const serverOnly = process.argv.includes('--server-only');
 function backendEnvironment() {
   let values = {};
-  try { values = parseEnv(fs.readFileSync(path.join(root, '.env'), 'utf8')); }
-  catch (error) { if (error.code !== 'ENOENT') throw error; }
+  try {
+    values = parseEnv(fs.readFileSync(path.join(root, '.env'), 'utf8'));
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
   return { ...values, ...process.env, SERVE_CLIENT: 'false' };
 }
 // Vite starts only after the API reports the port it actually bound.
@@ -23,9 +26,15 @@ function frontendEnvironment(port) {
     VITE_API_BASE_URL: '/api',
   };
   for (const key of [
-    'DATABASE_URL', 'DATABASE_ADMIN_URL', 'PGPASSWORD', 'PGSSLROOTCERT',
-    'ADMIN_PASSWORD', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN',
-  ]) delete env[key];
+    'DATABASE_URL',
+    'DATABASE_ADMIN_URL',
+    'PGPASSWORD',
+    'PGSSLROOTCERT',
+    'ADMIN_PASSWORD',
+    'ANTHROPIC_API_KEY',
+    'ANTHROPIC_AUTH_TOKEN',
+  ])
+    delete env[key];
   return env;
 }
 const options = { cwd: root, stdio: 'inherit', env: { ...process.env } };
@@ -63,7 +72,10 @@ function launch(args, name, extra = {}) {
 }
 
 const startApi = () => {
-  const child = launch(['--disable-warning=ExperimentalWarning', 'server/index.js'], 'API', { env: backendEnvironment(), stdio: ['inherit', 'inherit', 'inherit', 'ipc'] });
+  const child = launch(['--disable-warning=ExperimentalWarning', 'server/index.js'], 'API', {
+    env: backendEnvironment(),
+    stdio: ['inherit', 'inherit', 'inherit', 'ipc'],
+  });
   child.on('message', async (message) => {
     if (message.type !== 'hrms:ready' || stopping || child !== api) return;
     const changed = apiPort !== message.port;
@@ -71,11 +83,19 @@ const startApi = () => {
     if (vite && changed) {
       const old = vite;
       vite = undefined;
-      await new Promise((resolve) => { old.once('exit', resolve); old.kill(); });
+      await new Promise((resolve) => {
+        old.once('exit', resolve);
+        old.kill();
+      });
     }
-    if (!serverOnly && !vite && !stopping) vite = launch(['node_modules/vite/bin/vite.js', '--config', 'client/vite.config.js'], 'Vite', {
-      env: frontendEnvironment(apiPort),
-    });
+    if (!serverOnly && !vite && !stopping)
+      vite = launch(
+        ['node_modules/vite/bin/vite.js', '--config', 'client/vite.config.js'],
+        'Vite',
+        {
+          env: frontendEnvironment(apiPort),
+        },
+      );
   });
   return child;
 };
@@ -85,10 +105,15 @@ const startApi = () => {
 function sourceHash() {
   const hash = createHash('sha256');
   function visit(dir) {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+    for (const entry of fs
+      .readdirSync(dir, { withFileTypes: true })
+      .sort((a, b) => a.name.localeCompare(b.name))) {
       const file = path.join(dir, entry.name);
       if (entry.isDirectory()) visit(file);
-      else if (entry.isFile() && (/\.(?:[cm]?js|json|sql)$/.test(entry.name) || entry.name === '.env')) {
+      else if (
+        entry.isFile() &&
+        (/\.(?:[cm]?js|json|sql)$/.test(entry.name) || entry.name === '.env')
+      ) {
         hash.update(file).update('\0').update(fs.readFileSync(file)).update('\0');
       }
     }
@@ -104,7 +129,11 @@ api = startApi();
 timer = setInterval(async () => {
   if (stopping || restarting) return;
   let current;
-  try { current = sourceHash(); } catch { return; } // An editor may be replacing a file.
+  try {
+    current = sourceHash();
+  } catch {
+    return;
+  } // An editor may be replacing a file.
   if (current === previous) return;
   previous = current;
   restarting = true;

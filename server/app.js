@@ -30,7 +30,16 @@ import { createPasswordResetMailer } from './services/reset-mail.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
-export async function createApp({ databaseUrl, database, dataDir = path.resolve('data'), seed = 'demo', serveClient = true, today, clientOrigin = process.env.CLIENT_ORIGIN || '', passwordResetMailer = createPasswordResetMailer() } = {}) {
+export async function createApp({
+  databaseUrl,
+  database,
+  dataDir = path.resolve('data'),
+  seed = 'demo',
+  serveClient = true,
+  today,
+  clientOrigin = process.env.CLIENT_ORIGIN || '',
+  passwordResetMailer = createPasswordResetMailer(),
+} = {}) {
   const allowedOrigin = clientOrigin ? new URL(clientOrigin).origin : '';
   const db = database || (await openDb({ connectionString: databaseUrl }));
   const uploads = path.resolve(dataDir, 'uploads');
@@ -46,18 +55,29 @@ export async function createApp({ databaseUrl, database, dataDir = path.resolve(
         if (seed === 'demo') await seedDemo(db, { today, saveFile });
         else {
           const adminEmail = (process.env.ADMIN_EMAIL || 'admin@brainadz.com').toLowerCase();
-          const adminPassword = process.env.ADMIN_PASSWORD || crypto.randomBytes(9).toString('base64url');
+          const adminPassword =
+            process.env.ADMIN_PASSWORD || crypto.randomBytes(9).toString('base64url');
           await seedEmpty(db, { adminEmail, adminPassword });
-          if (!process.env.ADMIN_PASSWORD) console.log(`\n  First admin login: ${adminEmail} / ${adminPassword}\n  (you will be asked to change it)\n`);
+          if (!process.env.ADMIN_PASSWORD)
+            console.log(
+              `\n  First admin login: ${adminEmail} / ${adminPassword}\n  (you will be asked to change it)\n`,
+            );
         }
       }
     });
-  } catch (error) { if (!database) await db.close(); throw error; }
+  } catch (error) {
+    if (!database) await db.close();
+    throw error;
+  }
 
   // Closes work clocks left running overnight and raises short-hours alerts
   // for earlier days. Runs at start and every 30 minutes.
   const shortHoursCheck = async () => {
-    try {await workflow(db, async () => generateShortfalls(db, { today: await companyToday(db) }));} catch (e) {console.error('Short-hours check failed', e);}
+    try {
+      await workflow(db, async () => generateShortfalls(db, { today: await companyToday(db) }));
+    } catch (e) {
+      console.error('Short-hours check failed', e);
+    }
   };
   await shortHoursCheck();
   const interval = setInterval(shortHoursCheck, 30 * 60000);
@@ -72,28 +92,57 @@ export async function createApp({ databaseUrl, database, dataDir = path.resolve(
     const instance = multer({
       storage: multer.diskStorage({
         destination: dir,
-        filename: (_req, file, cb) => cb(null, `${crypto.randomBytes(12).toString('hex')}${path.extname(file.originalname).toLowerCase().slice(0, 8)}`)
+        filename: (_req, file, cb) =>
+          cb(
+            null,
+            `${crypto.randomBytes(12).toString('hex')}${path.extname(file.originalname).toLowerCase().slice(0, 8)}`,
+          ),
       }),
       limits: { fileSize: maxMb * 1024 * 1024, files: 25 },
       fileFilter: (_req, file, cb) => {
         const ext = path.extname(file.originalname).toLowerCase();
-        if (exts && !exts.includes(ext)) cb(new HttpError(400, `Unsupported file type ${ext || ''}. Allowed: ${exts.join(', ')}`));else
-        cb(null, true);
-      }
+        if (exts && !exts.includes(ext))
+          cb(new HttpError(400, `Unsupported file type ${ext || ''}. Allowed: ${exts.join(', ')}`));
+        else cb(null, true);
+      },
     });
-    return Object.fromEntries(['single', 'array', 'fields'].map((method) => [method, (...args) => {
-      const middleware = instance[method](...args);
-      return (req, res, next) => {
-        res.on('finish', () => { if (res.statusCode >= 400) cleanUploads(req); });
-        res.on('close', () => { if (!res.writableFinished) cleanUploads(req); });
-        middleware(req, res, (error) => {
-          try { if (error) throw error; if (req.aborted) throw new HttpError(400, 'Upload cancelled'); validateUploads(req); next(); }
-          catch (failure) { cleanUploads(req); next(failure); }
-        });
-      };
-    }]));
+    return Object.fromEntries(
+      ['single', 'array', 'fields'].map((method) => [
+        method,
+        (...args) => {
+          const middleware = instance[method](...args);
+          return (req, res, next) => {
+            res.on('finish', () => {
+              if (res.statusCode >= 400) cleanUploads(req);
+            });
+            res.on('close', () => {
+              if (!res.writableFinished) cleanUploads(req);
+            });
+            middleware(req, res, (error) => {
+              try {
+                if (error) throw error;
+                if (req.aborted) throw new HttpError(400, 'Upload cancelled');
+                validateUploads(req);
+                next();
+              } catch (failure) {
+                cleanUploads(req);
+                next(failure);
+              }
+            });
+          };
+        },
+      ]),
+    );
   };
-  const ctx = { db, uploads, upload, here, saveFile, passwordResetMailer, onClose: (fn) => closeHooks.push(fn) };
+  const ctx = {
+    db,
+    uploads,
+    upload,
+    here,
+    saveFile,
+    passwordResetMailer,
+    onClose: (fn) => closeHooks.push(fn),
+  };
 
   const app = express();
   app.disable('x-powered-by');
@@ -102,7 +151,10 @@ export async function createApp({ databaseUrl, database, dataDir = path.resolve(
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'SAMEORIGIN');
     res.setHeader('Referrer-Policy', 'same-origin');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'");
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self'",
+    );
     next();
   });
   app.use(express.json({ limit: '2mb' }));
@@ -115,14 +167,18 @@ export async function createApp({ databaseUrl, database, dataDir = path.resolve(
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Requested-With');
     }
-    if (req.method === 'OPTIONS') return res.status(origin && origin === allowedOrigin ? 204 : 403).end();
+    if (req.method === 'OPTIONS')
+      return res.status(origin && origin === allowedOrigin ? 204 : 403).end();
     next();
   });
   app.use(sessionMiddleware(db));
   // CSRF guard: state-changing API calls must carry a custom header, which a
   // cross-site form or image request cannot add.
   app.use('/api', (req, res, next) => {
-    if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && req.get('X-Requested-With') !== 'hrms') {
+    if (
+      !['GET', 'HEAD', 'OPTIONS'].includes(req.method) &&
+      req.get('X-Requested-With') !== 'hrms'
+    ) {
       return res.status(403).json({ error: 'Request blocked (missing X-Requested-With header)' });
     }
     if (req.method === 'GET') res.setHeader('Cache-Control', 'no-store');
@@ -134,10 +190,28 @@ export async function createApp({ databaseUrl, database, dataDir = path.resolve(
   app.use('/api', pub);
 
   const api = express.Router();
-  api.use((req, _res, next) => req.user ? next() : next(new HttpError(401, 'Please sign in')));
-  api.use((req, _res, next) => req.user.mustChangePassword
-    ? next(new HttpError(403, 'Change your temporary password before continuing')) : next());
-  for (const register of [metaRoutes, dashboardRoutes, employeeRoutes, leaveRoutes, attendanceRoutes, correctionRoutes, policyRoutes, payrollRoutes, hiringRoutes, screenerRoutes, resignationRoutes, performanceRoutes, reportRoutes, settingsRoutes]) {
+  api.use((req, _res, next) => (req.user ? next() : next(new HttpError(401, 'Please sign in'))));
+  api.use((req, _res, next) =>
+    req.user.mustChangePassword
+      ? next(new HttpError(403, 'Change your temporary password before continuing'))
+      : next(),
+  );
+  for (const register of [
+    metaRoutes,
+    dashboardRoutes,
+    employeeRoutes,
+    leaveRoutes,
+    attendanceRoutes,
+    correctionRoutes,
+    policyRoutes,
+    payrollRoutes,
+    hiringRoutes,
+    screenerRoutes,
+    resignationRoutes,
+    performanceRoutes,
+    reportRoutes,
+    settingsRoutes,
+  ]) {
     await register(atomicRouter(api, db, ctx.onClose), ctx);
   }
   api.use((_req, _res, next) => next(new HttpError(404, 'API route not found')));
@@ -149,7 +223,8 @@ export async function createApp({ databaseUrl, database, dataDir = path.resolve(
     app.use((req, res, next) => {
       if (req.method !== 'GET' || req.path.startsWith('/api')) return next();
       const index = path.join(dist, 'index.html');
-      if (!fs.existsSync(index)) return res.status(503).send('Client not built. Run "npm run build" first.');
+      if (!fs.existsSync(index))
+        return res.status(503).send('Client not built. Run "npm run build" first.');
       res.setHeader('Cache-Control', 'no-cache');
       res.sendFile(index);
     });
@@ -175,11 +250,15 @@ export async function createApp({ databaseUrl, database, dataDir = path.resolve(
     res.status(status).json({ error: message });
   });
 
-  return { app, db, async close() {
-    clearInterval(interval);
-    for (const hook of closeHooks) await hook();
-    await db.close();
-  } };
+  return {
+    app,
+    db,
+    async close() {
+      clearInterval(interval);
+      for (const hook of closeHooks) await hook();
+      await db.close();
+    },
+  };
 }
 
 export { fail };
