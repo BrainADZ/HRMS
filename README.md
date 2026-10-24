@@ -37,7 +37,7 @@ Current verification: 91 PostgreSQL regressions and five Chrome role/workflow te
 
 ## Run it on your computer
 
-You need **Node.js 22.13 or newer** ([download](https://nodejs.org)) and **PostgreSQL 16+**. Configure `.env` using [DATABASE_SETUP.md](DATABASE_SETUP.md); then create the database and schema with `npm run db:setup`. The server uses PostgreSQL only.
+You need **Node.js 22.13 or newer** ([download](https://nodejs.org)) and **PostgreSQL 16+**. Copy `.env.example` to `.env`, set the PostgreSQL connection, then create the database and schema with `npm run db:setup`. The server uses PostgreSQL only.
 
 ```bash
 npm install
@@ -46,20 +46,20 @@ npm run build
 npm start
 ```
 
-Open the URL printed in the terminal. The server tries port 3000 (or `PORT` from `.env`); if occupied, it automatically binds a free port. With `SEED=demo`, the first start creates a demo company with about 100 fictional employees, six months of attendance and payroll, candidates, reviews and resignations.
+Open the URL printed in the terminal. The server tries port 3000 (or `PORT` from `.env`); if occupied, it automatically binds a free port. With `SEED=demo`, the first start creates a demo company with 50 fictional employees, a CEO-to-team reporting hierarchy, four completed months of attendance and payroll, and sample hiring, leave, performance and document records.
 
-Demo logins (password `Brainadz@2026` for all). Only the administrator signs in by email; HR, managers and employees use the first-name + employee-ID username shown on the demo sign-in screen. See [LOGIN_SETUP.md](LOGIN_SETUP.md).
+Demo logins (password `Brainadz@2026` for all). Only the administrator signs in by email; HR, managers and employees sign in by username. All four profiles and their credentials appear on the local demo sign-in screen.
 
-| Account email (contact) | Role |
+| Profile | Sign-in ID |
 |---|---|
-| priya.sharma@brainadz.com | HR Manager |
-| rajiv.malhotra@brainadz.com | CEO, Administrator |
-| vikram.patel@brainadz.com | Sales Manager |
-| aarav.mehta@brainadz.com | Employee |
+| CEO, Administrator | `rajiv.malhotra@brainadz.com` |
+| HR Manager | `PriyaBZ040` |
+| Sales Manager | `VikramBZL005` |
+| Marketing Executive | `AaravBZM021` |
 
 Every team lead and vertical head also has a manager login with the same password; they use their generated username rather than their email.
 
-For a disposable local demo, run `npm run demo`. To reset a persistent demo database, stop the server and run `node --env-file=.env server/reset.js --confirm-reset`; the command refuses databases not marked as demo.
+For a disposable local demo, run `npm run demo` (no PostgreSQL setup needed). To populate an already configured, empty PostgreSQL company, run `npm run demo:seed` once; it refuses a database with employees. To reset a persistent demo database, stop the server and run `node --env-file=.env server/reset.js --confirm-reset`; the command refuses databases not marked as demo.
 
 ## Turn on Claude for resume screening
 

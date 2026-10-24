@@ -86,11 +86,7 @@ export default function Login() {
     }
   };
 
-  const quickAccounts = cfg?.quickAccounts?.length
-    ? cfg.quickAccounts
-    : cfg?.demo
-      ? cfg.demoAccounts
-      : [];
+  const quickAccounts = cfg?.demo ? cfg.demoAccounts || [] : cfg?.quickAccounts || [];
 
   const requestPassword = async () => {
     if (loginType === 'admin' ? !email.trim() : !username.trim()) {
@@ -261,7 +257,9 @@ export default function Login() {
           </form>
           {quickAccounts.length > 0 && (
             <div className="mt-16" style={{ marginTop: 28 }}>
-              <div className="small muted b6 mb-8">QUICK LOGIN</div>
+              <div className="small muted b6 mb-8">
+                {cfg?.demo ? 'DEMO PROFILES · ADMIN → HR → MANAGER → EMPLOYEE' : 'QUICK LOGIN'}
+              </div>
               <div className="col" style={{ gap: 8 }}>
                 {quickAccounts.map((a) => {
                   const name =
@@ -293,7 +291,13 @@ export default function Login() {
                       <div className="grow">
                         <div className="b6">{name}</div>
                         <div className="small muted">
-                          {a.loginType === 'admin' ? a.email : a.username}
+                          {a.designation || a.label}
+                          {a.department ? ` · ${a.department}` : ''}
+                          {a.reportsTo ? ` · Reports to ${a.reportsTo}` : ''}
+                        </div>
+                        <div className="small muted">
+                          ID: {a.loginType === 'admin' ? a.email : a.username}
+                          {a.password ? ` · Password: ${a.password}` : ''}
                         </div>
                       </div>
                       <span className="badge b-blue">{a.label}</span>

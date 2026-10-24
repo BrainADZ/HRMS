@@ -1,7 +1,7 @@
 // This command deliberately resets DEMO data only, never an unmarked company.
 import { openDb } from './db.js';
 import { getSettings } from './core.js';
-import { seedDemo } from './seed.js';
+import { seed50Demo } from './seed-50-demo.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -29,7 +29,7 @@ if (!process.argv.includes('--confirm-reset')) {
       await db.exec(
         `TRUNCATE ${tables.map(({ tablename }) => `"${tablename.replaceAll('"', '""')}"`).join(', ')} RESTART IDENTITY`,
       );
-      await seedDemo(db, { saveFile });
+      await seed50Demo(db, { saveFile });
     });
     console.log('PostgreSQL demo data reset. Existing uploaded files were retained.');
   } catch (error) {

@@ -79,12 +79,23 @@ export default function authRoutes(r, { db, passwordResetMailer }) {
         ? await Promise.all(
             DEMO_ACCOUNTS.map(async (a) => {
               const user = await db.get(
-                'SELECT role, username FROM users WHERE email = ?',
+                `SELECT u.role, u.username, e.designation, d.name AS department,
+                        m.first_name AS manager_first, m.last_name AS manager_last
+                   FROM users u
+                   LEFT JOIN employees e ON e.id = u.employee_id
+                   LEFT JOIN departments d ON d.id = e.department_id
+                   LEFT JOIN employees m ON m.id = e.manager_id
+                  WHERE u.email = ?`,
                 a.email,
               );
               return {
                 ...a,
                 username: user?.username,
+                designation: user?.designation,
+                department: user?.department,
+                reportsTo: user?.manager_first
+                  ? `${user.manager_first} ${user.manager_last}`
+                  : null,
                 loginType: user?.role === 'admin' ? 'admin' : 'employee',
                 password: DEMO_PASSWORD,
               };

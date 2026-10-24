@@ -25,7 +25,8 @@ import {
   loginDetails,
   createSession,
 } from '../auth.js';
-import { seedDemo, LEAVE_TYPES, holidaysFor, policyLibrary } from '../seed.js';
+import { LEAVE_TYPES, holidaysFor, policyLibrary } from '../seed.js';
+import { seed50Demo } from '../seed-50-demo.js';
 import * as D from '../lib/dates.js';
 import { GEOFENCE_MODES, geofencePolicy } from '../services/geofence.js';
 import { invalidatePayrollInputs } from '../services/payroll-inputs.js';
@@ -496,7 +497,7 @@ export default function settingsRoutes(r, { db, saveFile }) {
     if (req.body.confirm !== 'RESET') fail(400, 'Type RESET to confirm');
     await db.tx(async () => {
       await wipe();
-      await seedDemo(db, { saveFile });
+      await seed50Demo(db, { saveFile });
     });
     res.json({ ok: true });
   });

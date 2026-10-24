@@ -126,7 +126,7 @@ test('payroll: run, finance review, management approval by admin only, transfer,
   const run = await hr.post('/payroll/runs', { month });
   assert.equal(run.status, 200, JSON.stringify(run.body));
   assert.equal(run.body.status, 'In Review');
-  assert.ok(run.body.totals.count > 50);
+  assert.equal(run.body.totals.count, 50);
   assert.equal(
     (await hr.post(`/payroll/runs/${run.body.id}/approve`, { stage: 'finance' })).body.status,
     'Finance Reviewed',
@@ -268,7 +268,7 @@ test('resignation: submit, manager approval, HR acceptance moves employee to not
   const sub = await emp.post('/resignations', { reason_category: 'Career Growth', reason: 'test' });
   assert.equal(sub.status, 200, JSON.stringify(sub.body));
   assert.equal((await emp.post('/resignations', { reason_category: 'Career Growth' })).status, 409);
-  const mgrEmail = 'siddharth.menon@brainadz.com';
+  const mgrEmail = 'nandini.joshi@brainadz.com';
   const mgr = await as(ctx.base, mgrEmail);
   assert.equal(
     (await mgr.post(`/resignations/${sub.body.id}/manager-decision`, { action: 'approve' })).status,

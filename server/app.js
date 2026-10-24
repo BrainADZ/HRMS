@@ -8,7 +8,8 @@ import { openDb } from './db.js';
 import { sessionMiddleware } from './auth.js';
 import { HttpError, fail, today as companyToday } from './core.js';
 import { generateShortfalls } from './services/workday.js';
-import { seedDemo, seedEmpty, hasData } from './seed.js';
+import { seedEmpty, hasData } from './seed.js';
+import { seed50Demo } from './seed-50-demo.js';
 import authRoutes from './routes/auth.js';
 import metaRoutes from './routes/meta.js';
 import dashboardRoutes from './routes/dashboard.js';
@@ -52,7 +53,7 @@ export async function createApp({
     await db.tx(async () => {
       await db.exec('SELECT pg_advisory_xact_lock(7264182027)');
       if (!(await hasData(db)) && !(await db.value('SELECT COUNT(*) FROM users'))) {
-        if (seed === 'demo') await seedDemo(db, { today, saveFile });
+        if (seed === 'demo') await seed50Demo(db, { today, saveFile });
         else {
           const adminEmail = (process.env.ADMIN_EMAIL || 'admin@brainadz.com').toLowerCase();
           const adminPassword =
