@@ -1,4 +1,4 @@
-import { Component, lazy, Suspense } from 'react';
+import { Component, lazy, Suspense, useLayoutEffect } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useApp } from './context.jsx';
 import Layout, { ChangePassword } from './components/Layout.jsx';
@@ -16,12 +16,14 @@ const AttendanceLeave = lazy(() => import('./pages/AttendanceLeave.jsx'));
 const Payroll = lazy(() => import('./pages/Payroll.jsx'));
 const Performance = lazy(() => import('./pages/Performance.jsx'));
 const Posh = lazy(() => import('./pages/Posh.jsx'));
+const Training = lazy(() => import('./pages/Training.jsx'));
 const Resignation = lazy(() => import('./pages/Resignation.jsx'));
 const Reports = lazy(() => import('./pages/Reports.jsx'));
 const SettingsPage = lazy(() => import('./pages/Settings.jsx'));
 const Print = lazy(() => import('./pages/Print.jsx'));
 const Documents = lazy(() => import('./pages/Documents.jsx'));
 const HolidayCalendar = lazy(() => import('./pages/HolidayCalendar.jsx'));
+const Logs = lazy(() => import('./pages/Logs.jsx'));
 
 function Guard({ roles, children }) {
   const { user } = useApp();
@@ -82,6 +84,9 @@ export default function App() {
 function AppRoutes() {
   const { user, meta } = useApp();
   const location = useLocation();
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
   if (location.pathname === '/reset-password') return <ResetPassword />;
   if (user?.mustChangePassword) return <ChangePassword forced onClose={() => {}} />;
   if (user === undefined || (user && !meta)) return <Loading text="Loading BrainADZ HRMS…" />;
@@ -137,6 +142,7 @@ function AppRoutes() {
                     <Route path="/performance" element={<Performance />} />
                     <Route path="/attendance" element={<AttendanceLeave />} />
                     <Route path="/posh" element={<Posh />} />
+                    <Route path="/training" element={<Training />} />
                     <Route path="/resignation" element={<Resignation />} />
                     <Route
                       path="/reports"
@@ -146,6 +152,7 @@ function AppRoutes() {
                         </Guard>
                       }
                     />
+                    <Route path="/logs" element={<Guard roles={['admin']}><Logs /></Guard>} />
                     <Route
                       path="/settings"
                       element={

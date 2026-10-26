@@ -1136,7 +1136,13 @@ function Adjustments({ items, onChange, locked }) {
                       variant="success"
                       onClick={async () => {
                         await run(
-                          () => api.put(`/payroll/adjustments/${a.id}`, { status: 'Approved' }),
+                          () =>
+                            api.put(
+                              a.expense_details
+                                ? `/expenses/${a.id}`
+                                : `/payroll/adjustments/${a.id}`,
+                              { status: 'Approved' },
+                            ),
                           'Approved. Re-run payroll to include it.',
                         );
                         onChange();
@@ -1149,7 +1155,13 @@ function Adjustments({ items, onChange, locked }) {
                       variant="reject"
                       onClick={async () => {
                         await run(
-                          () => api.put(`/payroll/adjustments/${a.id}`, { status: 'Rejected' }),
+                          () =>
+                            api.put(
+                              a.expense_details
+                                ? `/expenses/${a.id}`
+                                : `/payroll/adjustments/${a.id}`,
+                              { status: 'Rejected' },
+                            ),
                           'Rejected',
                         );
                         onChange();

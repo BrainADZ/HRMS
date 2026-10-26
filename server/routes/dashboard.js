@@ -304,8 +304,8 @@ export default function dashboardRoutes(r, { db }) {
         poshPct: pct(poshTrained, headcount),
       },
       org: {
-        departments: new Set(current.map((e) => e.department_id)).size,
-        locations: new Set(current.map((e) => e.location_id)).size,
+        departments: new Set(current.map((e) => e.department_id).filter(Boolean)).size,
+        locations: new Set(current.map((e) => e.location_id).filter(Boolean)).size,
       },
       notices: await db.all('SELECT * FROM notices ORDER BY created_at DESC LIMIT 3'),
       scope: scope === null ? 'organisation' : 'team',

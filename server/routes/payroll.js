@@ -639,6 +639,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
     const a =
       (await db.get('SELECT * FROM payroll_adjustments WHERE id = ?', id(req.params.id))) ||
       notFound('Adjustment');
+    if (a.expense_details) fail(403, 'Review expense claims through the Accounts expense queue');
     const status = oneOf(req.body.status, ['Pending', 'Approved', 'Rejected'], {
       required: true,
       name: 'Status',

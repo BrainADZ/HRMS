@@ -8,6 +8,7 @@ import { openDb } from './db.js';
 import { sessionMiddleware } from './auth.js';
 import { HttpError, fail, today as companyToday } from './core.js';
 import { generateShortfalls } from './services/workday.js';
+import { assignRecentJoinersTraining } from './services/training.js';
 import { seedEmpty, hasData } from './seed.js';
 import { seed50Demo } from './seed-50-demo.js';
 import authRoutes from './routes/auth.js';
@@ -19,12 +20,14 @@ import leaveRoutes from './routes/leave.js';
 import attendanceRoutes from './routes/attendance.js';
 import policyRoutes from './routes/policies.js';
 import payrollRoutes from './routes/payroll.js';
+import expenseRoutes from './routes/expenses.js';
 import hiringRoutes from './routes/hiring.js';
 import screenerRoutes from './routes/screener.js';
 import resignationRoutes from './routes/resignations.js';
 import performanceRoutes from './routes/performance.js';
 import reportRoutes from './routes/reports.js';
 import settingsRoutes from './routes/settings.js';
+import trainingRoutes from './routes/training.js';
 import { atomicRouter, workflow } from './database/workflows.js';
 import { cleanUploads, validateUploads } from './services/uploads.js';
 import { createPasswordResetMailer } from './services/reset-mail.js';
@@ -65,6 +68,7 @@ export async function createApp({
             );
         }
       }
+      await assignRecentJoinersTraining(db, await companyToday(db));
     });
   } catch (error) {
     if (!database) await db.close();
@@ -201,11 +205,13 @@ export async function createApp({
     metaRoutes,
     dashboardRoutes,
     employeeRoutes,
+    trainingRoutes,
     leaveRoutes,
     attendanceRoutes,
     correctionRoutes,
     policyRoutes,
     payrollRoutes,
+    expenseRoutes,
     hiringRoutes,
     screenerRoutes,
     resignationRoutes,

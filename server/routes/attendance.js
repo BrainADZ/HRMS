@@ -139,6 +139,10 @@ export default function attendanceRoutes(r, { db }) {
         department: req.query.department,
       });
       const st = await dayStatuses(db, emps, T, T, T, s);
+      const leaveReasons = new Map((await db.all(
+        `SELECT employee_id, reason FROM leave_requests WHERE status = 'Approved' AND from_date <= ? AND to_date >= ? ${emps.length ? `AND employee_id IN (${emps.map(() => '?').join(',')})` : 'AND 1=0'}`,
+        T, T, ...emps.map((e) => e.id),
+      )).map((row) => [row.employee_id, row.reason]));
       const rows = await asyncMap(emps, async (e) => {
         const d = st.get(e.id).get(T);
         return {
@@ -151,6 +155,7 @@ export default function attendanceRoutes(r, { db }) {
           has_photo: Boolean(e.photo),
           code_today: d.code,
           leave: d.leave?.name,
+          leaveReason: d.code === 'L' ? leaveReasons.get(e.id) || null : null,
           checkIn: d.checkIn,
           checkOut: d.checkOut,
           late: D.isLateCheckIn(d.checkIn, T, s),
@@ -431,6 +436,42 @@ export default function attendanceRoutes(r, { db }) {
         blocked: items.filter((x) => /blocked|signed out/.test(x.event)).length,
       },
     });
+  });
+
+  r.get('/attendance/activity', async (req, res) => {
+    const to = req.query.to ? date(req.query.to) : await today(db);
+    const from = req.query.from ? date(req.query.from) : to;
+    if (from > to) fail(400, 'Start date must be before end date');
+    if ((Date.parse(to) - Date.parse(from)) / 86400000 > 31) fail(400, 'Choose at most 32 days');
+    const employees = await scopedEmployees(db, req.user, {
+      from, to, vertical: req.query.vertical,
+      employee: req.query.employee,
+    });
+    const s = await settings();
+    const items = [];
+    const employeeById = new Map(employees.map((employee) => [employee.id, employee]));
+    if (!employees.length) return res.json({ items });
+    const ids = employees.map((employee) => employee.id);
+    const placeholders = ids.map(() => '?').join(',');
+    const activeDays = await db.all(
+      `SELECT employee_id, date FROM work_sessions WHERE date BETWEEN ? AND ? AND employee_id IN (${placeholders})
+       UNION SELECT employee_id, date FROM attendance WHERE date BETWEEN ? AND ? AND check_in IS NOT NULL AND employee_id IN (${placeholders})`,
+      from, to, ...ids, from, to, ...ids,
+    );
+    for (const { employee_id: employeeId, date: day } of activeDays) {
+        const employee = employeeById.get(employeeId);
+        if (!employee) continue;
+        items.push({
+          employeeId: employee.id,
+          name: fullName(employee),
+          code: employee.code,
+          date: day,
+          attendanceStatus: await db.value('SELECT status FROM attendance WHERE employee_id = ? AND date = ?', employee.id, day),
+          ...(await workdaySummary(db, employee.id, day, s)),
+        });
+    }
+    items.sort((a, b) => b.date.localeCompare(a.date) || a.name.localeCompare(b.name));
+    res.json({ items });
   });
 
   // ---------- short hours ----------

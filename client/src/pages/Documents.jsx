@@ -53,9 +53,11 @@ const ACCEPT = '.pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt';
 
 export function UploadModal({ employeeId, category, onClose, onDone }) {
   const { meta, user, isAdmin, toast } = useApp();
+  const categories =
+    (meta.canUploadDocuments ? meta.documentCategories : meta.selfUploadDocumentCategories) || [];
   const [f, setF] = useState({
-    employee: employeeId || (isAdmin ? '' : user.employeeId),
-    category: category || meta.documentCategories?.[0] || 'Other',
+    employee: employeeId || (meta.canUploadDocuments ? '' : user.employeeId),
+    category: category || categories[0] || '',
     name: '',
   });
   const [file, setFile] = useState(null);
@@ -95,7 +97,7 @@ export function UploadModal({ employeeId, category, onClose, onDone }) {
       }
     >
       <div className="form-grid">
-        {isAdmin && !employeeId && (
+        {meta.canUploadDocuments && !employeeId && (
           <Field label="Employee" className="full">
             <EmployeeSelect
               value={f.employee}
@@ -107,7 +109,7 @@ export function UploadModal({ employeeId, category, onClose, onDone }) {
           <Select
             value={f.category}
             onChange={(e) => setF({ ...f, category: e.target.value })}
-            options={meta.documentCategories || ['Other']}
+            options={categories}
           />
         </Field>
         <Field label="Name (optional)">
@@ -133,11 +135,13 @@ export function UploadModal({ employeeId, category, onClose, onDone }) {
 }
 
 export default function Documents() {
-  const { isAdmin } = useApp();
+  const { isAdmin, meta } = useApp();
+  const canUpload = Boolean(meta.canUploadDocuments);
+  const canBrowse = isAdmin || canUpload;
   const [sp, setSp] = useSearchParams();
   const [upload, setUpload] = useState(null);
   const [tick, setTick] = useState(0);
-  const tab = isAdmin ? sp.get('tab') || 'checklist' : 'mine';
+  const tab = canBrowse ? sp.get('tab') || 'checklist' : 'mine';
   const done = () => setTick((t) => t + 1);
   return (
     <div>
@@ -145,7 +149,7 @@ export default function Documents() {
         <div>
           <h1>Documents</h1>
           <div className="sub">
-            {isAdmin ? (
+            {canBrowse ? (
               <>
                 Joining and HR documents for every employee, and what is still missing.{' '}
                 <VerticalFilterNote />
@@ -155,11 +159,13 @@ export default function Documents() {
             )}
           </div>
         </div>
-        <Button variant="primary" icon={Upload} onClick={() => setUpload({})}>
-          Upload document
-        </Button>
+        {(canUpload || meta.selfUploadDocumentCategories?.length > 0) && (
+          <Button variant="primary" icon={Upload} onClick={() => setUpload({})}>
+            Upload document
+          </Button>
+        )}
       </div>
-      {isAdmin && (
+      {canBrowse && (
         <Tabs
           value={tab}
           onChange={(t) => setSp({ tab: t })}
@@ -185,7 +191,7 @@ export default function Documents() {
 }
 
 function Checklist({ onUpload }) {
-  const { meta, vertical } = useApp();
+  const { meta, vertical, user, isAdmin } = useApp();
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState('');
   const [only, setOnly] = useState('all');
@@ -294,6 +300,7 @@ function Checklist({ onUpload }) {
                       <td key={c} className="center">
                         {r.docs[c] ? (
                           <button
+                            disabled={!isAdmin && user.employeeId !== r.id}
                             type="button"
                             className="doc-ok"
                             title={`Download ${r.docs[c].name}`}
@@ -302,7 +309,7 @@ function Checklist({ onUpload }) {
                           >
                             <CircleCheck size={18} />
                           </button>
-                        ) : (
+                        ) : meta.canUploadDocuments ? (
                           <button
                             type="button"
                             className="doc-add"
@@ -313,6 +320,8 @@ function Checklist({ onUpload }) {
                             <Plus size={14} />
                             Add
                           </button>
+                        ) : (
+                          <span className="small muted">Missing</span>
                         )}
                       </td>
                     ))}
@@ -338,7 +347,7 @@ function Checklist({ onUpload }) {
 }
 
 function AllDocuments() {
-  const { meta, vertical, toast } = useApp();
+  const { meta, vertical, toast, user, isAdmin } = useApp();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [page, setPage] = useState(1);
@@ -422,31 +431,13 @@ function AllDocuments() {
                     </td>
                     <td className="right nowrap">
                       <Button
+                        disabled={!isAdmin && user.employeeId !== d.employee_id}
                         size="xs"
                         icon={Download}
                         onClick={() => download(`/documents/${d.id}/download`)}
                       >
                         Download
                       </Button>
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        icon={Trash2}
-                        aria-label={`Delete ${d.name}`}
-                        onClick={async () => {
-                          if (
-                            await confirm({
-                              title: 'Delete document?',
-                              text: `${d.name} (${d.employee})`,
-                              danger: true,
-                              confirmLabel: 'Delete',
-                            })
-                          ) {
-                            await run(() => api.del(`/documents/${d.id}`), 'Deleted');
-                            reload();
-                          }
-                        }}
-                      />
                     </td>
                   </tr>
                 ))}
@@ -464,7 +455,7 @@ function AllDocuments() {
 }
 
 function MyDocuments({ onUpload }) {
-  const { user } = useApp();
+  const { user, meta } = useApp();
   const list = useApi('/documents?limit=200');
   const check = useApi('/documents/checklist');
   if (!user.employeeId)
@@ -510,9 +501,9 @@ function MyDocuments({ onUpload }) {
                   icon={Download}
                   onClick={() => download(`/documents/${me.docs[c].id}/download`)}
                 >
-                  View
+                  Download
                 </Button>
-              ) : (
+              ) : meta.selfUploadDocumentCategories?.includes(c) ? (
                 <Button
                   size="xs"
                   variant="primary"
@@ -521,6 +512,8 @@ function MyDocuments({ onUpload }) {
                 >
                   Upload
                 </Button>
+              ) : (
+                <span className="small muted">Pending Accounts upload</span>
               )}
             </div>
           ))}
@@ -528,7 +521,10 @@ function MyDocuments({ onUpload }) {
       </Card>
       <Card className="span-7" title="All my documents" flush>
         {!list.data.items.length ? (
-          <Empty icon={FileText} text="No documents yet. Upload your joining documents." />
+          <Empty
+            icon={FileText}
+            text="Upload your Aadhaar, PAN, address, education and bank proof. Accounts will upload your offer and appointment letters."
+          />
         ) : (
           <div className="table-wrap">
             <table className="table">

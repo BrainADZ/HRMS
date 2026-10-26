@@ -74,7 +74,19 @@ export function Kpi({
   onClick,
 }) {
   return (
-    <div className="card kpi" onClick={onClick} style={onClick ? { cursor: 'pointer' } : undefined}>
+    <div
+      className="card kpi"
+      onClick={onClick}
+      onKeyDown={onClick ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      } : undefined}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      style={onClick ? { cursor: 'pointer' } : undefined}
+    >
       <div className={`ic tone-${tone}`}>{Icon && <Icon size={30} strokeWidth={2} />}</div>
       <div className="grow">
         <div className="lbl">{label}</div>

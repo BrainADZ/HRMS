@@ -32,6 +32,7 @@ const KEYWORDS = {
   '/performance': 'reviews goals appraisal ratings',
   '/attendance': 'clock check in timesheet hours location office',
   '/posh': 'complaint harassment committee',
+  '/training': 'new joiner onboarding learning induction',
   '/resignation': 'exit notice offboarding',
   '/reports': 'analytics export',
   '/settings': 'configuration admin users offices',

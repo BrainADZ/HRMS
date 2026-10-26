@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   UserCheck,
   House,
@@ -34,6 +34,7 @@ import {
   Textarea,
   Progress,
   Seg,
+  EmployeeSelect,
 } from '../components/ui.jsx';
 import { VerticalFilterNote } from './Dashboard.jsx';
 import { ClockActions, SessionList, ExplainModal } from '../components/WorkClock.jsx';
@@ -98,15 +99,54 @@ export default function Attendance({ embedded = false }) {
           { value: 'month', label: team ? 'Monthly Register' : 'My Attendance' },
           { value: 'short', label: shortCount ? `Short hours (${shortCount})` : 'Short hours' },
           { value: 'corrections', label: 'Corrections' },
-          { value: 'locations', label: 'Location log' },
+          { value: 'locations', label: 'Location' },
+          { value: 'activity', label: 'Log' },
         ]}
       />
       {tab === 'today' && <Today />}
       {tab === 'month' && <Register />}
       {tab === 'short' && <ShortHours team={team || isAdmin} />}
       {tab === 'locations' && <LocationLog team={team || isAdmin} />}
+      {tab === 'activity' && <ActivityLog team={team || isAdmin} />}
       {tab === 'corrections' && <Corrections />}
     </div>
+  );
+}
+
+function ActivityLog({ team }) {
+  const { meta, vertical } = useApp();
+  const [params] = useSearchParams();
+  const selectedDate = params.get('date');
+  const [from, setFrom] = useState(selectedDate || meta.today);
+  const [to, setTo] = useState(selectedDate || meta.today);
+  useEffect(() => {
+    if (selectedDate) {
+      setFrom(selectedDate);
+      setTo(selectedDate);
+    }
+  }, [selectedDate]);
+  const [employee, setEmployee] = useState('');
+  const query = new URLSearchParams({ from, to, ...(employee ? { employee } : {}), ...(vertical ? { vertical } : {}) });
+  const { data, error, reload } = useApi(`/attendance/activity?${query}`);
+  return (
+    <Card title="Daily activity log" sub="Check-ins, breaks, reasons, check-outs and total time for each day">
+      <div className="filters mb-16">
+        <label className="small">From <Input type="date" value={from} max={meta.today} onChange={(e) => setFrom(e.target.value)} /></label>
+        <label className="small">To <Input type="date" value={to} max={meta.today} onChange={(e) => setTo(e.target.value)} /></label>
+        {team && <EmployeeSelect value={employee} onChange={(e) => setEmployee(e.target.value)} placeholder="All employees" />}
+      </div>
+      {error ? <ErrorBox error={error} onRetry={reload} /> : !data ? <Loading /> : !data.items.length ? <Empty text="No work activity in this period" /> : data.items.map((item) => (
+        <div key={`${item.employeeId}-${item.date}`} className="card mb-16" style={{ padding: 16 }}>
+          <div className="row between wrap"><b>{team ? `${item.name} · ` : ''}{fmtDay(item.date)}</b><Badge>{LABEL[item.attendanceStatus] || (item.mode === 'wfh' ? 'Work from home' : 'Office')}</Badge></div>
+          <div className="small muted mt-8">Worked: {clockText(item.workedMinutes, false)} · Breaks: {clockText(item.breakMinutes, false)}</div>
+          {item.sessions.map((session, index) => <div className="small mt-8" key={index}>
+            <b>{fmtTime(session.start)}</b> Check-in {session.end ? `→ ${fmtTime(session.end)} ${session.endedBy === 'break' ? 'Break started' : 'Check-out'}` : '→ Working'}
+            {session.gapReason && <div className="muted">Return reason: {session.gapReason}{session.gapNote ? ` · ${session.gapNote}` : ''}</div>}
+          </div>)}
+          {item.gaps.map((gap, index) => <div className="small muted mt-8" key={`gap-${index}`}>Break {fmtTime(gap.from)}–{fmtTime(gap.to)} · {clockText(gap.minutes, false)}{gap.reason ? ` · ${gap.reason}` : ''}{gap.note ? ` · ${gap.note}` : ''}</div>)}
+        </div>
+      ))}
+    </Card>
   );
 }
 
@@ -245,11 +285,19 @@ function Corrections() {
 
 function Today() {
   const { toast, vertical, isHR, isManager } = useApp();
+  const [params, setParams] = useSearchParams();
   const { data, error, reload } = useApi(
     `/attendance/today${vertical ? `?vertical=${vertical}` : ''}`,
   );
   const [run, busy] = useAction(toast);
-  const [filter, setFilter] = useState('');
+  const filter = params.get('filter') || '';
+  const setFilter = (next) => setParams((current) => {
+    const updated = new URLSearchParams(current);
+    if (next) updated.set('filter', next);
+    else updated.delete('filter');
+    updated.set('tab', 'today');
+    return updated;
+  });
   const clock = useWorkday();
   const now = useNow(1000);
   useOnWorkdayChange(reload);
@@ -262,6 +310,8 @@ function Today() {
       !filter ||
       (filter === 'late'
         ? r.late
+        : filter === 'attending'
+          ? ['P', 'WFH', 'HD'].includes(r.code_today)
         : filter === 'NM'
           ? ['F', 'U'].includes(r.code_today)
           : r.code_today === filter),
@@ -375,7 +425,7 @@ function Today() {
                 {isHR ? 'Everyone' : 'My team'} today{' '}
                 {filter && (
                   <Badge tone="blue">
-                    {filter === 'NM' ? 'Not marked' : filter === 'late' ? 'Late' : LABEL[filter]}{' '}
+                    {filter === 'NM' ? 'Not marked' : filter === 'late' ? 'Late' : filter === 'attending' ? 'Attending' : LABEL[filter]}{' '}
                     <button
                       type="button"
                       style={{ border: 0, background: 'none', cursor: 'pointer', color: 'inherit' }}
@@ -446,6 +496,9 @@ function Today() {
                         <Badge tone={TONE[r.code_today]}>
                           {r.code_today === 'L' ? r.leave : LABEL[r.code_today]}
                         </Badge>
+                        {r.code_today === 'L' && r.leaveReason && (
+                          <div className="small muted mt-8">{r.leaveReason}</div>
+                        )}
                       </td>
                       <td className="small">
                         {r.checkIn ? (
@@ -719,6 +772,7 @@ function EmployeeRegisterCards({ rows, data, onPick }) {
 }
 
 function PersonalAttendance({ rows, data }) {
+  const navigate = useNavigate();
   return (
     <div className="personal-attendance">
       {rows.map((row) => {
@@ -752,10 +806,12 @@ function PersonalAttendance({ rows, data }) {
                 <div key={`space-${index}`} aria-hidden="true" />
               ))}
               {row.days.map((day) => (
-                <div
+                <button
+                  type="button"
                   key={day.date}
                   className={`attendance-day ${day.date === data.today ? 'is-today' : ''} ${['H', 'WO'].includes(day.code) ? 'is-off' : ''}`}
                   aria-label={`${day.date}: ${LABEL[day.code] || day.code}`}
+                  onClick={() => navigate(`/attendance?tab=activity&date=${day.date}`)}
                 >
                   <time dateTime={day.date}>{Number(day.date.slice(8))}</time>
                   <Badge tone={TONE[day.code]}>
@@ -768,7 +824,7 @@ function PersonalAttendance({ rows, data }) {
                     </div>
                   )}
                   {day.late && <span className="xs amber">Late</span>}
-                </div>
+                </button>
               ))}
             </div>
           </Card>

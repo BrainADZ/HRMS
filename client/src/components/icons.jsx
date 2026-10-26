@@ -548,6 +548,14 @@ export const MODULES = [
     ink: '#B4127F',
   },
   {
+    path: '/training',
+    label: 'Training',
+    Icon: IconPerformance,
+    color: C.violetBar,
+    soft: C.violetSoft,
+    ink: '#6A3FD6',
+  },
+  {
     path: '/resignation',
     label: 'Resignation',
     Icon: IconResignation,

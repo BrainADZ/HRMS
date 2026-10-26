@@ -5,6 +5,7 @@ import {
   UserRound,
   UserPlus,
   CalendarPlus,
+  UserCheck,
   ArrowRight,
   MapPin,
   Megaphone,
@@ -49,7 +50,6 @@ import {
   Ring,
   STATUS,
 } from '../components/charts.jsx';
-import { BrandBanner } from '../components/Layout.jsx';
 import { AttentionBanner } from '../components/WorkClock.jsx';
 import DailyAttendance from '../components/DailyAttendance.jsx';
 import CelebrationBoard from '../components/CelebrationBoard.jsx';
@@ -83,8 +83,9 @@ export function VerticalFilterNote() {
   );
 }
 
-export function NoticeBoard({ notices, onChange, compact }) {
-  const { isHR, toast } = useApp();
+export function NoticeBoard({ notices, onChange, compact, headerOnly = false }) {
+  const { isHR, isManager, user, toast } = useApp();
+  const canPost = isHR || isManager;
   const [all, setAll] = useState(false);
   const [adding, setAdding] = useState(false);
   const [f, setF] = useState({ title: '', body: '', kind: 'general' });
@@ -100,14 +101,14 @@ export function NoticeBoard({ notices, onChange, compact }) {
             <div className="ellipsis" style={{ fontSize: 13.5 }}>
               {n.title}
             </div>
-            {all && n.body && (
+            {(all || !compact) && n.body && (
               <div className="small muted mt-8" style={{ marginTop: 2 }}>
                 {n.body}
               </div>
             )}
           </div>
           <span className="small muted nowrap">{fmtDate(n.created_at)}</span>
-          {all && isHR && (
+          {all && (isHR || n.created_by === user.id) && (
             <button
               type="button"
               className="icon-btn"
@@ -135,10 +136,10 @@ export function NoticeBoard({ notices, onChange, compact }) {
     });
   return (
     <>
-      <div className="card-head" style={{ marginBottom: 6 }}>
-        <h3>Notice Board</h3>
+      <div className="card-head" style={{ marginBottom: headerOnly ? 0 : 6 }}>
+        <h3>Announcements</h3>
         <div className="row">
-          {isHR && (
+          {canPost && (
             <button type="button" className="link" onClick={() => setAdding(true)}>
               <Plus size={14} />
               Post
@@ -149,11 +150,11 @@ export function NoticeBoard({ notices, onChange, compact }) {
           </button>
         </div>
       </div>
-      {notices.length ? list(notices.slice(0, 3)) : <Empty text="No notices yet" />}
+      {!headerOnly && (notices.length ? list(notices.slice(0, 3)) : <Empty text="No notices yet" />)}
       {all && <NoticeList onClose={() => setAll(false)} render={list} />}
       {adding && (
         <Modal
-          title="Post a notice"
+          title="Post an announcement"
           onClose={() => setAdding(false)}
           footer={
             <>
@@ -162,14 +163,14 @@ export function NoticeBoard({ notices, onChange, compact }) {
                 variant="primary"
                 loading={busy}
                 onClick={async () => {
-                  if (await run(() => api.post('/notices', f), 'Notice posted')) {
+                  if (await run(() => api.post('/notices', f), 'Announcement posted')) {
                     setAdding(false);
                     setF({ title: '', body: '', kind: 'general' });
                     onChange?.();
                   }
                 }}
               >
-                Post notice
+                Post announcement
               </Button>
             </>
           }
@@ -210,7 +211,7 @@ export function NoticeBoard({ notices, onChange, compact }) {
 function NoticeList({ onClose, render }) {
   const { data } = useApi('/notices');
   return (
-    <Modal title="Notice board" size="wide" onClose={onClose}>
+    <Modal title="Announcements" size="wide" onClose={onClose}>
       {data ? data.items.length ? render(data.items) : <Empty /> : <Loading />}
     </Modal>
   );
@@ -221,6 +222,7 @@ export default function Dashboard() {
   const nav = useNavigate();
   const { data, error, reload } = useApi(`/dashboard${vertical ? `?vertical=${vertical}` : ''}`);
   const [tab, setTab] = useState('departments');
+  const { data: attendance } = useApi(`/attendance/today${vertical ? `?vertical=${vertical}` : ''}`);
   const [run] = useAction(toast);
   if (error && !data) return <ErrorBox error={error} onRetry={reload} />;
   if (!data) return <Loading />;
@@ -254,7 +256,9 @@ export default function Dashboard() {
             <VerticalFilterNote />
           </div>
         </div>
-        <BrandBanner />
+        <div className="card" style={{ padding: '14px 18px', width: '100%', maxWidth: 420, flex: '0 1 420px' }}>
+          <NoticeBoard notices={data.notices} onChange={reload} headerOnly />
+        </div>
       </div>
       <CelebrationBoard />
       <AttentionBanner />
@@ -264,13 +268,19 @@ export default function Dashboard() {
         </div>
       )}
 
-      <div className="kpis">
+      <div className="kpis dashboard-kpis">
+        <Kpi
+          icon={UserCheck}
+          tone="green"
+          label="Attending Today"
+          value={(attendance?.team?.summary?.present || 0) + (attendance?.team?.summary?.wfh || 0) + (attendance?.team?.summary?.halfDay || 0)}
+          onClick={() => nav('/attendance?tab=today&filter=attending')}
+        />
         <Kpi
           icon={Users}
           tone="blue"
           label={data.scope === 'team' ? 'Team Members' : 'Total Employees'}
           value={k.headcount}
-          delta={k.headcountChange}
           onClick={() => nav('/employees')}
         />
         <Kpi
@@ -278,7 +288,6 @@ export default function Dashboard() {
           tone="red"
           label="Open Positions"
           value={k.openPositions}
-          delta={k.openChange}
           onClick={() => nav('/hiring')}
         />
         <Kpi
@@ -286,22 +295,14 @@ export default function Dashboard() {
           tone="green"
           label="New Joiners (This Month)"
           value={k.joiners}
-          delta={k.joinersChange}
+          onClick={() => nav('/employees?joiners=1')}
         />
         <Kpi
           icon={CalendarPlus}
           tone="amber"
           label="On Leave Today"
           value={k.onLeave}
-          extra={
-            <span className="delta">
-              <span className="d" style={{ color: 'var(--text-2)' }}>
-                {k.onLeavePct}%
-              </span>
-              <small>of total employees</small>
-            </span>
-          }
-          onClick={() => nav('/leave?tab=manage')}
+          onClick={() => nav('/attendance?tab=today&filter=L')}
         />
       </div>
 
@@ -634,9 +635,6 @@ export default function Dashboard() {
                 <div className="xs muted">Locations</div>
               </span>
             </span>
-          </div>
-          <div className="card tight" style={{ flex: 1 }}>
-            <NoticeBoard notices={data.notices} onChange={reload} compact />
           </div>
         </div>
       </div>

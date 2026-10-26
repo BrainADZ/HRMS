@@ -43,6 +43,7 @@ import {
   IconPosh,
   IconBell,
 } from './icons.jsx';
+import { GraduationCap, ScrollText } from 'lucide-react';
 
 export function Logo({ size = '', showHrms = true }) {
   return (
@@ -133,12 +134,13 @@ const NAV = [
   { to: '/employees', label: 'Employees', icon: IconEmployees },
   { to: '/documents', label: 'Documents', icon: IconDocuments },
   { to: '/posh', label: 'POSH', icon: IconPosh },
+  { to: '/training', label: 'Training', icon: GraduationCap },
   { to: '/performance', label: 'Performance & Appraisal', icon: IconPerformance },
   { to: '/attendance', aliases: ['/leave'], label: 'Attendance & Leave', icon: IconAttendance },
   { to: '/calendar', label: 'Holiday Calendar', icon: IconHolidays },
   { to: '/payroll', label: 'Payroll', icon: IconPayroll, roles: ['admin', 'hr'] },
-  { to: '/resignation', label: 'Resignation', icon: IconResignation },
   { to: '/reports', label: 'Reports', icon: IconReports, roles: ['admin', 'hr'] },
+  { to: '/logs', label: 'Logs', icon: ScrollText, roles: ['admin'] },
   { to: '/settings', label: 'Settings', icon: IconSettings, roles: ['admin', 'hr'] },
 ];
 
@@ -598,6 +600,17 @@ function UserMenu({ onGetApp }) {
               Get the mobile app
             </button>
           )}
+          <button
+            type="button"
+            className="item"
+            onClick={() => {
+              setOpen(false);
+              nav('/resignation');
+            }}
+          >
+            <IconResignation size={16} />
+            Resignation
+          </button>
           <button type="button" className="item" style={{ color: 'var(--red)' }} onClick={signOut}>
             <LogOut size={16} />
             Sign out

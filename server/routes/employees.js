@@ -1,3 +1,4 @@
+import { canUploadDocuments, SELF_UPLOAD_DOCUMENTS } from '../services/document-access.js';
 import { authorizeEmployeeUpload } from '../services/uploads.js';
 import { asyncForEach } from '../database/async.js';
 import fs from 'node:fs';
@@ -37,6 +38,7 @@ import { IFSC_RE, ACCOUNT_RE } from '../services/payroll.js';
 import { invalidatePayrollInputs } from '../services/payroll-inputs.js';
 import { employeeFilter } from '../services/report-filters.js';
 import { nextEmployeeCode } from '../services/employee-codes.js';
+import { assignNewJoinerTraining } from '../services/training.js';
 
 const TYPES = ['Full-time', 'Part-time', 'Contract', 'Intern'];
 const STATUSES = ['Active', 'Notice', 'Exited'];
@@ -199,6 +201,10 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
     const where = [];
     const params = [];
     const status = req.query.status || 'current';
+    if (req.query.joiners === '1') {
+      where.push('e.join_date BETWEEN ? AND ?');
+      params.push(D.monthStart(D.monthOf(T)), T);
+    }
     if (status === 'current') where.push("e.status != 'Exited'");
     else if (STATUSES.includes(status)) {
       where.push('e.status = ?');
@@ -480,6 +486,7 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
         code: data.code || (await nextEmployeeCode(db)),
         status: 'Active',
       });
+      await assignNewJoinerTraining(db, newId);
       await invalidatePayrollInputs(db, data.join_date);
       if (data.join_date >= D.addDays(await today(db), -30))
         await asyncForEach(
@@ -670,17 +677,29 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
   // ---------- documents ----------
   r.post(
     '/employees/:id/documents',
-    authorizeEmployeeUpload(db, { allowHr: false }),
+    async (req, _res, next) => {
+      if (req.user.employeeId !== id(req.params.id) && !(await canUploadDocuments(db, req.user)))
+        fail(403, 'Only the Corporate Accounts team can upload employee documents');
+      if (!(await db.value('SELECT id FROM employees WHERE id=?', id(req.params.id))))
+        notFound('Employee');
+      next();
+    },
     upload('documents', {
       maxMb: 10,
       exts: ['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx', '.xls', '.xlsx', '.txt'],
     }).single('file'),
     async (req, res) => {
       const eid = id(req.params.id);
-      if (!isAdmin(req.user) && req.user.employeeId !== eid)
-        fail(403, 'You can only upload your own documents');
       if (!req.file) fail(400, 'Choose a file to upload');
       const category = oneOf(req.body.category || 'Other', DOC_CATEGORIES, { name: 'Category' });
+      if (
+        !(await canUploadDocuments(db, req.user)) &&
+        !(req.user.employeeId === eid && SELF_UPLOAD_DOCUMENTS.includes(category))
+      )
+        fail(
+          403,
+          'You can only upload your own Aadhaar, PAN, address, education and bank proof. Other documents are uploaded by Corporate Accounts.',
+        );
       const did = await db.insert('documents', {
         employee_id: eid,
         name: str(req.body.name, { max: 120 }) || req.file.originalname.slice(0, 120),
@@ -707,7 +726,7 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
   r.get('/documents', async (req, res) => {
     const where = [];
     const params = [];
-    if (!isAdmin(req.user)) {
+    if (!isAdmin(req.user) && !(await canUploadDocuments(db, req.user))) {
       where.push('d.employee_id = ?');
       params.push(req.user.employeeId || 0);
     } else if (req.query.employee) {
@@ -718,7 +737,7 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
       where.push('d.category = ?');
       params.push(String(req.query.category));
     }
-    if (isAdmin(req.user) && req.query.vertical) {
+    if ((isAdmin(req.user) || (await canUploadDocuments(db, req.user))) && req.query.vertical) {
       where.push('e.vertical_id = ?');
       params.push(Number(req.query.vertical));
     }
@@ -756,11 +775,11 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
     const required = (await getSettings(db)).requiredDocuments || [];
     const where = ["e.status != 'Exited'"];
     const params = [];
-    if (!isAdmin(req.user)) {
+    if (!isAdmin(req.user) && !(await canUploadDocuments(db, req.user))) {
       where.push('e.id = ?');
       params.push(req.user.employeeId || 0);
     }
-    if (isAdmin(req.user) && req.query.vertical) {
+    if ((isAdmin(req.user) || (await canUploadDocuments(db, req.user))) && req.query.vertical) {
       where.push('e.vertical_id = ?');
       params.push(Number(req.query.vertical));
     }
@@ -824,14 +843,11 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
     });
   });
 
-  r.delete('/documents/:id', async (req, res) => {
-    requireAdmin(req);
-    const doc =
-      (await db.get('SELECT * FROM documents WHERE id = ?', id(req.params.id))) ||
-      notFound('Document');
-    await db.run('DELETE FROM documents WHERE id = ?', doc.id);
-    fs.rm(path.join(uploads, 'documents', path.basename(doc.file)), { force: true }, () => {});
-    res.json({ ok: true });
+  r.delete('/documents/:id', async () => {
+    fail(
+      403,
+      'Employee documents are download-only. Contact the Corporate Accounts team for corrections',
+    );
   });
 
   // ---------- assets ----------

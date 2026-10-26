@@ -17,6 +17,7 @@ import {
   DOC_CATEGORIES,
 } from '../core.js';
 import { aiEnabled } from '../services/ai.js';
+import { canUploadDocuments, SELF_UPLOAD_DOCUMENTS } from '../services/document-access.js';
 import { geofencePolicy, exemption } from '../services/geofence.js';
 
 export default function metaRoutes(r, { db, uploads }) {
@@ -35,6 +36,8 @@ export default function metaRoutes(r, { db, uploads }) {
         requiredDocuments: s.requiredDocuments,
       },
       documentCategories: DOC_CATEGORIES,
+      selfUploadDocumentCategories: req.user.employeeId ? SELF_UPLOAD_DOCUMENTS : [],
+      canUploadDocuments: await canUploadDocuments(db, req.user),
       verticals: await db.all('SELECT * FROM verticals ORDER BY id'),
       departments: await db.all('SELECT * FROM departments ORDER BY name'),
       locations: await db.all('SELECT * FROM locations ORDER BY name'),
@@ -193,7 +196,7 @@ export default function metaRoutes(r, { db, uploads }) {
     });
   });
   r.post('/notices', async (req, res) => {
-    requireHR(req);
+    if (!isHR(req.user) && req.user.role !== 'manager') fail(403, 'Managers or HR only');
     const title = str(req.body.title, { required: true, max: 120, name: 'Title' });
     const body = str(req.body.body, { max: 2000 });
     const kind = oneOf(
@@ -213,7 +216,8 @@ export default function metaRoutes(r, { db, uploads }) {
     res.json({ id: nid });
   });
   r.delete('/notices/:id', async (req, res) => {
-    requireHR(req);
+    if (!isHR(req.user) && req.user.role !== 'manager') fail(403, 'Managers or HR only');
+    if (req.user.role === 'manager' && !(await db.value('SELECT 1 FROM notices WHERE id = ? AND created_by = ?', id(req.params.id), req.user.id))) fail(403, 'You can delete only your own announcements');
     await db.run('DELETE FROM notices WHERE id = ?', id(req.params.id));
     res.json({ ok: true });
   });

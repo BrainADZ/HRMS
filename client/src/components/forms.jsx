@@ -1,6 +1,7 @@
 // Modals shared by several pages: apply leave, raise a helpdesk request,
 // submit a reimbursement claim, show a one-time password.
 import { useEffect, useState } from 'react';
+import { ExpenseModal } from './Expenses.jsx';
 import { Copy } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { useApp } from '../context.jsx';
@@ -219,7 +220,11 @@ export function RaiseRequestModal({ onClose, onDone }) {
   );
 }
 
-export function ClaimModal({ onClose, onDone, hr }) {
+export function ClaimModal(props) {
+  return props.hr ? <PayrollAdjustmentModal {...props} /> : <ExpenseModal {...props} />;
+}
+
+function PayrollAdjustmentModal({ onClose, onDone, hr }) {
   const { toast, meta } = useApp();
   const [f, setF] = useState({
     employee_id: '',

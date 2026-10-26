@@ -1,3 +1,4 @@
+import { ExpenseCard } from '../components/Expenses.jsx';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -523,65 +524,7 @@ function Payslips() {
           </div>
         )}
       </Card>
-      <Card
-        className="span-5"
-        title="Reimbursement claims"
-        action={
-          <Button size="sm" variant="primary" icon={Plus} onClick={() => setClaim(true)}>
-            New claim
-          </Button>
-        }
-      >
-        {data.claims.length ? (
-          data.claims.map((c) => (
-            <div key={c.id} className="list-item">
-              <div className="grow">
-                <div className="b6">
-                  {inr(c.amount)} <span className="small muted">· {c.kind}</span>
-                </div>
-                <div className="small muted">
-                  {c.note || '—'} · {fmtMonth(c.month)}
-                </div>
-              </div>
-              {c.proof_file && (
-                <a
-                  className="small link"
-                  href={apiUrl(`/payroll/adjustments/${c.id}/proof`)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Download proof
-                </a>
-              )}
-              <Badge>{c.status}</Badge>
-              {c.status === 'Pending' && (
-                <Button
-                  size="xs"
-                  variant="ghost"
-                  icon={Trash2}
-                  aria-label="Delete claim"
-                  onClick={async () => {
-                    if (
-                      await confirm({
-                        title: 'Withdraw claim?',
-                        text: `${inr(c.amount)} · ${c.note || c.kind}`,
-                        danger: true,
-                        confirmLabel: 'Withdraw',
-                      })
-                    ) {
-                      await run(() => api.del(`/payroll/adjustments/${c.id}`), 'Claim withdrawn');
-                      reload();
-                    }
-                  }}
-                />
-              )}
-            </div>
-          ))
-        ) : (
-          <Empty icon={Receipt} text="No claims yet" />
-        )}
-        <div className="small muted mt-12">Approved claims are paid with that month's salary.</div>
-      </Card>
+      <ExpenseCard />
       {claim && <ClaimModal onClose={() => setClaim(false)} onDone={reload} />}
       {confirmEl}
     </div>

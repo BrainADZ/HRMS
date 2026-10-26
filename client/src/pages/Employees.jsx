@@ -85,6 +85,8 @@ export default function Employees() {
 
 function People({ selectedId }) {
   const { meta, isHR, vertical, user } = useApp();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const joinersOnly = searchParams.get('joiners') === '1';
   const nav = useNavigate();
   const [q, setQ] = useState('');
   const dq = useDebounced(q, 250);
@@ -92,8 +94,8 @@ function People({ selectedId }) {
     department: '',
     type: '',
     location: '',
-    status: 'current',
-    sort: 'name',
+    status: joinersOnly ? 'all' : 'current',
+    sort: joinersOnly ? '-join' : 'name',
   });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -103,6 +105,7 @@ function People({ selectedId }) {
     pageSize,
     search: dq,
     ...filters,
+    ...(joinersOnly ? { joiners: '1' } : {}),
     ...(vertical ? { vertical } : {}),
   });
   for (const [k, v] of [...qs.entries()]) if (!v) qs.delete(k);
@@ -119,6 +122,7 @@ function People({ selectedId }) {
           <h1>Employees</h1>
           <div className="sub">
             Our people make BrainADZ extraordinary. <VerticalFilterNote />
+            {joinersOnly && <button type="button" className="link" onClick={() => { setSearchParams({}); setFilters((current) => ({ ...current, status: 'current', sort: 'name' })); }}>This month’s joiners ×</button>}
           </div>
         </div>
         {k && (
@@ -965,10 +969,16 @@ export function Onboarding({ tasks, reload, canEdit }) {
 function Documents({ data, reload }) {
   const { isAdmin, toast, user, meta } = useApp();
   const e = data.employee;
-  const [cat, setCat] = useState(meta.documentCategories?.[0] || 'Other');
+  const categories =
+    (meta.canUploadDocuments
+      ? meta.documentCategories
+      : user.employeeId === e.id
+        ? meta.selfUploadDocumentCategories
+        : []) || [];
+  const [cat, setCat] = useState(categories[0] || '');
   const [run, busy] = useAction(toast);
   const [confirm, confirmEl] = useConfirm();
-  const canUpload = isAdmin || user.employeeId === e.id;
+  const canUpload = categories.length > 0;
   const upload = async (files) => {
     for (const f of files) {
       const form = new FormData();
@@ -983,11 +993,7 @@ function Documents({ data, reload }) {
       {canUpload && (
         <div className="row wrap mb-16" style={{ gap: 12, alignItems: 'stretch' }}>
           <Field label="Category" className="">
-            <Select
-              value={cat}
-              onChange={(ev) => setCat(ev.target.value)}
-              options={meta.documentCategories || ['Other']}
-            />
+            <Select value={cat} onChange={(ev) => setCat(ev.target.value)} options={categories} />
           </Field>
           <div className="grow" style={{ minWidth: 220 }}>
             <FileDrop onFiles={upload} accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt">
@@ -1033,27 +1039,6 @@ function Documents({ data, reload }) {
                   >
                     Download
                   </Button>
-                  {isAdmin && (
-                    <Button
-                      size="xs"
-                      variant="ghost"
-                      icon={Trash2}
-                      aria-label="Delete"
-                      onClick={async () => {
-                        if (
-                          await confirm({
-                            title: 'Delete document?',
-                            text: d.name,
-                            danger: true,
-                            confirmLabel: 'Delete',
-                          })
-                        ) {
-                          await run(() => api.del(`/documents/${d.id}`), 'Deleted');
-                          reload();
-                        }
-                      }}
-                    />
-                  )}
                 </td>
               </tr>
             ))}

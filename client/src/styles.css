@@ -229,6 +229,18 @@ textarea {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.attendance-day:hover {
+  border-color: var(--blue);
+}
+.attendance-day:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
 }
 .attendance-day time {
   font-weight: 700;
@@ -853,6 +865,32 @@ textarea {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 16px;
   margin-bottom: 16px;
+}
+.dashboard-kpis {
+  grid-template-columns: repeat(auto-fit, minmax(155px, 1fr));
+  gap: 10px;
+}
+.dashboard-kpis .kpi {
+  padding: 12px;
+  gap: 10px;
+  min-height: 78px;
+}
+.dashboard-kpis .kpi .ic {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+}
+.dashboard-kpis .kpi .ic svg {
+  width: 21px;
+  height: 21px;
+}
+.dashboard-kpis .kpi .lbl {
+  font-size: 12px;
+}
+.dashboard-kpis .kpi .val {
+  font-size: 23px;
+  margin-top: 2px;
+  gap: 5px;
 }
 .row {
   display: flex;

@@ -22,6 +22,7 @@ import * as D from '../lib/dates.js';
 import { hashPassword, tempPassword, loginDetails } from '../auth.js';
 import { estimateMonthlyTds } from '../lib/payroll.js';
 import { nextEmployeeCode } from '../services/employee-codes.js';
+import { assignNewJoinerTraining } from '../services/training.js';
 
 export const STAGES = [
   'Applied',
@@ -624,6 +625,7 @@ export default function hiringRoutes(r, { db }) {
         ctc,
         monthly_tds: estimateMonthlyTds(ctc),
       });
+      await assignNewJoinerTraining(db, newId);
       await asyncForEach(
         ONBOARDING,
         async (t, i) =>
