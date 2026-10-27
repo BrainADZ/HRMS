@@ -104,6 +104,7 @@ export function Kpi({
 const STATUS_TONES = {
   green: [
     'Approved',
+    'Reimbursed',
     'Active',
     'Completed',
     'Paid',

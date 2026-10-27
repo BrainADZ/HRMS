@@ -22,6 +22,7 @@ const KEY = { spot: 'hrms.float.spot', mode: 'hrms.float.mode', wide: 'hrms.floa
 const KEYWORDS = {
   '/': 'home overview summary kpi',
   '/my': 'home profile payslips requests',
+  '/expenses': 'expense claims receipts merchant reimbursement bulk',
   '/hiring': 'jobs candidates recruitment pipeline interviews offers',
   '/screener': 'resume cv ai screening',
   '/employees': 'people staff directory team profiles',

@@ -12,6 +12,7 @@ import {
   Camera,
   Smartphone,
   ChevronsLeft,
+  Receipt,
 } from 'lucide-react';
 import { useApp } from '../context.jsx';
 import { api } from '../lib/api.js';
@@ -129,6 +130,7 @@ const NAV = [
     end: true,
   },
   { to: '/my', label: 'My Space', icon: IconMySpace, roles: ['employee', 'manager'] },
+  { to: '/expenses', label: 'Expenses', icon: Receipt },
   { to: '/hiring', label: 'Hiring', icon: IconHiring, roles: ['admin', 'hr', 'manager'] },
   { to: '/screener', label: 'Resume Screener AI', icon: IconScreener, roles: ['admin', 'hr'] },
   { to: '/employees', label: 'Employees', icon: IconEmployees },

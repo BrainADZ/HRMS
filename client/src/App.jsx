@@ -8,6 +8,7 @@ import { OfflineBanner } from './components/InstallApp.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
 
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
+const Expenses = lazy(() => import('./pages/Expenses.jsx'));
 const MySpace = lazy(() => import('./pages/MySpace.jsx'));
 const Hiring = lazy(() => import('./pages/Hiring.jsx'));
 const Screener = lazy(() => import('./pages/Screener.jsx'));
@@ -110,6 +111,7 @@ function AppRoutes() {
                       }
                     />
                     <Route path="/my" element={<MySpace />} />
+                    <Route path="/expenses/*" element={<Expenses />} />
                     <Route
                       path="/hiring"
                       element={
@@ -152,7 +154,14 @@ function AppRoutes() {
                         </Guard>
                       }
                     />
-                    <Route path="/logs" element={<Guard roles={['admin']}><Logs /></Guard>} />
+                    <Route
+                      path="/logs"
+                      element={
+                        <Guard roles={['admin']}>
+                          <Logs />
+                        </Guard>
+                      }
+                    />
                     <Route
                       path="/settings"
                       element={

@@ -1,0 +1,43 @@
+.expense-format-icon {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 44px;
+  gap: 1px;
+  border: 1px dashed #d7dceb;
+  border-radius: 4px;
+  color: #71809a;
+  background: #fafbfe;
+  flex-shrink: 0;
+}
+.expense-format-icon > span {
+  font-size: 8px;
+  letter-spacing: 0.03em;
+  font-weight: 700;
+  line-height: 1;
+}
+.expense-format-icon.pdf {
+  color: #f14b57;
+  background: #fff7f8;
+}
+.expense-format-icon.doc {
+  color: #3277d6;
+  background: #f1f6ff;
+}
+.expense-format-icon.xls {
+  color: #198258;
+  background: #effaf4;
+}
+.expense-format-icon.image {
+  color: #8c58ce;
+  background: #f8f3ff;
+}
+.expense-format-icon.large {
+  width: 64px;
+  height: 72px;
+}
+.expense-format-icon.large > span {
+  font-size: 10px;
+}
