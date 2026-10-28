@@ -221,8 +221,12 @@ export async function openDb({
         [11, '011-expense-claims.sql'],
         [12, '012-new-joiner-training.sql'],
         [13, '013-training-sessions.sql'],
-        [14, '014-expense-advances.sql'],
-        [15, '015-accounts-role.sql'],
+        // Versions 14 and 15 were used by earlier deployments. Keep them reserved.
+        [16, '016-expense-advances.sql'],
+        [17, '017-accounts-role.sql'],
+        [18, '018-advance-claims.sql'],
+        [19, '019-career-growth.sql'],
+        [20, '020-advance-notification-links.sql'],
       ];
       await db.tx(async () => {
         await db.exec('SELECT pg_advisory_xact_lock(7264182026)');

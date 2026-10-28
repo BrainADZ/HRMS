@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams, useSearchParams, Link } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams, Link, Navigate } from 'react-router-dom';
 import {
   Users,
   UserCheck,
@@ -63,9 +63,20 @@ import { VerticalFilterNote } from './Dashboard.jsx';
 
 export default function Employees() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
   const { isHR } = useApp();
   const tab = sp.get('tab') || 'people';
+  if (id === 'new')
+    return isHR ? (
+      <EmployeeForm
+        fullPage
+        onClose={() => navigate('/employees')}
+        onSaved={(newId) => navigate(`/employees/${newId}`)}
+      />
+    ) : (
+      <Navigate to="/employees" replace />
+    );
   return (
     <div>
       {isHR && (
@@ -99,7 +110,6 @@ function People({ selectedId }) {
   });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [adding, setAdding] = useState(false);
   const qs = new URLSearchParams({
     page,
     pageSize,
@@ -176,7 +186,7 @@ function People({ selectedId }) {
               />
             </div>
             {isHR && (
-              <Button variant="primary" icon={UserPlus} onClick={() => setAdding(true)}>
+              <Button variant="primary" icon={UserPlus} onClick={() => nav('/employees/new')}>
                 Add
               </Button>
             )}
@@ -317,15 +327,6 @@ function People({ selectedId }) {
           </div>
         )}
       </div>
-      {adding && (
-        <EmployeeForm
-          onClose={() => setAdding(false)}
-          onSaved={(newId) => {
-            reload();
-            nav(`/employees/${newId}`);
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -395,6 +396,7 @@ export function EmployeeProfile({ id, onChanged, isSelf }) {
         'Attendance',
         'Leave',
         'Performance',
+        ...(data.careerGrowth ? ['Career Growth'] : []),
         ...(data.compensation ? ['Compensation'] : []),
         'Assets',
       ];
@@ -558,6 +560,7 @@ export function EmployeeProfile({ id, onChanged, isSelf }) {
           />
         )}
         {activeTab === 'Performance' && <PerformanceTab data={data} />}
+        {activeTab === 'Career Growth' && <CareerGrowth data={data} />}
         {activeTab === 'Compensation' && <Compensation data={data} />}
         {activeTab === 'Assets' && <Assets data={data} reload={refresh} />}
       </div>
@@ -1292,6 +1295,131 @@ function PerformanceTab({ data }) {
   );
 }
 
+function CareerGrowth({ data }) {
+  const career = data.careerGrowth;
+  const employee = data.employee;
+  const events = career.events;
+  return (
+    <div className="col" style={{ gap: 20, paddingTop: 18 }}>
+      <div className="grid" style={{ marginBottom: 0 }}>
+        {[
+          ['Joined', fmtDate(employee.join_date)],
+          ['Joining designation', career.joiningDesignation || 'History not uploaded'],
+          ['Current designation', career.currentDesignation || 'Not set'],
+          ['Recorded increments', String(career.incrementCount)],
+        ].map(([label, value]) => (
+          <div className="card tight span-3" key={label}>
+            <div className="small muted">{label}</div>
+            <strong style={{ display: 'block', fontSize: 18, marginTop: 8 }}>{value}</strong>
+          </div>
+        ))}
+      </div>
+      <div className="grid" style={{ marginBottom: 0 }}>
+        {[
+          ['Current annual CTC', career.currentCtc],
+          ['Recorded annual CTC growth', career.annualCtcIncrease],
+          ['Recorded gross salary paid', career.paid.gross_paid],
+          ['Recorded net salary paid', career.paid.net_paid],
+        ].map(([label, value]) => (
+          <div className="card tight span-3" key={label}>
+            <div className="small muted">{label}</div>
+            <strong style={{ display: 'block', fontSize: 20, marginTop: 8 }}>
+              {inr(Number(value) || 0)}
+            </strong>
+          </div>
+        ))}
+      </div>
+      <p className="small muted">
+        Paid totals use {career.paid.months_paid} completed payroll month
+        {Number(career.paid.months_paid) === 1 ? '' : 's'}. Increments are already reflected in
+        salary payments and are shown separately to avoid counting them twice. Older payments will
+        appear after their payroll history is uploaded.
+      </p>
+      <div className="grid" style={{ marginBottom: 0 }}>
+        <section className="card span-7">
+          <h3>Career timeline</h3>
+          {events.length ? (
+            <div className="col mt-12" style={{ gap: 14 }}>
+              {events.map((event) => (
+                <div className="list-item" key={event.id} style={{ alignItems: 'flex-start' }}>
+                  <div className="grow">
+                    <b>{event.event_type}</b>{' '}
+                    <span className="muted">· {fmtDate(event.effective_date)}</span>
+                    <div>{event.designation || 'Designation not recorded'}</div>
+                    {event.note && <div className="small muted">{event.note}</div>}
+                  </div>
+                  <div className="num small">
+                    {event.new_ctc != null && <strong>{inr(event.new_ctc)} annual CTC</strong>}
+                    {event.previous_ctc != null && event.new_ctc > event.previous_ctc && (
+                      <div className="green">+{inr(event.new_ctc - event.previous_ctc)}</div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-12">
+              <div className="alert info">
+                Historical designation and increment records have not been uploaded yet. The example
+                below is sample data only and is excluded from totals.
+              </div>
+              <div className="list-item">
+                <span className="grow">
+                  <b>Example · Joining</b>
+                  <br />
+                  Junior Executive
+                </span>
+                <strong>₹5,00,000 annual CTC</strong>
+              </div>
+              <div className="list-item">
+                <span className="grow">
+                  <b>Example · Increment</b>
+                  <br />
+                  Junior Executive
+                </span>
+                <strong>₹5,60,000 annual CTC</strong>
+              </div>
+              <div className="list-item">
+                <span className="grow">
+                  <b>Example · Promotion</b>
+                  <br />
+                  Senior Executive
+                </span>
+                <strong>₹6,50,000 annual CTC</strong>
+              </div>
+            </div>
+          )}
+        </section>
+        <section className="card span-5">
+          <h3>Salary paid by month</h3>
+          {career.salaryPayments.length ? (
+            <table className="table compact mt-12">
+              <thead>
+                <tr>
+                  <th>Month</th>
+                  <th className="num">Gross</th>
+                  <th className="num">Net paid</th>
+                </tr>
+              </thead>
+              <tbody>
+                {career.salaryPayments.map((payment) => (
+                  <tr key={payment.month}>
+                    <td>{fmtMonth(payment.month)}</td>
+                    <td className="num">{inr(payment.gross)}</td>
+                    <td className="num">{inr(payment.net)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <Empty text="No completed salary payments yet" />
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
 function Compensation({ data }) {
   const c = data.compensation;
   const s = c.structure;
@@ -1510,7 +1638,7 @@ function Assets({ data, reload }) {
 }
 
 // ---------------------------------------------------------------- forms
-export function EmployeeForm({ employee, onClose, onSaved, selfOnly }) {
+export function EmployeeForm({ employee, onClose, onSaved, selfOnly, fullPage = false }) {
   const { meta, toast, isAdmin, vertical } = useApp();
   const e = employee?.employee;
   const c = employee?.compensation || {};
@@ -1573,9 +1701,11 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly }) {
     if (!e) {
       const out = await run(() => api.post('/employees', body), 'Employee added');
       if (out) {
-        onSaved?.(out.id);
         if (out.tempPassword) setTemp({ ...out, email: f.email, password: out.tempPassword });
-        else onClose();
+        else {
+          if (onSaved) onSaved(out.id);
+          else onClose();
+        }
       }
     } else if (await run(() => api.put(`/employees/${e.id}`, body), 'Profile saved')) {
       onSaved?.(e.id);
@@ -1589,191 +1719,191 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly }) {
         role={temp.role}
         email={temp.email}
         password={temp.password}
-        onClose={onClose}
+        onClose={() => {
+          if (onSaved) onSaved(temp.id);
+          else onClose();
+        }}
       />
     );
   const opts = (list) => list.map((x) => ({ value: x.id, label: x.name }));
-  return (
-    <Modal
-      title={e ? (selfOnly ? 'Update my profile' : `Edit ${e.name}`) : 'Add employee'}
-      size="wide"
-      onClose={onClose}
-      footer={
+  const title = e ? (selfOnly ? 'Update my profile' : `Edit ${e.name}`) : 'Add employee';
+  const actions = (
+    <>
+      <Button onClick={onClose}>Cancel</Button>
+      <Button variant="primary" loading={busy} onClick={save}>
+        {e ? 'Save changes' : 'Add employee'}
+      </Button>
+    </>
+  );
+  const fields = (
+    <div className="form-grid three">
+      {!selfOnly && (
         <>
-          <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" loading={busy} onClick={save}>
-            {e ? 'Save changes' : 'Add employee'}
-          </Button>
+          <div className="form-section">Personal</div>
+          <Field label="First name *">
+            <Input value={f.first_name} onChange={set('first_name')} />
+          </Field>
+          <Field label="Last name">
+            <Input value={f.last_name} onChange={set('last_name')} />
+          </Field>
+          <Field label="Work email *">
+            <Input type="email" value={f.email} onChange={set('email')} />
+          </Field>
+          <Field label="Gender">
+            <Select
+              value={f.gender}
+              onChange={set('gender')}
+              placeholder="Select"
+              options={[
+                { value: 'F', label: 'Female' },
+                { value: 'M', label: 'Male' },
+                { value: 'O', label: 'Other' },
+              ]}
+            />
+          </Field>
+          <Field label="Date of birth">
+            <Input type="date" value={f.dob || ''} onChange={set('dob')} />
+          </Field>
         </>
-      }
-    >
-      <div className="form-grid three">
-        {!selfOnly && (
-          <>
-            <div className="form-section">Personal</div>
-            <Field label="First name *">
-              <Input value={f.first_name} onChange={set('first_name')} />
-            </Field>
-            <Field label="Last name">
-              <Input value={f.last_name} onChange={set('last_name')} />
-            </Field>
-            <Field label="Work email *">
-              <Input type="email" value={f.email} onChange={set('email')} />
-            </Field>
-            <Field label="Gender">
-              <Select
-                value={f.gender}
-                onChange={set('gender')}
-                placeholder="Select"
-                options={[
-                  { value: 'F', label: 'Female' },
-                  { value: 'M', label: 'Male' },
-                  { value: 'O', label: 'Other' },
-                ]}
-              />
-            </Field>
-            <Field label="Date of birth">
-              <Input type="date" value={f.dob || ''} onChange={set('dob')} />
-            </Field>
-          </>
-        )}
-        <Field label="Phone">
-          <Input value={f.phone} onChange={set('phone')} placeholder="+91 98765 43210" />
-        </Field>
-        {!selfOnly && (
-          <>
-            <div className="form-section">Job</div>
-            <Field
-              label="Employee ID"
-              hint="Your unique company ID. Leave blank when adding to generate BZ + employee number automatically."
-            >
-              <Input value={f.code} onChange={set('code')} maxLength={30} placeholder="BZ001" />
-            </Field>
-            <Field label="Vertical">
-              <Select
-                value={f.vertical_id}
-                onChange={set('vertical_id')}
-                placeholder="Select"
-                options={opts(meta.verticals)}
-              />
-            </Field>
-            <Field label="Department">
-              <Select
-                value={f.department_id}
-                onChange={set('department_id')}
-                placeholder="Select"
-                options={opts(meta.departments)}
-              />
-            </Field>
-            <Field label="Designation">
-              <Input value={f.designation} onChange={set('designation')} />
-            </Field>
-            <Field label="Grade">
-              <Select
-                value={f.grade}
-                onChange={set('grade')}
-                options={['Executive', 'Senior', 'Manager', 'Head', 'CXO']}
-              />
-            </Field>
-            <Field label="Reporting manager">
-              <EmployeeSelect
-                value={f.manager_id}
-                onChange={set('manager_id')}
-                placeholder="None"
-                exclude={e ? [e.id] : []}
-              />
-            </Field>
-            <Field label="Employment type">
-              <Select
-                value={f.employment_type}
-                onChange={set('employment_type')}
-                options={['Full-time', 'Part-time', 'Contract', 'Intern']}
-              />
-            </Field>
-            <Field
-              label="Working place"
-              hint="WFH allows remote work. On Site uses the assigned branch when office location checks are enabled."
-            >
-              <Select
-                value={f.work_place}
-                onChange={set('work_place')}
-                placeholder="Not assigned"
-                options={[
-                  { value: 'onsite', label: 'On Site (Office)' },
-                  { value: 'wfh', label: 'WFH (Work from home)' },
-                ]}
-              />
-            </Field>
-            <Field label={f.work_place === 'onsite' ? 'Assigned branch *' : 'Branch'}>
-              <Select
-                value={f.location_id}
-                onChange={set('location_id')}
-                placeholder="Select branch"
-                options={opts(meta.locations)}
-              />
-            </Field>
-            <Field label="Joining date *">
-              <Input type="date" value={f.join_date} onChange={set('join_date')} />
-            </Field>
-            <div className="form-section">Pay & statutory</div>
-            <Field
-              label="Annual CTC (₹)"
-              hint={f.ctc ? `${lpa(Number(f.ctc) / 100000)}` : 'Gross cost to company per year'}
-            >
-              <Input type="number" min="0" value={f.ctc} onChange={set('ctc')} />
-            </Field>
-            <Field label="Monthly TDS (₹)" hint="Leave blank to estimate (new regime)">
-              <Input type="number" min="0" value={f.monthly_tds} onChange={set('monthly_tds')} />
-            </Field>
-            <Field label="PAN">
-              <Input
-                value={f.pan}
-                onChange={set('pan')}
-                placeholder="ABCDE1234F"
-                maxLength={10}
-                style={{ textTransform: 'uppercase' }}
-              />
-            </Field>
-            <Field label="UAN">
-              <Input value={f.uan} onChange={set('uan')} placeholder="12 digits" maxLength={12} />
-            </Field>
-            <Field label="Bank name">
-              <Input value={f.bank_name} onChange={set('bank_name')} />
-            </Field>
-            <Field label="Account number">
-              <Input value={f.bank_account} onChange={set('bank_account')} maxLength={18} />
-            </Field>
-            <Field label="IFSC">
-              <Input
-                value={f.ifsc}
-                onChange={set('ifsc')}
-                placeholder="HDFC0001234"
-                maxLength={11}
-                style={{ textTransform: 'uppercase' }}
-              />
-            </Field>
-          </>
-        )}
-        <div className="form-section">Profile</div>
-        <Field label="Address" className="full">
-          <Input value={f.address} onChange={set('address')} />
-        </Field>
-        <Field label="Emergency contact">
-          <Input
-            value={f.emergency_contact}
-            onChange={set('emergency_contact')}
-            placeholder="Name · phone"
-          />
-        </Field>
-        <Field label="Skills" hint="Comma separated" className="full">
-          <Input value={f.skills} onChange={set('skills')} />
-        </Field>
-        <Field label="About" className="full">
-          <Textarea value={f.about} onChange={set('about')} maxLength={1000} />
-        </Field>
-        {!e && (
-          <>
-            <div className="form-section">Login</div>
+      )}
+      <Field label="Phone">
+        <Input value={f.phone} onChange={set('phone')} placeholder="+91 98765 43210" />
+      </Field>
+      {!selfOnly && (
+        <>
+          <div className="form-section">Job</div>
+          <Field
+            label="Employee ID"
+            hint="Your unique company ID. Leave blank when adding to generate BZ + employee number automatically."
+          >
+            <Input value={f.code} onChange={set('code')} maxLength={30} placeholder="BZ001" />
+          </Field>
+          <Field label="Vertical">
+            <Select
+              value={f.vertical_id}
+              onChange={set('vertical_id')}
+              placeholder="Select"
+              options={opts(meta.verticals)}
+            />
+          </Field>
+          <Field label="Department">
+            <Select
+              value={f.department_id}
+              onChange={set('department_id')}
+              placeholder="Select"
+              options={opts(meta.departments)}
+            />
+          </Field>
+          <Field label="Designation">
+            <Input value={f.designation} onChange={set('designation')} />
+          </Field>
+          <Field label="Grade">
+            <Select
+              value={f.grade}
+              onChange={set('grade')}
+              options={['Executive', 'Senior', 'Manager', 'Head', 'CXO']}
+            />
+          </Field>
+          <Field label="Reporting manager">
+            <EmployeeSelect
+              value={f.manager_id}
+              onChange={set('manager_id')}
+              placeholder="None"
+              exclude={e ? [e.id] : []}
+            />
+          </Field>
+          <Field label="Employment type">
+            <Select
+              value={f.employment_type}
+              onChange={set('employment_type')}
+              options={['Full-time', 'Part-time', 'Contract', 'Intern']}
+            />
+          </Field>
+          <Field
+            label="Working place"
+            hint="WFH allows remote work. On Site uses the assigned branch when office location checks are enabled."
+          >
+            <Select
+              value={f.work_place}
+              onChange={set('work_place')}
+              placeholder="Not assigned"
+              options={[
+                { value: 'onsite', label: 'On Site (Office)' },
+                { value: 'wfh', label: 'WFH (Work from home)' },
+              ]}
+            />
+          </Field>
+          <Field label={f.work_place === 'onsite' ? 'Assigned branch *' : 'Branch'}>
+            <Select
+              value={f.location_id}
+              onChange={set('location_id')}
+              placeholder="Select branch"
+              options={opts(meta.locations)}
+            />
+          </Field>
+          <Field label="Joining date *">
+            <Input type="date" value={f.join_date} onChange={set('join_date')} />
+          </Field>
+          <div className="form-section">Pay & statutory</div>
+          <Field
+            label="Annual CTC (₹)"
+            hint={f.ctc ? `${lpa(Number(f.ctc) / 100000)}` : 'Gross cost to company per year'}
+          >
+            <Input type="number" min="0" value={f.ctc} onChange={set('ctc')} />
+          </Field>
+          <Field label="Monthly TDS (₹)" hint="Leave blank to estimate (new regime)">
+            <Input type="number" min="0" value={f.monthly_tds} onChange={set('monthly_tds')} />
+          </Field>
+          <Field label="PAN">
+            <Input
+              value={f.pan}
+              onChange={set('pan')}
+              placeholder="ABCDE1234F"
+              maxLength={10}
+              style={{ textTransform: 'uppercase' }}
+            />
+          </Field>
+          <Field label="UAN">
+            <Input value={f.uan} onChange={set('uan')} placeholder="12 digits" maxLength={12} />
+          </Field>
+          <Field label="Bank name">
+            <Input value={f.bank_name} onChange={set('bank_name')} />
+          </Field>
+          <Field label="Account number">
+            <Input value={f.bank_account} onChange={set('bank_account')} maxLength={18} />
+          </Field>
+          <Field label="IFSC">
+            <Input
+              value={f.ifsc}
+              onChange={set('ifsc')}
+              placeholder="HDFC0001234"
+              maxLength={11}
+              style={{ textTransform: 'uppercase' }}
+            />
+          </Field>
+        </>
+      )}
+      <div className="form-section">Profile</div>
+      <Field label="Address" className="full">
+        <Input value={f.address} onChange={set('address')} />
+      </Field>
+      <Field label="Emergency contact">
+        <Input
+          value={f.emergency_contact}
+          onChange={set('emergency_contact')}
+          placeholder="Name · phone"
+        />
+      </Field>
+      <Field label="Skills" hint="Comma separated" className="full">
+        <Input value={f.skills} onChange={set('skills')} />
+      </Field>
+      <Field label="About" className="full">
+        <Textarea value={f.about} onChange={set('about')} maxLength={1000} />
+      </Field>
+      {!e && (
+        <>
+          <div className="form-section">Login</div>
+          <div className="employee-login-row">
             <label className="check">
               <input type="checkbox" checked={f.create_login} onChange={set('create_login')} />
               Create HRMS login
@@ -1793,9 +1923,33 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly }) {
                 />
               </Field>
             )}
-          </>
-        )}
-      </div>
+            {fullPage && (
+              <div className="employee-form-inline-action">
+                <Button onClick={onClose}>Cancel</Button>
+                <Button variant="primary" loading={busy} onClick={save}>
+                  Done
+                </Button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+  return fullPage ? (
+    <section className="employee-form-page">
+      <header className="employee-form-page-head">
+        <div>
+          <h1>{title}</h1>
+          <p className="muted">Enter the employee's personal, job and login details.</p>
+        </div>
+        <div className="row gap-8">{actions}</div>
+      </header>
+      <div className="employee-form-page-body">{fields}</div>
+    </section>
+  ) : (
+    <Modal title={title} size="wide" onClose={onClose} footer={actions}>
+      {fields}
     </Modal>
   );
 }

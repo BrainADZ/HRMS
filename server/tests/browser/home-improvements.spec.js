@@ -21,6 +21,37 @@ async function login(page, email) {
     await route.fulfill({ response, json: { ...data, toExplain: 0, toApprove: 0 } });
   });
 }
+test('Add employee opens as a full page rather than a scrolling dialog', async ({ page }) => {
+  await login(page, 'rajiv.malhotra@brainadz.com');
+  await page.goto(origin + '/employees');
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
+  await expect(page).toHaveURL(/\/employees\/new$/);
+  await expect(page.locator('.employee-form-page')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Add employee' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Add employee' })).toBeVisible();
+  const role = await page.locator('.employee-login-row .select').boundingBox();
+  const cancel = await page
+    .locator('.employee-login-row')
+    .getByRole('button', { name: 'Cancel' })
+    .boundingBox();
+  const done = await page
+    .locator('.employee-login-row')
+    .getByRole('button', { name: 'Done' })
+    .boundingBox();
+  expect(Math.abs(role.y - cancel.y)).toBeLessThan(4);
+  expect(Math.abs(role.y - done.y)).toBeLessThan(4);
+});
+test('employee profile shows career timeline and recorded salary totals', async ({ page }) => {
+  await login(page, 'aarav.mehta@brainadz.com');
+  const employeeId = await ctx.db.value(
+    "SELECT employee_id FROM users WHERE email='aarav.mehta@brainadz.com'",
+  );
+  await page.goto(`${origin}/employees/${employeeId}`);
+  await page.getByRole('tab', { name: 'Career Growth', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Career timeline' })).toBeVisible();
+  await expect(page.getByText('Recorded net salary paid')).toBeVisible();
+  await expect(page.getByText('Recorded increments')).toBeVisible();
+});
 test('login shows only daily wishes; first home visit shows reminders once without permanent cards', async ({
   page,
 }) => {
@@ -31,11 +62,13 @@ test('login shows only daily wishes; first home visit shows reminders once witho
         birthdays: [
           { name: 'Birthday One', date: '2026-10-22' },
           { name: 'Birthday Two', date: '2026-10-22' },
-          { name: 'Birthday Soon', date: '2026-10-24' },
+          { name: 'Birthday Soon', date: '2026-10-23' },
+          { name: 'Birthday Later', date: '2026-10-24' },
         ],
         holidays: [
           { name: 'Today Holiday', date: '2026-10-22', type: 'Company' },
-          { name: 'Next Holiday', date: '2026-10-25', type: 'Restricted' },
+          { name: 'Next Holiday', date: '2026-10-23', type: 'Restricted' },
+          { name: 'Later Holiday', date: '2026-10-25', type: 'Company' },
         ],
       },
     }),
@@ -53,6 +86,8 @@ test('login shows only daily wishes; first home visit shows reminders once witho
   const reminder = page.getByRole('dialog', { name: 'Upcoming birthdays & holidays' });
   await expect(reminder).toContainText('Birthday Soon');
   await expect(reminder).toContainText('Next Holiday');
+  await expect(reminder).not.toContainText('Birthday Later');
+  await expect(reminder).not.toContainText('Later Holiday');
   await expect(board).not.toContainText('Birthday Soon');
   await page.getByRole('button', { name: 'Got it', exact: true }).click();
   await page.reload();

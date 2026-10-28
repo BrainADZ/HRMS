@@ -1686,6 +1686,52 @@ textarea {
 .form-grid.three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+.employee-form-page {
+  width: 100%;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.employee-form-page-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  padding: 24px 28px;
+  border-bottom: 1px solid var(--border);
+}
+.employee-form-page-head h1 {
+  margin: 0;
+}
+.employee-form-page-head p {
+  margin: 6px 0 0;
+}
+.employee-form-page-body {
+  padding: 24px 28px 32px;
+}
+.employee-login-row {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+.employee-login-row > .check {
+  min-height: 40px;
+  white-space: nowrap;
+}
+.employee-login-row > .field {
+  flex: 0 1 320px;
+  min-width: 220px;
+}
+.employee-form-inline-action {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 40px;
+}
 .form-section {
   font-size: 12px;
   font-weight: 700;

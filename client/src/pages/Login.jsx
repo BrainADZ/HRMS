@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { LogIn, Users, CalendarDays, CreditCard, Sparkles, MapPin } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { withLocation } from '../lib/location.js';
@@ -9,6 +10,7 @@ import CelebrationBoard from '../components/CelebrationBoard.jsx';
 
 export default function Login() {
   const { loadMe } = useApp();
+  const navigate = useNavigate();
   const [cfg, setCfg] = useState(null);
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -75,7 +77,9 @@ export default function Login() {
           }),
         { onLocating: setLocating },
       );
-      await loadMe();
+      const signedInUser = await loadMe();
+      if (!signedInUser) throw new Error('Could not load your account. Please sign in again.');
+      navigate(signedInUser.role === 'employee' ? '/my' : '/', { replace: true });
     } catch (ex) {
       setErr({
         message: ex.message,

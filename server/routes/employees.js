@@ -435,6 +435,41 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
     };
     if (sensitive) {
       const rules = (await getSettings(db)).payroll;
+      const careerEvents = await db.all(
+        'SELECT id, effective_date, event_type, designation, previous_ctc, new_ctc, note FROM employee_career_events WHERE employee_id = ? ORDER BY effective_date, id',
+        eid,
+      );
+      const paid = await db.get(
+        `SELECT COUNT(*) AS months_paid, COALESCE(SUM(p.net),0) AS net_paid, COALESCE(SUM(p.gross),0) AS gross_paid
+         FROM payslips p JOIN payroll_runs r ON r.id=p.run_id
+         WHERE p.employee_id=? AND p.status='Paid' AND r.status='Completed'`,
+        eid,
+      );
+      const salaryPayments = await db.all(
+        `SELECT r.month, p.net, p.gross FROM payslips p JOIN payroll_runs r ON r.id=p.run_id
+         WHERE p.employee_id=? AND p.status='Paid' AND r.status='Completed' ORDER BY r.month DESC`,
+        eid,
+      );
+      out.careerGrowth = {
+        events: careerEvents,
+        joiningDesignation:
+          careerEvents.find((event) => event.event_type === 'Joining')?.designation || null,
+        currentDesignation: e.designation,
+        currentCtc: e.ctc,
+        incrementCount: careerEvents.filter(
+          (event) => event.previous_ctc != null && event.new_ctc > event.previous_ctc,
+        ).length,
+        annualCtcIncrease: careerEvents.reduce(
+          (sum, event) =>
+            sum +
+            (event.previous_ctc != null
+              ? Math.max(0, (event.new_ctc || 0) - event.previous_ctc)
+              : 0),
+          0,
+        ),
+        paid,
+        salaryPayments,
+      };
       out.compensation = {
         ctc: e.ctc,
         monthlyTds: e.monthly_tds,
@@ -489,6 +524,15 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
         ...data,
         code: data.code || (await nextEmployeeCode(db)),
         status: 'Active',
+      });
+      await db.insert('employee_career_events', {
+        employee_id: newId,
+        effective_date: data.join_date,
+        event_type: 'Joining',
+        designation: data.designation || null,
+        previous_ctc: null,
+        new_ctc: data.ctc || 0,
+        note: 'Initial role and compensation',
       });
       await assignNewJoinerTraining(db, newId);
       await invalidatePayrollInputs(db, data.join_date);
@@ -590,6 +634,32 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
         await db.run('UPDATE users SET email = ? WHERE employee_id = ?', data.email, eid);
       }
       await db.update('employees', eid, data);
+      if (
+        (data.designation !== undefined && data.designation !== existing.designation) ||
+        (data.ctc !== undefined && data.ctc !== existing.ctc)
+      ) {
+        const changedRole =
+          data.designation !== undefined && data.designation !== existing.designation;
+        const changedPay = data.ctc !== undefined && data.ctc !== existing.ctc;
+        await db.insert('employee_career_events', {
+          employee_id: eid,
+          effective_date: await today(db),
+          event_type: changedRole
+            ? 'Promotion'
+            : data.ctc > existing.ctc
+              ? 'Increment'
+              : 'Salary Adjustment',
+          designation: changedRole ? data.designation : existing.designation,
+          previous_ctc: existing.ctc,
+          new_ctc: changedPay ? data.ctc : existing.ctc,
+          note:
+            changedRole && changedPay
+              ? 'Designation and compensation updated'
+              : changedRole
+                ? 'Designation updated'
+                : 'Compensation updated',
+        });
+      }
       if (['ctc', 'monthly_tds', 'join_date', 'exit_date', 'status'].some((key) => key in data))
         await invalidatePayrollInputs(db);
       if (data.status === 'Exited')

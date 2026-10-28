@@ -88,6 +88,12 @@ export default function ExpenseDetails({ id, reimbursing = false, onChanged }) {
           </Link>
         </div>
       </header>
+      {expense.details?.advance_id && (
+        <section className="expense-reimbursement-banner">
+          <strong>Extra spending against advance #{expense.details.advance_id}</strong>
+          <p>Only the amount paid by the employee beyond the advance is claimed here.</p>
+        </section>
+      )}
       {expense.details?.reimbursement && (
         <section className="expense-reimbursement-banner">
           <h3>Reimbursement Details</h3>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Cake, CalendarHeart } from 'lucide-react';
 import { api } from '../lib/api.js';
-import { fmtDate } from '../lib/format.js';
+import { addDays, fmtDate } from '../lib/format.js';
 import { useApp } from '../context.jsx';
 import { Button, Modal } from './ui.jsx';
 
@@ -29,12 +29,13 @@ export default function CelebrationBoard({ publicView = false }) {
   }, []);
   useEffect(() => {
     if (publicView || !user || !data) return;
+    const tomorrow = addDays(data.today, 1);
     if (
-      !data.birthdays.some((item) => item.date > data.today) &&
-      !data.holidays.some((item) => item.date > data.today)
+      !data.birthdays.some((item) => item.date === tomorrow) &&
+      !data.holidays.some((item) => item.date === tomorrow)
     )
       return;
-    const key = `hrms.reminders.${user.id}.${data.today}`;
+    const key = `hrms.reminders.tomorrow.${user.id}.${data.today}`;
     const show = () => {
       if (shownThisVisit.has(key) || document.querySelector('[role="dialog"]')) return;
       try {
@@ -56,8 +57,9 @@ export default function CelebrationBoard({ publicView = false }) {
   if (!data || (!data.birthdays.length && !data.holidays.length)) return null;
   const birthdayToday = data.birthdays.filter((item) => item.date === data.today);
   const holidayToday = data.holidays.filter((item) => item.date === data.today);
-  const futureBirthdays = data.birthdays.filter((item) => item.date > data.today);
-  const futureHolidays = data.holidays.filter((item) => item.date > data.today);
+  const tomorrow = addDays(data.today, 1);
+  const futureBirthdays = data.birthdays.filter((item) => item.date === tomorrow);
+  const futureHolidays = data.holidays.filter((item) => item.date === tomorrow);
   return (
     <>
       {(birthdayToday.length > 0 || holidayToday.length > 0) && (
@@ -112,7 +114,7 @@ export default function CelebrationBoard({ publicView = false }) {
             </Button>
           }
         >
-          <p className="small muted">Your reminders for the next 14 days.</p>
+          <p className="small muted">Tomorrow's birthdays and holidays.</p>
           <div className="celebration-reminders">
             {futureBirthdays.length > 0 && (
               <div className="celebration-block">

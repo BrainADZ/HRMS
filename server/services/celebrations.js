@@ -5,7 +5,7 @@ import * as D from '../lib/dates.js';
 // employee IDs, email addresses or other employee-record fields.
 export async function celebrations(db) {
   const T = await today(db);
-  const end = D.addDays(T, 14);
+  const end = D.addDays(T, 1);
   const employees = await db.all(
     "SELECT first_name, last_name, dob FROM employees WHERE status != 'Exited' AND join_date <= ? AND dob IS NOT NULL",
     T,

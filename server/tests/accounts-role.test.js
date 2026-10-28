@@ -23,6 +23,8 @@ test('Accounts role manages payroll and advances without administrator approval 
       employee_id: employeeId,
       amount: 500,
       purpose: 'Travel',
+      disbursed_on: '2026-01-01',
+      payment_method: 'Cash',
     });
     assert.equal(advance.status, 200);
     assert.equal(

@@ -50,8 +50,6 @@ import {
   Ring,
   STATUS,
 } from '../components/charts.jsx';
-import { AttentionBanner } from '../components/WorkClock.jsx';
-import DailyAttendance from '../components/DailyAttendance.jsx';
 import CelebrationBoard from '../components/CelebrationBoard.jsx';
 
 const NOTICE_ICON = {
@@ -150,7 +148,8 @@ export function NoticeBoard({ notices, onChange, compact, headerOnly = false }) 
           </button>
         </div>
       </div>
-      {!headerOnly && (notices.length ? list(notices.slice(0, 3)) : <Empty text="No notices yet" />)}
+      {!headerOnly &&
+        (notices.length ? list(notices.slice(0, 3)) : <Empty text="No notices yet" />)}
       {all && <NoticeList onClose={() => setAll(false)} render={list} />}
       {adding && (
         <Modal
@@ -222,7 +221,9 @@ export default function Dashboard() {
   const nav = useNavigate();
   const { data, error, reload } = useApi(`/dashboard${vertical ? `?vertical=${vertical}` : ''}`);
   const [tab, setTab] = useState('departments');
-  const { data: attendance } = useApi(`/attendance/today${vertical ? `?vertical=${vertical}` : ''}`);
+  const { data: attendance } = useApi(
+    `/attendance/today${vertical ? `?vertical=${vertical}` : ''}`,
+  );
   const [run] = useAction(toast);
   if (error && !data) return <ErrorBox error={error} onRetry={reload} />;
   if (!data) return <Loading />;
@@ -256,24 +257,24 @@ export default function Dashboard() {
             <VerticalFilterNote />
           </div>
         </div>
-        <div className="card" style={{ padding: '14px 18px', width: '100%', maxWidth: 420, flex: '0 1 420px' }}>
+        <div
+          className="card"
+          style={{ padding: '14px 18px', width: '100%', maxWidth: 420, flex: '0 1 420px' }}
+        >
           <NoticeBoard notices={data.notices} onChange={reload} headerOnly />
         </div>
       </div>
       <CelebrationBoard />
-      <AttentionBanner />
-      {user.employeeId && (
-        <div className="mb-16">
-          <DailyAttendance />
-        </div>
-      )}
-
       <div className="kpis dashboard-kpis">
         <Kpi
           icon={UserCheck}
           tone="green"
           label="Attending Today"
-          value={(attendance?.team?.summary?.present || 0) + (attendance?.team?.summary?.wfh || 0) + (attendance?.team?.summary?.halfDay || 0)}
+          value={
+            (attendance?.team?.summary?.present || 0) +
+            (attendance?.team?.summary?.wfh || 0) +
+            (attendance?.team?.summary?.halfDay || 0)
+          }
           onClick={() => nav('/attendance?tab=today&filter=attending')}
         />
         <Kpi

@@ -36,13 +36,14 @@ export default function ExpenseAdminList({ data }) {
     <section className="expenses-page">
       <div className="page-head">
         <div>
-          <h1>Expense approvals & reimbursements</h1>
-          <div className="sub">Review employee claims and record completed reimbursements.</div>
+          <h1>Expense claims</h1>
+          <div className="sub">Review claims and record reimbursements.</div>
         </div>
-        <Link className="btn primary" to="/expenses/bulk">
-          Bulk expenses & advances
+        <Link className="btn primary" to="/expenses">
+          Expense options
         </Link>
       </div>
+      <ExpenseAdvances showCreate={false} />
       <div className="expense-workspace">
         <div className="expense-toolbar">
           <div className="expense-list-tabs" role="tablist" aria-label="Admin expense status">
@@ -159,7 +160,6 @@ export default function ExpenseAdminList({ data }) {
           )}
         </div>
       </div>
-      <ExpenseAdvances />
     </section>
   );
 }

@@ -9,16 +9,23 @@ test.afterAll(async () => {
   await ctx?.close();
 });
 
-for (const [role, email, path] of [
-  ['employee', 'aarav.mehta@brainadz.com', '/my'],
-  ['manager', 'vikram.patel@brainadz.com', '/'],
+for (const [role, email] of [
+  ['employee', 'aarav.mehta@brainadz.com'],
+  ['manager', 'vikram.patel@brainadz.com'],
+  ['accounts', 'vikram.patel@brainadz.com'],
 ]) {
-  test(`${role} sees the full day attendance and live break status on their dashboard`, async ({
+  test(`${role} sees the full day attendance and live break status only in My Space`, async ({
     page,
   }) => {
     await page.route('**/api/auth/celebrations', (route) =>
       route.fulfill({ json: { today: '2026-10-22', birthdays: [], holidays: [] } }),
     );
+    if (role === 'accounts') {
+      const accountId = await ctx.db.value(
+        "SELECT id FROM users WHERE email='vikram.patel@brainadz.com'",
+      );
+      await ctx.db.update('users', accountId, { role: 'accounts' });
+    }
     const origin = ctx.base.replace(/\/api$/, '');
     const login = await page.request.post(`${ctx.base}/auth/login`, {
       headers: { 'X-Requested-With': 'hrms' },
@@ -67,7 +74,13 @@ for (const [role, email, path] of [
       workday.awaySince = end;
       await route.fulfill({ json: { ok: true } });
     });
-    await page.goto(origin + path);
+    if (role !== 'employee') {
+      await page.goto(origin);
+      await expect(
+        page.getByRole('region', { name: "Today's attendance", exact: true }),
+      ).toHaveCount(0);
+    }
+    await page.goto(origin + '/my');
     const card = page.getByRole('region', { name: "Today's attendance", exact: true });
     await expect(card).toBeVisible();
     if (role === 'employee') {
@@ -89,7 +102,7 @@ for (const [role, email, path] of [
       ).toBeLessThan(2);
     } else {
       await expect(page.locator('.employee-greeting')).toHaveCount(0);
-      await expect(card).not.toHaveClass(/compact/);
+      await expect(card).toHaveClass(/compact/);
     }
     await expect(card.locator('.daily-attendance-status')).toHaveText('Working');
     for (const label of [

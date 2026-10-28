@@ -367,6 +367,36 @@ export async function seed50Demo(db, { today = D.todayIn(), saveFile = null } = 
     if (people.length !== 50 || memberIndex !== memberNames.length)
       throw new Error('Demo hierarchy must contain exactly 50 people');
 
+    const demoCareer = byFirst.get('Aarav');
+    const firstCtc = demoCareer.ctc - 120000;
+    await db.insert('employee_career_events', {
+      employee_id: demoCareer.id,
+      effective_date: demoCareer.join_date,
+      event_type: 'Joining',
+      designation: `Junior ${demoCareer.designation}`,
+      previous_ctc: null,
+      new_ctc: firstCtc,
+      note: 'Demo career history',
+    });
+    await db.insert('employee_career_events', {
+      employee_id: demoCareer.id,
+      effective_date: '2024-04-01',
+      event_type: 'Increment',
+      designation: `Junior ${demoCareer.designation}`,
+      previous_ctc: firstCtc,
+      new_ctc: firstCtc + 60000,
+      note: 'Demo annual salary increment',
+    });
+    await db.insert('employee_career_events', {
+      employee_id: demoCareer.id,
+      effective_date: '2025-04-01',
+      event_type: 'Promotion',
+      designation: demoCareer.designation,
+      previous_ctc: firstCtc + 60000,
+      new_ctc: demoCareer.ctc,
+      note: 'Demo promotion and salary increment',
+    });
+
     // Four completed months and the current month: approved leave, work sessions and attendance.
     const holidays = new Set(
       (await db.all('SELECT date FROM holidays WHERE date >= ? AND date <= ?', start, today)).map(

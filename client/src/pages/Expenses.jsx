@@ -76,9 +76,18 @@ export default function Expenses() {
       />
     );
   const isEditor = pathname === '/expenses/new' || pathname === '/expenses/bulk';
-  return isEditor ? (
-    <ExpenseEditor key={pathname} bulk={pathname === '/expenses/bulk'} onSaved={reload} />
-  ) : data?.canReview ? (
+  if (pathname === '/expenses/approvals' && data?.canReview)
+    return <ExpenseAdminList data={data} />;
+  if (isEditor || (pathname === '/expenses' && data?.canReview))
+    return (
+      <ExpenseEditor
+        key={pathname}
+        bulk={pathname === '/expenses/bulk'}
+        canReview={data?.canReview}
+        onSaved={reload}
+      />
+    );
+  return data?.canReview ? (
     <ExpenseAdminList data={data} />
   ) : (
     <ExpenseList data={data} error={error} reload={reload} />
@@ -128,6 +137,7 @@ function ExpenseList({ data, error, reload }) {
           <div className="sub">Your expenses, receipts and reimbursement status in one place.</div>
         </div>
       </div>
+      <ExpenseAdvances showCreate={false} />
       <div className="expense-workspace">
         <div className="expense-toolbar">
           <div className="expense-list-tabs" role="tablist" aria-label="Expense status">
@@ -283,7 +293,6 @@ function ExpenseList({ data, error, reload }) {
           </div>
         )}
       </div>
-      <ExpenseAdvances />
     </section>
   );
 }
@@ -394,10 +403,18 @@ function ReceiptPicker({ entry, onChange, large = false, disabled }) {
   );
 }
 
-function ExpenseEditor({ bulk, onSaved }) {
+function ExpenseEditor({ bulk, canReview, onSaved }) {
   const { meta, toast } = useApp();
   const navigate = useNavigate();
+  const { search } = useLocation();
+  const [bulkMode, setBulkMode] = useState(() =>
+    search.includes('advance=1') ? 'advances' : 'expenses',
+  );
   const { data: merchantData, reload: reloadMerchants } = useApi('/expenses/merchants');
+  const { data: advanceData } = useApi('/expenses/advances');
+  const [advanceId, setAdvanceId] = useState(
+    () => new URLSearchParams(search).get('advance') || '',
+  );
   const [entries, setEntries] = useState(() => Array.from({ length: bulk ? 5 : 1 }, emptyEntry));
   const [report, setReport] = useState('');
   const [run, busy] = useAction(toast);
@@ -447,46 +464,50 @@ function ExpenseEditor({ bulk, onSaved }) {
     };
   }, [dirty, busy, confirm]);
   const save = async (keepOpen) => {
-    const ok = await run(async () => {
-      const active = bulk ? entries.filter((e) => hasContent(e)) : entries;
-      if (!active.length) throw new Error('Add at least one expense.');
-      if (active.reduce((n, e) => n + e.files.length, 0) > 30)
-        throw new Error('Attach at most 30 files in one submission.');
-      const form = new FormData();
-      let index = 0;
-      const payload = active.map((e, i) => {
-        const end = e.end_date || e.start_date;
-        const purpose = e.purpose.trim() || report.trim() || e.description.trim() || e.category;
-        if (
-          !e.start_date ||
-          !end ||
-          end < e.start_date ||
-          end > meta.today ||
-          !e.category ||
-          !Number.isInteger(Number(e.amount)) ||
-          Number(e.amount) < 1 ||
-          Number(e.amount) > 10000000
-        )
-          throw new Error(
-            'Expense ' +
-              (i + 1) +
-              ': enter a valid date, category and whole-rupee amount between 1 and 1,00,00,000.',
-          );
-        return {
-          ...e,
-          purpose,
-          merchant: e.merchant.trim(),
-          end_date: end,
-          files: e.files.map((file) => {
-            form.append('proofs', file);
-            return index++;
-          }),
-        };
-      });
-      form.append('entries', JSON.stringify(payload));
-      await api('/expenses', { method: 'POST', form });
-      return true;
-    }, 'Expense claims sent to Accounts');
+    const ok = await run(
+      async () => {
+        const active = bulk ? entries.filter((e) => hasContent(e)) : entries;
+        if (!active.length) throw new Error('Add at least one expense.');
+        if (active.reduce((n, e) => n + e.files.length, 0) > 30)
+          throw new Error('Attach at most 30 files in one submission.');
+        const form = new FormData();
+        let index = 0;
+        const payload = active.map((e, i) => {
+          const end = e.end_date || e.start_date;
+          const purpose = e.purpose.trim() || report.trim() || e.description.trim() || e.category;
+          if (
+            !e.start_date ||
+            !end ||
+            end < e.start_date ||
+            end > meta.today ||
+            !e.category ||
+            !Number.isInteger(Number(e.amount)) ||
+            Number(e.amount) < 1 ||
+            Number(e.amount) > 10000000
+          )
+            throw new Error(
+              'Expense ' +
+                (i + 1) +
+                ': enter a valid date, category and whole-rupee amount between 1 and 1,00,00,000.',
+            );
+          return {
+            ...e,
+            purpose,
+            merchant: e.merchant.trim(),
+            end_date: end,
+            files: e.files.map((file) => {
+              form.append('proofs', file);
+              return index++;
+            }),
+          };
+        });
+        form.append('entries', JSON.stringify(payload));
+        if (bulk && advanceId) form.append('advance_id', advanceId);
+        await api('/expenses', { method: 'POST', form });
+        return true;
+      },
+      bulk && advanceId ? 'Expenses added to your advance' : 'Expense claims sent to Accounts',
+    );
     if (ok) {
       onSaved();
       reloadMerchants();
@@ -495,7 +516,7 @@ function ExpenseEditor({ bulk, onSaved }) {
         setReport('');
       } else {
         saved.current = true;
-        navigate('/expenses');
+        navigate(canReview ? '/expenses/approvals' : '/expenses');
       }
     }
   };
@@ -561,201 +582,241 @@ function ExpenseEditor({ bulk, onSaved }) {
           </button>
           <button
             role="tab"
-            aria-selected={bulk}
-            className={bulk ? 'active' : ''}
+            aria-selected={bulk && bulkMode === 'expenses'}
+            className={bulk && bulkMode === 'expenses' ? 'active' : ''}
             disabled={busy}
-            onClick={() => !bulk && leave('/expenses/bulk')}
+            onClick={() => (bulk ? setBulkMode('expenses') : leave('/expenses/bulk'))}
           >
             <FileText size={16} /> Bulk Add Expenses
           </button>
+          <button
+            role="tab"
+            aria-selected={bulk && bulkMode === 'advances'}
+            className={bulk && bulkMode === 'advances' ? 'active' : ''}
+            disabled={busy}
+            onClick={() => (bulk ? setBulkMode('advances') : leave('/expenses/bulk?advance=1'))}
+          >
+            <Plus size={16} /> Add / Track Advance
+          </button>
         </div>
-        <Button disabled={busy} aria-label="Close expense form" onClick={() => leave('/expenses')}>
-          <X size={18} />
-        </Button>
+        <div className="row gap-8">
+          {canReview && (
+            <Link className="btn" to="/expenses/approvals">
+              Review claims
+            </Link>
+          )}
+          <Button
+            disabled={busy}
+            aria-label="Close expense form"
+            onClick={() => leave(canReview ? '/expenses/approvals' : '/expenses')}
+          >
+            <X size={18} />
+          </Button>
+        </div>
       </header>
       <h1 className="sr-only">{bulk ? 'Bulk Add Expenses' : 'Add Expense'}</h1>
-      <fieldset disabled={busy} className="expense-editor-fields">
-        {bulk ? (
-          <>
-            <div className="expense-bulk-report">
-              <Field label="Report / Business purpose (optional)">
-                <Input
-                  aria-label="Report / Business purpose"
-                  maxLength={200}
-                  placeholder="e.g. Ahar Expo expenses"
-                  value={report}
-                  onChange={(e) => setReport(e.target.value)}
-                />
-              </Field>
-            </div>
-            <div className="expense-table-scroll">
-              <table className="table expense-bulk-table">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Receipt</th>
-                    <th>Expense date *</th>
-                    <th>Merchant</th>
-                    <th>Category *</th>
-                    <th>Amount *</th>
-                    <th>Description</th>
-                    <th>Reference#</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {entries.map((e, i) => (
-                    <tr key={e.key}>
-                      <td data-label="Expense">{i + 1}</td>
-                      <td data-label="Receipt">
-                        <ReceiptPicker
-                          entry={e}
-                          disabled={busy}
-                          onChange={(v) => change(i, 'files', v)}
-                        />
-                      </td>
-                      <td data-label="Expense date">{date(e, i)}</td>
-                      <td data-label="Merchant">{merchant(e, i)}</td>
-                      <td data-label="Category">{category(e, i)}</td>
-                      <td data-label="Amount">{amount(e, i)}</td>
-                      <td data-label="Description">
-                        <Input
-                          aria-label="Description"
-                          maxLength={1000}
-                          value={e.description}
-                          onChange={(v) => change(i, 'description', v.target.value)}
-                        />
-                      </td>
-                      <td data-label="Reference#">
-                        <Input
-                          aria-label="Reference"
-                          maxLength={120}
-                          value={e.reference}
-                          onChange={(v) => change(i, 'reference', v.target.value)}
-                        />
-                      </td>
-                      <td data-label="Remove">
-                        <Button
-                          disabled={entries.length === 1}
-                          aria-label={'Remove expense ' + (i + 1)}
-                          onClick={async () => {
-                            if (
-                              !hasContent(e) ||
-                              (await confirm({
-                                title: 'Remove expense?',
-                                text: 'This row and its attachments will be removed.',
-                                confirmLabel: 'Remove expense',
-                              }))
-                            )
-                              setEntries((old) => old.filter((row) => row.key !== e.key));
-                          }}
-                        >
-                          <Trash2 size={15} />
-                        </Button>
-                      </td>
+      {bulk && bulkMode === 'advances' ? (
+        <ExpenseAdvances />
+      ) : (
+        <fieldset disabled={busy} className="expense-editor-fields">
+          {bulk ? (
+            <>
+              <div className="expense-bulk-report">
+                {!!advanceData?.items?.filter((a) => a.isOwner && a.status === 'Active').length && (
+                  <Field label="Use expense advance">
+                    <Select
+                      value={advanceId}
+                      onChange={(e) => setAdvanceId(e.target.value)}
+                      options={advanceData.items
+                        .filter((a) => a.isOwner && a.status === 'Active')
+                        .map((a) => ({
+                          value: a.id,
+                          label: `Advance #${a.id} · ${a.purpose} · ${inr(a.amount - a.spent)} remaining`,
+                        }))}
+                      placeholder="No advance — normal reimbursement"
+                    />
+                  </Field>
+                )}
+                <Field label="Report / Business purpose (optional)">
+                  <Input
+                    aria-label="Report / Business purpose"
+                    maxLength={200}
+                    placeholder="e.g. Ahar Expo expenses"
+                    value={report}
+                    onChange={(e) => setReport(e.target.value)}
+                  />
+                </Field>
+              </div>
+              <div className="expense-table-scroll">
+                <table className="table expense-bulk-table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Receipt</th>
+                      <th>Expense date *</th>
+                      <th>Merchant</th>
+                      <th>Category *</th>
+                      <th>Amount *</th>
+                      <th>Description</th>
+                      <th>Reference#</th>
+                      <th />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {entries.map((e, i) => (
+                      <tr key={e.key}>
+                        <td data-label="Expense">{i + 1}</td>
+                        <td data-label="Receipt">
+                          <ReceiptPicker
+                            entry={e}
+                            disabled={busy}
+                            onChange={(v) => change(i, 'files', v)}
+                          />
+                        </td>
+                        <td data-label="Expense date">{date(e, i)}</td>
+                        <td data-label="Merchant">{merchant(e, i)}</td>
+                        <td data-label="Category">{category(e, i)}</td>
+                        <td data-label="Amount">{amount(e, i)}</td>
+                        <td data-label="Description">
+                          <Input
+                            aria-label="Description"
+                            maxLength={1000}
+                            value={e.description}
+                            onChange={(v) => change(i, 'description', v.target.value)}
+                          />
+                        </td>
+                        <td data-label="Reference#">
+                          <Input
+                            aria-label="Reference"
+                            maxLength={120}
+                            value={e.reference}
+                            onChange={(v) => change(i, 'reference', v.target.value)}
+                          />
+                        </td>
+                        <td data-label="Remove">
+                          <Button
+                            disabled={entries.length === 1}
+                            aria-label={'Remove expense ' + (i + 1)}
+                            onClick={async () => {
+                              if (
+                                !hasContent(e) ||
+                                (await confirm({
+                                  title: 'Remove expense?',
+                                  text: 'This row and its attachments will be removed.',
+                                  confirmLabel: 'Remove expense',
+                                }))
+                              )
+                                setEntries((old) => old.filter((row) => row.key !== e.key));
+                            }}
+                          >
+                            <Trash2 size={15} />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="expense-add-row">
+                <Button
+                  icon={Plus}
+                  variant="ghost"
+                  disabled={entries.length >= 20}
+                  onClick={() => setEntries((old) => [...old, emptyEntry()])}
+                >
+                  Add More Expenses
+                </Button>
+                <span className="small muted">Up to 20 expenses · Empty rows are skipped</span>
+              </div>
+            </>
+          ) : (
+            <div className="expense-single-layout">
+              <ReceiptPicker
+                large
+                entry={entries[0]}
+                disabled={busy}
+                onChange={(v) => change(0, 'files', v)}
+              />
+              <div className="expense-single-fields">
+                <Field label="Report / Business purpose (optional)">
+                  <Input
+                    aria-label="Report / Business purpose"
+                    maxLength={200}
+                    placeholder="e.g. Client visit to Mumbai"
+                    value={entries[0].purpose}
+                    onChange={(e) => change(0, 'purpose', e.target.value)}
+                  />
+                </Field>
+                <div className="expense-field-divider" />
+                <Field label="Expense date *">{date(entries[0], 0)}</Field>
+                <Field label="End date (optional)">
+                  <Input
+                    aria-label="End date"
+                    type="date"
+                    min={entries[0].start_date}
+                    max={meta.today}
+                    value={entries[0].end_date}
+                    onChange={(e) => change(0, 'end_date', e.target.value)}
+                  />
+                </Field>
+                <Field
+                  label="Merchant"
+                  hint="Select a saved name or type a new one. New names are remembered after saving."
+                >
+                  {merchant(entries[0], 0)}
+                </Field>
+                <Field label="Category *">{category(entries[0], 0)}</Field>
+                <div className="expense-field-divider" />
+                <Field
+                  label="Amount *"
+                  hint="Whole rupees · Claims are reviewed by Accounts before reimbursement."
+                >
+                  {amount(entries[0], 0)}
+                </Field>
+                <Field label="Description">
+                  <Textarea
+                    aria-label="Description"
+                    rows={3}
+                    maxLength={1000}
+                    value={entries[0].description}
+                    onChange={(e) => change(0, 'description', e.target.value)}
+                  />
+                </Field>
+                <Field label="Reference#">
+                  <Input
+                    aria-label="Reference"
+                    maxLength={120}
+                    value={entries[0].reference}
+                    onChange={(e) => change(0, 'reference', e.target.value)}
+                  />
+                </Field>
+              </div>
             </div>
-            <div className="expense-add-row">
-              <Button
-                icon={Plus}
-                variant="ghost"
-                disabled={entries.length >= 20}
-                onClick={() => setEntries((old) => [...old, emptyEntry()])}
-              >
-                Add More Expenses
-              </Button>
-              <span className="small muted">Up to 20 expenses · Empty rows are skipped</span>
-            </div>
-          </>
-        ) : (
-          <div className="expense-single-layout">
-            <ReceiptPicker
-              large
-              entry={entries[0]}
-              disabled={busy}
-              onChange={(v) => change(0, 'files', v)}
-            />
-            <div className="expense-single-fields">
-              <Field label="Report / Business purpose (optional)">
-                <Input
-                  aria-label="Report / Business purpose"
-                  maxLength={200}
-                  placeholder="e.g. Client visit to Mumbai"
-                  value={entries[0].purpose}
-                  onChange={(e) => change(0, 'purpose', e.target.value)}
-                />
-              </Field>
-              <div className="expense-field-divider" />
-              <Field label="Expense date *">{date(entries[0], 0)}</Field>
-              <Field label="End date (optional)">
-                <Input
-                  aria-label="End date"
-                  type="date"
-                  min={entries[0].start_date}
-                  max={meta.today}
-                  value={entries[0].end_date}
-                  onChange={(e) => change(0, 'end_date', e.target.value)}
-                />
-              </Field>
-              <Field
-                label="Merchant"
-                hint="Select a saved name or type a new one. New names are remembered after saving."
-              >
-                {merchant(entries[0], 0)}
-              </Field>
-              <Field label="Category *">{category(entries[0], 0)}</Field>
-              <div className="expense-field-divider" />
-              <Field
-                label="Amount *"
-                hint="Whole rupees · Claims are reviewed by Accounts before reimbursement."
-              >
-                {amount(entries[0], 0)}
-              </Field>
-              <Field label="Description">
-                <Textarea
-                  aria-label="Description"
-                  rows={3}
-                  maxLength={1000}
-                  value={entries[0].description}
-                  onChange={(e) => change(0, 'description', e.target.value)}
-                />
-              </Field>
-              <Field label="Reference#">
-                <Input
-                  aria-label="Reference"
-                  maxLength={120}
-                  value={entries[0].reference}
-                  onChange={(e) => change(0, 'reference', e.target.value)}
-                />
-              </Field>
-            </div>
-          </div>
-        )}
-      </fieldset>
-      <footer className="expense-editor-footer">
-        <span className="small muted">
-          {bulk ? entries.filter(hasContent).length + ' expenses · ' : ''}Total:{' '}
-          <strong>{inr(entries.reduce((sum, e) => sum + (Number(e.amount) || 0), 0))}</strong>
-        </span>
-        <div className="row gap-8">
-          <Button variant="primary" loading={busy} onClick={() => save(false)}>
-            {bulk ? 'Save Expenses' : 'Save and Close'}
-          </Button>
-          {!bulk && (
-            <Button disabled={busy} onClick={() => save(true)}>
-              Save and New
-            </Button>
           )}
-          <Button disabled={busy} onClick={() => leave('/expenses')}>
-            Cancel
-          </Button>
-        </div>
-      </footer>
+        </fieldset>
+      )}
+      {bulkMode === 'expenses' && (
+        <footer className="expense-editor-footer">
+          <span className="small muted">
+            {bulk ? entries.filter(hasContent).length + ' expenses · ' : ''}Total:{' '}
+            <strong>{inr(entries.reduce((sum, e) => sum + (Number(e.amount) || 0), 0))}</strong>
+          </span>
+          <div className="row gap-8">
+            <Button variant="primary" loading={busy} onClick={() => save(false)}>
+              {bulk && advanceId ? 'Add to Advance' : bulk ? 'Save Expenses' : 'Save and Close'}
+            </Button>
+            {!bulk && (
+              <Button disabled={busy} onClick={() => save(true)}>
+                Save and New
+              </Button>
+            )}
+            <Button disabled={busy} onClick={() => leave('/expenses')}>
+              Cancel
+            </Button>
+          </div>
+        </footer>
+      )}
       {confirmEl}
-      {bulk && <ExpenseAdvances />}
     </section>
   );
 }

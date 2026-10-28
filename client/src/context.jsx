@@ -76,14 +76,16 @@ export function AppProvider({ children }) {
       });
       if (me.user.mustChangePassword) {
         setMeta(null);
-        return;
+        return me.user;
       }
       const m = await api.get('/meta');
       setTimeZone(m.settings.timezone);
       setMeta(m);
+      return me.user;
     } catch {
       setUser(null);
       setMeta(null);
+      return null;
     }
   }, []);
 
@@ -140,13 +142,17 @@ export function AppProvider({ children }) {
   }, []);
 
   // pause: stop the work clock; the next sign-in asks the reason for the gap.
-  const logout = useCallback(async ({ pause = false } = {}) => {
-    await api.post('/auth/logout', { pause });
-    window.dispatchEvent(new Event('hrms:signed-out'));
-    clearWorkday();
-    setUser(null);
-    setMeta(null);
-  }, []);
+  const logout = useCallback(
+    async ({ pause = false } = {}) => {
+      await api.post('/auth/logout', { pause });
+      window.dispatchEvent(new Event('hrms:signed-out'));
+      clearWorkday();
+      setUser(null);
+      setMeta(null);
+      navigate('/', { replace: true });
+    },
+    [navigate],
+  );
 
   const value = useMemo(() => {
     const role = user?.role;
