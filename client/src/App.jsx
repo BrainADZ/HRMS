@@ -92,7 +92,7 @@ function AppRoutes() {
   if (user?.mustChangePassword) return <ChangePassword forced onClose={() => {}} />;
   if (user === undefined || (user && !meta)) return <Loading text="Loading BrainADZ HRMS…" />;
   if (!user) return <Login />;
-  const HR = ['admin', 'hr'];
+  const HR = ['admin', 'accounts', 'hr'];
   return (
     <Suspense fallback={<Loading />}>
       <Routes>
@@ -136,7 +136,7 @@ function AppRoutes() {
                     <Route
                       path="/payroll"
                       element={
-                        <Guard roles={HR}>
+                        <Guard roles={[...HR, 'accounts']}>
                           <Payroll />
                         </Guard>
                       }

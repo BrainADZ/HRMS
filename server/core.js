@@ -141,7 +141,7 @@ export async function setSetting(db, key, value) {
 export const today = async (db) => todayIn((await getSettings(db)).timezone);
 
 // ---------- access control ----------
-export const isHR = (user) => user && (user.role === 'admin' || user.role === 'hr');
+export const isHR = (user) => user && ['admin', 'accounts', 'hr'].includes(user.role);
 export const isAdmin = (user) => user && user.role === 'admin';
 
 // All employees reporting (directly or indirectly) to the given employee.

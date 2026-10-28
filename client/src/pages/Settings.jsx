@@ -769,6 +769,7 @@ function Users() {
     { value: 'employee', label: 'Employee' },
     { value: 'manager', label: 'Manager' },
     { value: 'hr', label: 'HR' },
+    ...(isAdmin ? [{ value: 'accounts', label: 'Accounts Team' }] : []),
     ...(isAdmin ? [{ value: 'admin', label: 'Administrator' }] : []),
   ];
   return (
@@ -776,8 +777,9 @@ function Users() {
       <div className="alert info mb-16" style={{ alignItems: 'center' }}>
         <span className="grow">
           <b>Roles:</b> Employee = self-service · Manager = their team's leave, attendance, reviews
-          and hiring · HR = everything except admin settings · Administrator = everything, including
-          payroll management approval and data reset.
+          and hiring · Accounts Team = HR access, payroll and expenses · HR = everything except
+          admin settings · Administrator = everything, including payroll management approval and
+          data reset.
         </span>
       </div>
       {isAdmin && data.passwordRequests?.length > 0 && (

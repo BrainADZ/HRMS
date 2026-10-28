@@ -166,7 +166,7 @@ export function AppProvider({ children }) {
       refreshPhotos,
       photoVersion,
       logout,
-      isHR: role === 'admin' || role === 'hr',
+      isHR: role === 'admin' || role === 'accounts' || role === 'hr',
       isAdmin: role === 'admin',
       isManager: role === 'manager',
       isEmployeeOnly: role === 'employee',

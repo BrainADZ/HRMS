@@ -474,11 +474,15 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
     )
       fail(400, 'Choose an active manager');
     const createLogin = Boolean(req.body.create_login);
-    const role = oneOf(req.body.role || 'employee', ['employee', 'manager', 'hr', 'admin'], {
-      name: 'Role',
-    });
-    if (role === 'admin' && req.user.role !== 'admin')
-      fail(403, 'Only an administrator can create admin logins');
+    const role = oneOf(
+      req.body.role || 'employee',
+      ['employee', 'manager', 'hr', 'accounts', 'admin'],
+      {
+        name: 'Role',
+      },
+    );
+    if (['admin', 'accounts'].includes(role) && req.user.role !== 'admin')
+      fail(403, 'Only an administrator can create admin or Accounts logins');
     let temp = null;
     const eid = await db.tx(async () => {
       const newId = await db.insert('employees', {
@@ -601,14 +605,20 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
     const e = (await db.get('SELECT * FROM employees WHERE id = ?', eid)) || notFound('Employee');
     if (e.status === 'Exited')
       fail(400, 'Reactivate the employee before creating or resetting their login');
-    const role = oneOf(req.body.role || 'employee', ['employee', 'manager', 'hr', 'admin'], {
-      name: 'Role',
-    });
-    if (role === 'admin' && req.user.role !== 'admin')
-      fail(403, 'Only an administrator can grant admin access');
+    const role = oneOf(
+      req.body.role || 'employee',
+      ['employee', 'manager', 'hr', 'accounts', 'admin'],
+      {
+        name: 'Role',
+      },
+    );
+    if (['admin', 'accounts'].includes(role) && req.user.role !== 'admin')
+      fail(403, 'Only an administrator can grant admin or Accounts access');
     const temp = tempPassword();
     const existing = await db.get('SELECT * FROM users WHERE employee_id = ?', eid);
     if (existing) {
+      if (existing.role === 'accounts' && req.user.role !== 'admin')
+        fail(403, 'Only an administrator can change an Accounts login');
       if (existing.role === 'admin' && req.user.role !== 'admin')
         fail(403, 'Only an administrator can reset an admin login');
       if (existing.id === req.user.id && role !== existing.role)

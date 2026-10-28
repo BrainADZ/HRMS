@@ -10,7 +10,7 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
     );
   const admins = async () => db.all("SELECT id FROM users WHERE role='admin' AND active=1");
   const reviewer = async (user) =>
-    isAdmin(user) || (await accounts()).some((u) => u.id === user.id);
+    isAdmin(user) || user.role === 'accounts' || (await accounts()).some((u) => u.id === user.id);
   const view = (a) => ({
     ...a,
     expense_number: 'EXP-' + String(a.id).padStart(6, '0'),
@@ -35,6 +35,166 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
       if (name && !names.has(name.toLowerCase())) names.set(name.toLowerCase(), name);
     }
     res.json({ items: [...names.values()].sort((a, b) => a.localeCompare(b)) });
+  });
+  const advanceRow = async (req) => {
+    const a = await db.get('SELECT * FROM expense_advances WHERE id=?', id(req.params.id));
+    if (!a) fail(404, 'Advance not found');
+    return a;
+  };
+  const advanceView = (a) => {
+    const entries = json(a.entries, []);
+    const spent = entries.reduce((sum, e) => sum + e.amount, 0);
+    return { ...a, entries, spent, balance: a.amount - spent };
+  };
+  r.get('/expenses/advances/eligible', async (req, res) => {
+    if (!(await reviewer(req.user))) return res.json({ items: [] });
+    res.json({
+      items: await db.all(
+        'SELECT e.id, e.first_name, e.last_name, e.code FROM employees e JOIN users u ON u.employee_id=e.id WHERE u.active=1 ORDER BY e.first_name, e.last_name',
+      ),
+    });
+  });
+  r.get('/expenses/advances', async (req, res) => {
+    const canReview = await reviewer(req.user);
+    const rows = await db.all(
+      `SELECT a.*, e.first_name, e.last_name, e.code FROM expense_advances a JOIN employees e ON e.id=a.employee_id WHERE ${canReview ? '1=1' : "a.employee_id=? AND a.status NOT IN ('Pending Admin','Rejected')"} ORDER BY a.created_at DESC LIMIT 200`,
+      ...(canReview ? [] : [req.user.employeeId]),
+    );
+    res.json({
+      canReview,
+      isAdmin: isAdmin(req.user),
+      items: rows.map((a) => ({
+        ...advanceView(a),
+        isOwner: a.employee_id === req.user.employeeId,
+      })),
+    });
+  });
+  r.post('/expenses/advances', async (req, res) => {
+    if (!(await reviewer(req.user))) fail(403, 'Only Accounts can request advances');
+    const employeeId = id(req.body.employee_id);
+    const employee = await db.get(
+      'SELECT id, first_name, last_name FROM employees WHERE id=?',
+      employeeId,
+    );
+    const owner = await db.get('SELECT id FROM users WHERE employee_id=? AND active=1', employeeId);
+    if (!employee || !owner) fail(400, 'Choose an active employee');
+    const amount = num(req.body.amount, {
+      required: true,
+      min: 1,
+      max: 10000000,
+      int: true,
+      name: 'Amount',
+    });
+    const purpose = str(req.body.purpose, { required: true, max: 200 });
+    const advanceId = await db.insert('expense_advances', {
+      employee_id: employeeId,
+      requested_by: req.user.id,
+      amount,
+      purpose,
+    });
+    await notifyUsers(
+      db,
+      (await admins()).map((u) => u.id),
+      `Advance request: ₹${amount} for ${employee.first_name} ${employee.last_name} needs approval`,
+      '/expenses/bulk',
+    );
+    res.json({ id: advanceId });
+  });
+  r.post('/expenses/advances/:id/decision', async (req, res) => {
+    if (!isAdmin(req.user)) fail(403, 'Only admin can approve advances');
+    if (!['approve', 'reject'].includes(req.body.action)) fail(400, 'Choose approve or reject');
+    const a = await advanceRow(req);
+    if (a.status !== 'Pending Admin') fail(409, 'Advance already reviewed');
+    const approved = req.body.action === 'approve';
+    await db.update('expense_advances', a.id, {
+      status: approved ? 'Awaiting Acceptance' : 'Rejected',
+      admin_by: req.user.id,
+      approved_at: approved ? new Date().toISOString() : null,
+    });
+    const owner = await db.get(
+      'SELECT id FROM users WHERE employee_id=? AND active=1',
+      a.employee_id,
+    );
+    await notifyUsers(
+      db,
+      [a.requested_by, ...(approved ? [owner?.id] : [])],
+      approved
+        ? `You have been given an expense advance of ₹${a.amount}. Accept it in Bulk Add Expenses.`
+        : `Expense advance request #${a.id} was rejected`,
+      '/expenses/bulk',
+    );
+    res.json({ ok: true });
+  });
+  r.post('/expenses/advances/:id/accept', async (req, res) => {
+    const a = await advanceRow(req);
+    if (a.employee_id !== req.user.employeeId)
+      fail(403, 'This advance belongs to another employee');
+    if (a.status !== 'Awaiting Acceptance') fail(409, 'Advance cannot be accepted');
+    await db.update('expense_advances', a.id, {
+      status: 'Active',
+      accepted_at: new Date().toISOString(),
+    });
+    await notifyUsers(
+      db,
+      [a.requested_by],
+      `${req.user.name} accepted expense advance #${a.id}`,
+      '/expenses/bulk',
+    );
+    res.json({ ok: true });
+  });
+  r.put('/expenses/advances/:id/entries', async (req, res) => {
+    const a = await advanceRow(req);
+    if (a.employee_id !== req.user.employeeId)
+      fail(403, 'This advance belongs to another employee');
+    if (a.status !== 'Active') fail(409, 'Only active advances can be updated');
+    if (!Array.isArray(req.body.entries) || req.body.entries.length > 100)
+      fail(400, 'Enter up to 100 expenses');
+    const T = await today(db);
+    const entries = req.body.entries.map((e) => ({
+      date: isValidYmd(e.date) && e.date <= T ? e.date : fail(400, 'Enter a valid expense date'),
+      description: str(e.description, { required: true, max: 200 }),
+      amount: num(e.amount, {
+        required: true,
+        min: 1,
+        max: 10000000,
+        int: true,
+        name: 'Expense amount',
+      }),
+    }));
+    await db.update('expense_advances', a.id, { entries: JSON.stringify(entries) });
+    res.json(advanceView({ ...a, entries: JSON.stringify(entries) }));
+  });
+  r.post('/expenses/advances/:id/submit', async (req, res) => {
+    const a = await advanceRow(req);
+    if (a.employee_id !== req.user.employeeId)
+      fail(403, 'This advance belongs to another employee');
+    if (a.status !== 'Active') fail(409, 'Only active advances can be submitted');
+    await db.update('expense_advances', a.id, {
+      status: 'Submitted',
+      submitted_at: new Date().toISOString(),
+    });
+    await notifyUsers(
+      db,
+      [...new Set([...(await accounts()).map((u) => u.id), ...(await admins()).map((u) => u.id)])],
+      `${req.user.name} submitted final expenses for advance #${a.id}`,
+      '/expenses/bulk',
+    );
+    res.json({ ok: true });
+  });
+  r.post('/expenses/advances/:id/settle', async (req, res) => {
+    if (!(await reviewer(req.user))) fail(403, 'Only Accounts can settle advances');
+    const a = await advanceRow(req);
+    if (a.status !== 'Submitted') fail(409, 'Final expenses have not been submitted');
+    await db.update('expense_advances', a.id, {
+      status: 'Settled',
+      settled_at: new Date().toISOString(),
+    });
+    const owner = await db.get(
+      'SELECT id FROM users WHERE employee_id=? AND active=1',
+      a.employee_id,
+    );
+    await notifyUsers(db, [owner?.id], `Advance #${a.id} settled by Accounts`, '/expenses/bulk');
+    res.json({ ok: true });
   });
   r.post(
     '/expenses',

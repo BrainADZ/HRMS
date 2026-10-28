@@ -25,6 +25,7 @@ import {
 } from '../components/ExpenseFiles.jsx';
 import ExpenseDetails from './ExpenseDetails.jsx';
 import ExpenseAdminList from './ExpenseAdminList.jsx';
+import ExpenseAdvances from './ExpenseAdvances.jsx';
 import './Expenses.css';
 
 const CATEGORIES = [
@@ -282,6 +283,7 @@ function ExpenseList({ data, error, reload }) {
           </div>
         )}
       </div>
+      <ExpenseAdvances />
     </section>
   );
 }
@@ -604,19 +606,19 @@ function ExpenseEditor({ bulk, onSaved }) {
                 <tbody>
                   {entries.map((e, i) => (
                     <tr key={e.key}>
-                      <td>{i + 1}</td>
-                      <td>
+                      <td data-label="Expense">{i + 1}</td>
+                      <td data-label="Receipt">
                         <ReceiptPicker
                           entry={e}
                           disabled={busy}
                           onChange={(v) => change(i, 'files', v)}
                         />
                       </td>
-                      <td>{date(e, i)}</td>
-                      <td>{merchant(e, i)}</td>
-                      <td>{category(e, i)}</td>
-                      <td>{amount(e, i)}</td>
-                      <td>
+                      <td data-label="Expense date">{date(e, i)}</td>
+                      <td data-label="Merchant">{merchant(e, i)}</td>
+                      <td data-label="Category">{category(e, i)}</td>
+                      <td data-label="Amount">{amount(e, i)}</td>
+                      <td data-label="Description">
                         <Input
                           aria-label="Description"
                           maxLength={1000}
@@ -624,7 +626,7 @@ function ExpenseEditor({ bulk, onSaved }) {
                           onChange={(v) => change(i, 'description', v.target.value)}
                         />
                       </td>
-                      <td>
+                      <td data-label="Reference#">
                         <Input
                           aria-label="Reference"
                           maxLength={120}
@@ -632,7 +634,7 @@ function ExpenseEditor({ bulk, onSaved }) {
                           onChange={(v) => change(i, 'reference', v.target.value)}
                         />
                       </td>
-                      <td>
+                      <td data-label="Remove">
                         <Button
                           disabled={entries.length === 1}
                           aria-label={'Remove expense ' + (i + 1)}
@@ -753,6 +755,7 @@ function ExpenseEditor({ bulk, onSaved }) {
         </div>
       </footer>
       {confirmEl}
+      {bulk && <ExpenseAdvances />}
     </section>
   );
 }

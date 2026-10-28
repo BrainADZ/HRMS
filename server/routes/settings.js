@@ -266,12 +266,15 @@ export default function settingsRoutes(r, { db, saveFile }) {
     const u =
       (await db.get('SELECT * FROM users WHERE id = ?', id(req.params.id))) || notFound('User');
     const role = req.body.role
-      ? oneOf(req.body.role, ['employee', 'manager', 'hr', 'admin'], { name: 'Role' })
+      ? oneOf(req.body.role, ['employee', 'manager', 'hr', 'accounts', 'admin'], { name: 'Role' })
       : u.role;
     if (role !== 'admin' && !u.employee_id)
       fail(400, 'Link this login to an employee before assigning a non-admin role');
-    if ((role === 'admin' || u.role === 'admin') && !isAdmin(req.user))
-      fail(403, 'Only an administrator can change admin access');
+    if (
+      (['admin', 'accounts'].includes(role) || ['admin', 'accounts'].includes(u.role)) &&
+      !isAdmin(req.user)
+    )
+      fail(403, 'Only an administrator can change admin or Accounts access');
     if (u.id === req.user.id && (role !== u.role || req.body.active === false))
       fail(400, 'You cannot change your own role or deactivate yourself');
     const active = req.body.active === undefined ? u.active : req.body.active ? 1 : 0;

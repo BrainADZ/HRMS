@@ -221,6 +221,8 @@ export async function openDb({
         [11, '011-expense-claims.sql'],
         [12, '012-new-joiner-training.sql'],
         [13, '013-training-sessions.sql'],
+        [14, '014-expense-advances.sql'],
+        [15, '015-accounts-role.sql'],
       ];
       await db.tx(async () => {
         await db.exec('SELECT pg_advisory_xact_lock(7264182026)');

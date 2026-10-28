@@ -122,7 +122,18 @@ function People({ selectedId }) {
           <h1>Employees</h1>
           <div className="sub">
             Our people make BrainADZ extraordinary. <VerticalFilterNote />
-            {joinersOnly && <button type="button" className="link" onClick={() => { setSearchParams({}); setFilters((current) => ({ ...current, status: 'current', sort: 'name' })); }}>This month’s joiners ×</button>}
+            {joinersOnly && (
+              <button
+                type="button"
+                className="link"
+                onClick={() => {
+                  setSearchParams({});
+                  setFilters((current) => ({ ...current, status: 'current', sort: 'name' }));
+                }}
+              >
+                This month’s joiners ×
+              </button>
+            )}
           </div>
         </div>
         {k && (
@@ -1776,6 +1787,7 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly }) {
                     { value: 'employee', label: 'Employee' },
                     { value: 'manager', label: 'Manager' },
                     { value: 'hr', label: 'HR' },
+                    ...(isAdmin ? [{ value: 'accounts', label: 'Accounts Team' }] : []),
                     ...(isAdmin ? [{ value: 'admin', label: 'Administrator' }] : []),
                   ]}
                 />
@@ -1840,6 +1852,7 @@ function LoginModal({ employee, login, onClose, onDone }) {
               { value: 'employee', label: 'Employee' },
               { value: 'manager', label: 'Manager' },
               { value: 'hr', label: 'HR' },
+              ...(isAdmin ? [{ value: 'accounts', label: 'Accounts Team' }] : []),
               ...(isAdmin ? [{ value: 'admin', label: 'Administrator' }] : []),
             ]}
           />

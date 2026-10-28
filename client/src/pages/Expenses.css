@@ -320,6 +320,62 @@
 .expense-bulk-receipts .expense-upload {
   padding: 10px;
 }
+@media (max-width: 1500px) {
+  .expense-editor-fields > .expense-table-scroll {
+    overflow-x: visible;
+  }
+  .expense-bulk-table,
+  .expense-bulk-table tbody {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+  .expense-bulk-table thead {
+    display: none;
+  }
+  .expense-bulk-table tr {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    padding: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .expense-bulk-table td,
+  .expense-bulk-table td:nth-child(n) {
+    display: block;
+    min-width: 0;
+    width: 100%;
+    padding: 0;
+    border: 0;
+  }
+  .expense-bulk-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 6px;
+    color: var(--text-2);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .expense-bulk-table .input,
+  .expense-bulk-table .select,
+  .expense-bulk-table .expense-amount {
+    width: 100%;
+    min-width: 0;
+  }
+  .expense-bulk-table .expense-amount .input {
+    min-width: 0;
+  }
+}
+@media (max-width: 800px) {
+  .expense-bulk-table tr {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 480px) {
+  .expense-bulk-table tr {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .expense-add-row {
   display: flex;
   gap: 16px;

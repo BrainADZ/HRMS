@@ -4,7 +4,6 @@ import {
   today,
   isHR,
   isAdmin,
-  requireHR,
   fullName,
   str,
   num,
@@ -22,6 +21,10 @@ import * as D from '../lib/dates.js';
 import { buildPayroll, processRun, runSummary, runRef, payDate } from '../services/payroll.js';
 
 const KINDS = ['Bonus', 'Arrears', 'Reimbursement', 'Deduction'];
+const canPayroll = (user) => isHR(user) || user?.role === 'accounts';
+const requirePayroll = (req) => {
+  if (!canPayroll(req.user)) fail(403, 'Only Payroll staff can do this');
+};
 
 function lineFromPayslip(p) {
   const data = json(p.data, {});
@@ -57,7 +60,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
   }
 
   r.get('/payroll', async (req, res) => {
-    requireHR(req);
+    requirePayroll(req);
     const T = await today(db);
     const month = D.isValidMonth(req.query.month) ? req.query.month : D.monthOf(T);
     const f = filterSql(req.query);
@@ -218,7 +221,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
       ref: runRef(month),
       payDate: payDate(month),
       run: await runSummary(db, run),
-      canManage: isHR(req.user),
+      canManage: canPayroll(req.user),
       canApproveManagement: isAdmin(req.user),
       kpis: {
         cost,
@@ -246,7 +249,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
   });
 
   r.post('/payroll/runs', async (req, res) => {
-    requireHR(req);
+    requirePayroll(req);
     const month = req.body.month;
     if (!D.isValidMonth(month)) fail(400, 'Choose a valid month');
     if (month > D.addMonths(D.monthOf(await today(db)), 1))
@@ -259,7 +262,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
       db,
       (
         await db.all(
-          "SELECT id FROM users WHERE role IN ('admin','hr') AND active = 1 AND id != ?",
+          "SELECT id FROM users WHERE role IN ('admin','hr','accounts') AND active = 1 AND id != ?",
           req.user.id,
         )
       ).map((u) => u.id),
@@ -280,7 +283,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
     (await db.get('SELECT * FROM payroll_runs WHERE id = ?', id(rid))) || notFound('Payroll run');
 
   r.post('/payroll/runs/:id/approve', async (req, res) => {
-    requireHR(req);
+    requirePayroll(req);
     const run = await getRun(req.params.id);
     const stage = oneOf(req.body.stage, ['finance', 'management'], {
       required: true,
@@ -322,7 +325,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
   });
 
   r.post('/payroll/runs/:id/send-back', async (req, res) => {
-    requireHR(req);
+    requirePayroll(req);
     const run = await getRun(req.params.id);
     if (!['Finance Reviewed', 'Approved'].includes(run.status))
       fail(409, 'Only reviewed runs can be sent back');
@@ -342,7 +345,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
   });
 
   r.post('/payroll/runs/:id/transfer', async (req, res) => {
-    requireHR(req);
+    requirePayroll(req);
     const run = await getRun(req.params.id);
     if (run.status !== 'Approved') fail(409, 'The run must be approved before the bank transfer');
     const s = await db.get(
@@ -371,7 +374,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
   });
 
   r.post('/payroll/runs/:id/complete', async (req, res) => {
-    requireHR(req);
+    requirePayroll(req);
     const run = await getRun(req.params.id);
     if (run.status !== 'Transfer Scheduled') fail(409, 'Schedule the bank transfer first');
     const paymentReference = str(req.body.payment_reference, {
@@ -417,7 +420,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
   });
 
   r.delete('/payroll/runs/:id', async (req, res) => {
-    requireHR(req);
+    requirePayroll(req);
     const run = await getRun(req.params.id);
     if (!['In Review', 'Finance Reviewed'].includes(run.status))
       fail(409, 'Approved or paid runs cannot be deleted');
@@ -427,7 +430,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
   });
 
   r.put('/payroll/payslips/:id/hold', async (req, res) => {
-    requireHR(req);
+    requirePayroll(req);
     const p =
       (await db.get(
         'SELECT p.*, r.status AS run_status FROM payslips p JOIN payroll_runs r ON r.id = p.run_id WHERE p.id = ?',
@@ -462,7 +465,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
         id(req.params.id),
       )) || notFound('Payslip');
     const own = p.employee_id === req.user.employeeId;
-    if (!isHR(req.user) && !(own && p.run_status === 'Completed'))
+    if (!canPayroll(req.user) && !(own && p.run_status === 'Completed'))
       fail(403, 'You cannot view this payslip');
     const s = await getSettings(db);
     res.json({
@@ -495,7 +498,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
   });
 
   r.get('/payroll/runs/:id/bank-file.csv', async (req, res) => {
-    requireHR(req);
+    requirePayroll(req);
     const run = await getRun(req.params.id);
     const rows = await db.all(
       `SELECT p.*, e.bank_account, e.ifsc, e.bank_name, e.first_name, e.last_name, e.code FROM payslips p JOIN employees e ON e.id = p.employee_id WHERE p.run_id = ? AND p.status IN ('Processed','Paid') ${req.query.vertical ? 'AND e.vertical_id = ?' : ''} ORDER BY e.code`,
@@ -514,7 +517,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
   });
 
   r.get('/payroll/runs/:id/register.csv', async (req, res) => {
-    requireHR(req);
+    requirePayroll(req);
     const run = await getRun(req.params.id);
     const rows = (
       await db.all(
@@ -562,7 +565,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
         );
       const result = await operation();
       // Finance must review the updated snapshot again when HR changes inputs.
-      if (run && isHR(req.user)) await processRun(db, req.user, month);
+      if (run && canPayroll(req.user)) await processRun(db, req.user, month);
       return result;
     });
   }
@@ -575,7 +578,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
     }).single('proof'),
     async (req, res) => {
       const T = await today(db);
-      const hr = isHR(req.user);
+      const hr = canPayroll(req.user);
       const employeeId = req.body.employee_id ? id(req.body.employee_id) : req.user.employeeId;
       if (!employeeId) fail(400, 'Choose an employee');
       if (!hr && employeeId !== req.user.employeeId)
@@ -611,9 +614,11 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
       if (!hr)
         await notifyUsers(
           db,
-          (await db.all("SELECT id FROM users WHERE role IN ('admin','hr') AND active = 1")).map(
-            (u) => u.id,
-          ),
+          (
+            await db.all(
+              "SELECT id FROM users WHERE role IN ('admin','hr','accounts') AND active = 1",
+            )
+          ).map((u) => u.id),
           `${req.user.name} submitted a reimbursement claim`,
           `/payroll?month=${month}`,
         );
@@ -624,7 +629,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
     const claim =
       (await db.get('SELECT * FROM payroll_adjustments WHERE id = ?', id(req.params.id))) ||
       notFound('Claim');
-    if (!isHR(req.user) && claim.employee_id !== req.user.employeeId)
+    if (!canPayroll(req.user) && claim.employee_id !== req.user.employeeId)
       fail(403, 'You can only access your own expense proof');
     if (!claim.proof_file) notFound('Expense proof');
     res.set('X-Content-Type-Options', 'nosniff');
@@ -635,7 +640,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
   });
 
   r.put('/payroll/adjustments/:id', async (req, res) => {
-    requireHR(req);
+    requirePayroll(req);
     const a =
       (await db.get('SELECT * FROM payroll_adjustments WHERE id = ?', id(req.params.id))) ||
       notFound('Adjustment');
@@ -659,7 +664,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
     const a =
       (await db.get('SELECT * FROM payroll_adjustments WHERE id = ?', id(req.params.id))) ||
       notFound('Adjustment');
-    if (!isHR(req.user) && !(a.employee_id === req.user.employeeId && a.status === 'Pending'))
+    if (!canPayroll(req.user) && !(a.employee_id === req.user.employeeId && a.status === 'Pending'))
       fail(403, 'You cannot delete this claim');
     if (a.status === 'Reimbursed') fail(409, 'Reimbursed expenses cannot be deleted');
     await editAdjustments(req, a.month, () =>

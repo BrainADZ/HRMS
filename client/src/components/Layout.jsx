@@ -13,6 +13,7 @@ import {
   Smartphone,
   ChevronsLeft,
   Receipt,
+  FileText,
 } from 'lucide-react';
 import { useApp } from '../context.jsx';
 import { api } from '../lib/api.js';
@@ -36,7 +37,6 @@ import {
   IconDocuments,
   IconHolidays,
   IconPayroll,
-  IconResignation,
   IconReports,
   IconSettings,
   IconPerformance,
@@ -126,13 +126,23 @@ const NAV = [
     to: '/',
     label: 'Dashboard',
     icon: IconDashboard,
-    roles: ['admin', 'hr', 'manager'],
+    roles: ['admin', 'accounts', 'hr', 'manager'],
     end: true,
   },
-  { to: '/my', label: 'My Space', icon: IconMySpace, roles: ['employee', 'manager'] },
+  { to: '/my', label: 'My Space', icon: IconMySpace, roles: ['employee', 'manager', 'accounts'] },
   { to: '/expenses', label: 'Expenses', icon: Receipt },
-  { to: '/hiring', label: 'Hiring', icon: IconHiring, roles: ['admin', 'hr', 'manager'] },
-  { to: '/screener', label: 'Resume Screener AI', icon: IconScreener, roles: ['admin', 'hr'] },
+  {
+    to: '/hiring',
+    label: 'Hiring',
+    icon: IconHiring,
+    roles: ['admin', 'accounts', 'hr', 'manager'],
+  },
+  {
+    to: '/screener',
+    label: 'Resume Screener AI',
+    icon: IconScreener,
+    roles: ['admin', 'accounts', 'hr'],
+  },
   { to: '/employees', label: 'Employees', icon: IconEmployees },
   { to: '/documents', label: 'Documents', icon: IconDocuments },
   { to: '/posh', label: 'POSH', icon: IconPosh },
@@ -140,10 +150,10 @@ const NAV = [
   { to: '/performance', label: 'Performance & Appraisal', icon: IconPerformance },
   { to: '/attendance', aliases: ['/leave'], label: 'Attendance & Leave', icon: IconAttendance },
   { to: '/calendar', label: 'Holiday Calendar', icon: IconHolidays },
-  { to: '/payroll', label: 'Payroll', icon: IconPayroll, roles: ['admin', 'hr'] },
-  { to: '/reports', label: 'Reports', icon: IconReports, roles: ['admin', 'hr'] },
+  { to: '/payroll', label: 'Payroll', icon: IconPayroll, roles: ['admin', 'accounts', 'hr'] },
+  { to: '/reports', label: 'Reports', icon: IconReports, roles: ['admin', 'accounts', 'hr'] },
   { to: '/logs', label: 'Logs', icon: ScrollText, roles: ['admin'] },
-  { to: '/settings', label: 'Settings', icon: IconSettings, roles: ['admin', 'hr'] },
+  { to: '/settings', label: 'Settings', icon: IconSettings, roles: ['admin', 'accounts', 'hr'] },
 ];
 
 const NAV_LAYOUT_KEY = 'hrms.navLayout';
@@ -610,7 +620,7 @@ function UserMenu({ onGetApp }) {
               nav('/resignation');
             }}
           >
-            <IconResignation size={16} />
+            <FileText size={16} />
             Resignation
           </button>
           <button type="button" className="item" style={{ color: 'var(--red)' }} onClick={signOut}>

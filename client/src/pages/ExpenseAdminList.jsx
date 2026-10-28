@@ -4,6 +4,7 @@ import { Search } from 'lucide-react';
 import { Avatar, Badge, Empty } from '../components/ui.jsx';
 import { fmtDate } from '../lib/format.js';
 import { expenseMoney, expenseNumber } from '../components/ExpenseFiles.jsx';
+import ExpenseAdvances from './ExpenseAdvances.jsx';
 const FILTERS = [
   { label: 'All', value: 'all' },
   { label: 'Awaiting Approval', value: 'Pending' },
@@ -38,6 +39,9 @@ export default function ExpenseAdminList({ data }) {
           <h1>Expense approvals & reimbursements</h1>
           <div className="sub">Review employee claims and record completed reimbursements.</div>
         </div>
+        <Link className="btn primary" to="/expenses/bulk">
+          Bulk expenses & advances
+        </Link>
       </div>
       <div className="expense-workspace">
         <div className="expense-toolbar">
@@ -155,6 +159,7 @@ export default function ExpenseAdminList({ data }) {
           )}
         </div>
       </div>
+      <ExpenseAdvances />
     </section>
   );
 }
