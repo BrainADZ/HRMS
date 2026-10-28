@@ -719,7 +719,7 @@ export default function Layout({ children }) {
               <div>Your attendance, leave, pay and requests in one place.</div>
             </div>
           )}
-          {user.role !== 'employee' && (
+          {user.role === 'admin' && (
             <div className="verticals">
               {verticals.map((v) => (
                 <VerticalLogo
