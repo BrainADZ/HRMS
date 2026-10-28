@@ -1,0 +1,128 @@
+.expense-summary {
+  min-width: 0;
+}
+.expense-summary-view {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.expense-summary-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.expense-summary-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-2);
+  font-size: 11px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.expense-summary-list {
+  max-height: 380px;
+  overflow-y: auto;
+}
+.expense-summary-item {
+  border-bottom: 1px solid #eef2f7;
+}
+.expense-summary-item:last-child {
+  border-bottom: 0;
+}
+.expense-summary-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 0;
+  text-decoration: none;
+  color: var(--text);
+  border-radius: 4px;
+}
+.expense-summary-link:hover {
+  background: #f8faff;
+}
+.expense-summary-info {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.expense-summary-number {
+  color: var(--text-2);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+.expense-summary-info > strong {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.expense-summary-meta {
+  color: var(--text-2);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.expense-summary-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.expense-summary-amount > strong {
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.expense-summary-amount .badge {
+  font-size: 10px;
+}
+.expense-summary-review {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 0 0 12px;
+}
+.expense-summary-more {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 7px;
+  border-top: 1px solid var(--border);
+  padding-top: 13px;
+  font-size: 12px;
+  text-decoration: none;
+}
+@media (max-width: 420px) {
+  .expense-summary-link {
+    gap: 9px;
+    flex-wrap: wrap;
+  }
+  .expense-summary-info {
+    min-width: 120px;
+  }
+  .expense-summary-amount {
+    margin-left: auto;
+  }
+}
+
+.payslips-card {
+  min-width: 0;
+}
+.payslips-card .table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+.payslips-card .table th.num {
+  text-align: right;
+}

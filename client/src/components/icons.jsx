@@ -460,6 +460,14 @@ export function Monogram({ className = '', height = 36, label = 'BrainADZ' }) {
 // ink for small text (at least 4.5:1 on white).
 export const MODULES = [
   {
+    path: '/expenses',
+    label: 'Expenses',
+    Icon: IconPayroll,
+    color: C.card,
+    soft: C.cardSoft,
+    ink: '#1460D0',
+  },
+  {
     path: '/my',
     label: 'My Space',
     Icon: IconMySpace,

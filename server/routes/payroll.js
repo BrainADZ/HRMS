@@ -661,6 +661,7 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
       notFound('Adjustment');
     if (!isHR(req.user) && !(a.employee_id === req.user.employeeId && a.status === 'Pending'))
       fail(403, 'You cannot delete this claim');
+    if (a.status === 'Reimbursed') fail(409, 'Reimbursed expenses cannot be deleted');
     await editAdjustments(req, a.month, () =>
       db.run('DELETE FROM payroll_adjustments WHERE id = ?', a.id),
     );
