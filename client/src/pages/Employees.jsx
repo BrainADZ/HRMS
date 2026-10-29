@@ -122,7 +122,7 @@ function People({ selectedId }) {
   const { data, error, reload } = useApi(`/employees?${qs}`);
   useEffect(() => setPage(1), [dq, filters, vertical]);
   const first = data?.items[0]?.id;
-  const shown = selectedId || (window.innerWidth > 1100 ? first : null);
+  const shown = selectedId || user.employeeId || (window.innerWidth > 1100 ? first : null);
   const setF = (k) => (e) => setFilters((f) => ({ ...f, [k]: e.target.value }));
   const k = data?.kpis;
   return (

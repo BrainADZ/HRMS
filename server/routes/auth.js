@@ -228,7 +228,7 @@ export default function authRoutes(r, { db, passwordResetMailer }) {
   // pause: true stops the work clock; the next sign-in asks why the employee was away.
   r.post('/auth/logout', async (req, res) => {
     let paused = null;
-    if (req.user?.employeeId && req.body?.pause)
+    if (req.user?.employeeId && !req.user.isOwner && req.body?.pause)
       paused = await endSession(db, {
         employeeId: req.user.employeeId,
         date: workDate(await today(db), await getSettings(db)),

@@ -1,6 +1,7 @@
 // Working-calendar context (weekly offs + company holidays) and the derived
 // day-by-day attendance status that leave, attendance and payroll all share.
 import { getSettings } from '../core.js';
+import { isCompanyOwner } from '../lib/employee-policy.js';
 import { dow, eachDay, monthStart, monthEnd } from '../lib/dates.js';
 import { isWorkingDay } from '../lib/leave.js';
 
@@ -95,6 +96,7 @@ export async function dayStatuses(db, employees, from, to, today, settings) {
       const leave = lv?.get(d);
       let s;
       if (!employed) s = { code: 'NA', lop: 0 };
+      else if (isCompanyOwner(e)) s = { code: 'NA', lop: 0, exempt: true };
       else if (leave && leave.calendar) s = { code: 'L', lop: leave.paid ? 0 : 1, leave };
       else if (ctx.holidays.has(d)) s = { code: 'H', lop: 0 };
       else if (ctx.weeklyOffs.includes(dow(d))) s = { code: 'WO', lop: 0 };
@@ -111,7 +113,7 @@ export async function dayStatuses(db, employees, from, to, today, settings) {
       } else {
         s = { code: 'F', lop: 0 };
       }
-      if (r) {
+      if (r && !s.exempt) {
         s.checkIn = r.check_in;
         s.checkOut = r.check_out;
         s.note = r.note;

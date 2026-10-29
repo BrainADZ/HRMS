@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useApp } from '../context.jsx';
 import { useApi } from '../lib/hooks.js';
 import {
   useWorkday,
@@ -15,9 +16,11 @@ import { Loading, ErrorBox, Progress } from './ui.jsx';
 export default function DailyAttendance({ data: suppliedData, compact = false }) {
   const { data: fetchedData, error, reload } = useApi(suppliedData ? null : '/dashboard/me');
   const data = suppliedData || fetchedData;
+  const { user } = useApp();
   const s = useWorkday();
   const now = useNow(1000);
   useOnWorkdayChange(reload);
+  if (user.isOwner) return null;
   if (error && !data) return <ErrorBox error={error} onRetry={reload} />;
   if (!data) return <Loading />;
   if (!data.employee) return null;

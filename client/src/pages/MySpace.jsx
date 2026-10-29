@@ -78,7 +78,7 @@ export default function MySpace() {
 }
 
 function Overview() {
-  const { toast } = useApp();
+  const { toast, user } = useApp();
   const { data, error, reload } = useApi('/dashboard/me');
   const [modal, setModal] = useState(null);
   const [policy, setPolicy] = useState(null);
@@ -114,9 +114,11 @@ function Overview() {
             <Button icon={FileText} onClick={() => setModal('request')}>
               Raise request
             </Button>
-            <Button icon={Receipt} onClick={() => setModal('claim')}>
-              Claim expense
-            </Button>
+            {!user.isOwner && (
+              <Button icon={Receipt} onClick={() => setModal('claim')}>
+                Claim expense
+              </Button>
+            )}
             <Button icon={User} onClick={() => setModal('profile')}>
               Update profile
             </Button>

@@ -1,5 +1,6 @@
 // Password hashing (scrypt) and cookie sessions stored in PostgreSQL.
 import crypto from 'node:crypto';
+import { isCompanyOwner } from './lib/employee-policy.js';
 import { fail, fullName } from './core.js';
 
 const COOKIE = process.env.SESSION_COOKIE_NAME || 'hrms_session';
@@ -98,6 +99,7 @@ export async function loadUser(db, userId) {
     username: row.username,
     role: row.role,
     employeeId: row.employee_id,
+    isOwner: isCompanyOwner(row),
     name: row.first_name ? fullName(row) : row.display_name || row.email,
     firstName: row.first_name || row.display_name?.split(/\s+/)[0] || row.email.split('@')[0],
     designation:

@@ -9,6 +9,8 @@ import { ExpenseFileIcon, expenseFiles, expenseMoney, expenseNumber } from './Ex
 import './Expenses.css';
 
 export function ExpenseModal({ initialBulk = false }) {
+  const { user } = useApp();
+  if (user.isOwner) return <Navigate to="/expenses" replace />;
   return <Navigate to={initialBulk ? '/expenses/bulk' : '/expenses/new'} replace />;
 }
 
@@ -29,14 +31,16 @@ export function ExpenseCard() {
         </Link>
       }
     >
-      <div className="expense-summary-actions">
-        <Link className="btn primary sm" to="/expenses/new">
-          <Plus size={15} /> Add Expense
-        </Link>
-        <Link className="btn sm" to="/expenses/bulk">
-          Bulk Add Expenses
-        </Link>
-      </div>
+      {!user.isOwner && (
+        <div className="expense-summary-actions">
+          <Link className="btn primary sm" to="/expenses/new">
+            <Plus size={15} /> Add Expense
+          </Link>
+          <Link className="btn sm" to="/expenses/bulk">
+            Bulk Add Expenses
+          </Link>
+        </div>
+      )}
       {!!items.length && (
         <div className="expense-summary-caption">
           <span>

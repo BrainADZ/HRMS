@@ -204,10 +204,7 @@ export default function Login() {
                 />
               </Field>
             ) : (
-              <Field
-                label="Username"
-                hint="First name + BZL (Live), BZM (Marketing), BZE (Exhibits) or BZ (Corporate) + employee number, e.g. AaravBZL030."
-              >
+              <Field label="Username">
                 <Input
                   autoComplete="username"
                   autoCapitalize="none"

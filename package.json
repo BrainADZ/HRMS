@@ -16,6 +16,7 @@
     "test": "node --v8-pool-size=1 --wasm-num-compilation-tasks=1 --test --test-concurrency=1 \"server/tests/*.test.js\"",
     "demo": "node server/demo.js",
     "demo:seed": "node --env-file=.env server/scripts/seed-demo.js",
+    "seed:demo": "npm run demo:seed",
     "db:setup": "node --env-file-if-exists=.env server/scripts/db-setup.js",
     "db:backup": "node --env-file-if-exists=.env server/scripts/db-backup.js",
     "db:verify-backup": "node --env-file-if-exists=.env server/scripts/db-verify-backup.js",

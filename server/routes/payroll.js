@@ -584,6 +584,8 @@ export default function payrollRoutes(r, { db, upload, uploads }) {
       if (!hr && employeeId !== req.user.employeeId)
         fail(403, 'You can only submit your own claims');
       const kind = oneOf(req.body.kind || 'Reimbursement', KINDS, { name: 'Type' });
+      if (req.user.isOwner && employeeId === req.user.employeeId && kind === 'Reimbursement')
+        fail(403, 'The company owner cannot submit personal expenses');
       if (!hr && kind !== 'Reimbursement')
         fail(403, 'Employees can only submit reimbursement claims');
       const month = D.isValidMonth(req.body.month) ? req.body.month : D.monthOf(T);

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ChevronDown, FileText, Plus, Receipt, Search, Trash2, Upload, X } from 'lucide-react';
 import { useApp } from '../context.jsx';
 import { useApi, useAction } from '../lib/hooks.js';
@@ -65,6 +65,7 @@ const hasContent = (e) =>
 
 export default function Expenses() {
   const { pathname } = useLocation();
+  const { user } = useApp();
   const { data, error, reload } = useApi('/expenses');
   const detailId = pathname.match(/^\/expenses\/(\d+)(?:\/reimburse)?$/)?.[1];
   if (detailId)
@@ -76,6 +77,11 @@ export default function Expenses() {
       />
     );
   const isEditor = pathname === '/expenses/new' || pathname === '/expenses/bulk';
+  if (user.isOwner) {
+    if (isEditor) return <Navigate to="/expenses" replace />;
+    if (error) return <ErrorBox error={error} onRetry={reload} />;
+    return data ? <ExpenseAdminList data={data} /> : <Loading />;
+  }
   if (pathname === '/expenses/approvals' && data?.canReview)
     return <ExpenseAdminList data={data} />;
   if (isEditor || (pathname === '/expenses' && data?.canReview))

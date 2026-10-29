@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useApp } from '../context.jsx';
 import { Link, useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
 import { Avatar, Badge, Empty } from '../components/ui.jsx';
@@ -13,6 +14,7 @@ const FILTERS = [
   { label: 'Rejected', value: 'Rejected' },
 ];
 export default function ExpenseAdminList({ data }) {
+  const { user } = useApp();
   const [status, setStatus] = useState('all');
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
@@ -39,9 +41,11 @@ export default function ExpenseAdminList({ data }) {
           <h1>Expense claims</h1>
           <div className="sub">Review claims and record reimbursements.</div>
         </div>
-        <Link className="btn primary" to="/expenses">
-          Expense options
-        </Link>
+        {!user.isOwner && (
+          <Link className="btn primary" to="/expenses">
+            Expense options
+          </Link>
+        )}
       </div>
       <ExpenseAdvances showCreate={false} />
       <div className="expense-workspace">

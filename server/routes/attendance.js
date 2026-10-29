@@ -1,4 +1,5 @@
 import { asyncMap, asyncFilter } from '../database/async.js';
+import { isCompanyOwner } from '../lib/employee-policy.js';
 import {
   today,
   isHR,
@@ -78,12 +79,13 @@ async function scopedEmployees(
     where.push("(e.first_name || ' ' || e.last_name LIKE ? OR e.code LIKE ?)");
     params.push(like, like);
   }
-  return await db.all(
+  const employees = await db.all(
     `SELECT e.*, d.name AS department, v.short AS vertical, v.color AS vertical_color FROM employees e
     LEFT JOIN departments d ON d.id = e.department_id LEFT JOIN verticals v ON v.id = e.vertical_id
     WHERE ${where.join(' AND ')} ORDER BY e.first_name, e.last_name`,
     ...params,
   );
+  return employees.filter((employee) => !isCompanyOwner(employee));
 }
 
 async function canMark(db, user, employeeId) {
@@ -116,7 +118,7 @@ export default function attendanceRoutes(r, { db }) {
     const s = await settings();
     const T = workDate(await today(db), s);
     const out = { today: T, me: null, team: null };
-    if (req.user.employeeId) {
+    if (req.user.employeeId && !req.user.isOwner) {
       const e = await db.get('SELECT * FROM employees WHERE id = ?', req.user.employeeId);
       const st = (await dayStatuses(db, [e], T, T, T, s)).get(e.id).get(T);
       const rec = await db.get(
@@ -139,10 +141,16 @@ export default function attendanceRoutes(r, { db }) {
         department: req.query.department,
       });
       const st = await dayStatuses(db, emps, T, T, T, s);
-      const leaveReasons = new Map((await db.all(
-        `SELECT employee_id, reason FROM leave_requests WHERE status = 'Approved' AND from_date <= ? AND to_date >= ? ${emps.length ? `AND employee_id IN (${emps.map(() => '?').join(',')})` : 'AND 1=0'}`,
-        T, T, ...emps.map((e) => e.id),
-      )).map((row) => [row.employee_id, row.reason]));
+      const leaveReasons = new Map(
+        (
+          await db.all(
+            `SELECT employee_id, reason FROM leave_requests WHERE status = 'Approved' AND from_date <= ? AND to_date >= ? ${emps.length ? `AND employee_id IN (${emps.map(() => '?').join(',')})` : 'AND 1=0'}`,
+            T,
+            T,
+            ...emps.map((e) => e.id),
+          )
+        ).map((row) => [row.employee_id, row.reason]),
+      );
       const rows = await asyncMap(emps, async (e) => {
         const d = st.get(e.id).get(T);
         return {
@@ -197,7 +205,7 @@ export default function attendanceRoutes(r, { db }) {
       toApprove: 0,
       workdayEnd: s.workdayEnd,
     };
-    if (req.user.employeeId) {
+    if (req.user.employeeId && !req.user.isOwner) {
       await generateShortfalls(db, {
         today: calendarToday,
         employeeIds: [req.user.employeeId],
@@ -235,6 +243,7 @@ export default function attendanceRoutes(r, { db }) {
   });
 
   r.post('/attendance/check-in', async (req, res) => {
+    if (req.user.isOwner) fail(403, 'The company owner does not need to check in');
     if (!req.user.employeeId) fail(400, 'Your login is not linked to an employee record');
     let mode = oneOf(req.body.mode || 'office', ['office', 'wfh'], { name: 'Mode' });
     const employee = await db.get(
@@ -313,6 +322,7 @@ export default function attendanceRoutes(r, { db }) {
   });
 
   r.post('/attendance/check-out', async (req, res) => {
+    if (req.user.isOwner) fail(403, 'The company owner does not need to check out');
     if (!req.user.employeeId) fail(400, 'Your login is not linked to an employee record');
     const by = oneOf(req.body.action || 'checkout', ['checkout', 'break'], { name: 'Action' });
     const out = await endSession(db, {
@@ -444,7 +454,9 @@ export default function attendanceRoutes(r, { db }) {
     if (from > to) fail(400, 'Start date must be before end date');
     if ((Date.parse(to) - Date.parse(from)) / 86400000 > 31) fail(400, 'Choose at most 32 days');
     const employees = await scopedEmployees(db, req.user, {
-      from, to, vertical: req.query.vertical,
+      from,
+      to,
+      vertical: req.query.vertical,
       employee: req.query.employee,
     });
     const s = await settings();
@@ -456,19 +468,28 @@ export default function attendanceRoutes(r, { db }) {
     const activeDays = await db.all(
       `SELECT employee_id, date FROM work_sessions WHERE date BETWEEN ? AND ? AND employee_id IN (${placeholders})
        UNION SELECT employee_id, date FROM attendance WHERE date BETWEEN ? AND ? AND check_in IS NOT NULL AND employee_id IN (${placeholders})`,
-      from, to, ...ids, from, to, ...ids,
+      from,
+      to,
+      ...ids,
+      from,
+      to,
+      ...ids,
     );
     for (const { employee_id: employeeId, date: day } of activeDays) {
-        const employee = employeeById.get(employeeId);
-        if (!employee) continue;
-        items.push({
-          employeeId: employee.id,
-          name: fullName(employee),
-          code: employee.code,
-          date: day,
-          attendanceStatus: await db.value('SELECT status FROM attendance WHERE employee_id = ? AND date = ?', employee.id, day),
-          ...(await workdaySummary(db, employee.id, day, s)),
-        });
+      const employee = employeeById.get(employeeId);
+      if (!employee) continue;
+      items.push({
+        employeeId: employee.id,
+        name: fullName(employee),
+        code: employee.code,
+        date: day,
+        attendanceStatus: await db.value(
+          'SELECT status FROM attendance WHERE employee_id = ? AND date = ?',
+          employee.id,
+          day,
+        ),
+        ...(await workdaySummary(db, employee.id, day, s)),
+      });
     }
     items.sort((a, b) => b.date.localeCompare(a.date) || a.name.localeCompare(b.name));
     res.json({ items });

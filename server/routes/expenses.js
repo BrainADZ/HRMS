@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { isCompanyOwner } from '../lib/employee-policy.js';
 import { fail, id, num, str, notifyUsers, today, isAdmin } from '../core.js';
 import { json } from '../db.js';
 import { isValidYmd } from '../lib/dates.js';
@@ -49,9 +50,11 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
   r.get('/expenses/advances/eligible', async (req, res) => {
     if (req.user.role !== 'accounts') return res.json({ items: [] });
     res.json({
-      items: await db.all(
-        'SELECT e.id, e.first_name, e.last_name, e.code FROM employees e JOIN users u ON u.employee_id=e.id WHERE u.active=1 ORDER BY e.first_name, e.last_name',
-      ),
+      items: (
+        await db.all(
+          'SELECT e.id, e.first_name, e.last_name, e.code, e.designation FROM employees e JOIN users u ON u.employee_id=e.id WHERE u.active=1 ORDER BY e.first_name, e.last_name',
+        )
+      ).filter((employee) => !isCompanyOwner(employee)),
     });
   });
   r.get('/expenses/advances', async (req, res) => {
@@ -66,7 +69,7 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
       isAdmin: isAdmin(req.user),
       items: rows.map((a) => ({
         ...advanceView(a),
-        isOwner: a.employee_id === req.user.employeeId,
+        isOwner: !req.user.isOwner && a.employee_id === req.user.employeeId,
       })),
     });
   });
@@ -74,11 +77,13 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
     if (req.user.role !== 'accounts') fail(403, 'Only Accounts can create advances');
     const employeeId = id(req.body.employee_id);
     const employee = await db.get(
-      'SELECT id, first_name, last_name FROM employees WHERE id=?',
+      'SELECT id, first_name, last_name, designation FROM employees WHERE id=?',
       employeeId,
     );
     const owner = await db.get('SELECT id FROM users WHERE employee_id=? AND active=1', employeeId);
     if (!employee || !owner) fail(400, 'Choose an active employee');
+    if (isCompanyOwner(employee))
+      fail(403, 'The company owner cannot receive employee expense advances');
     const amount = num(req.body.amount, {
       required: true,
       min: 1,
@@ -196,6 +201,7 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
     res.json({ ok: true });
   });
   r.post('/expenses/advances/:id/extra-claim', async (req, res) => {
+    if (req.user.isOwner) fail(403, 'The company owner cannot submit personal expenses');
     const advanceId = id(req.params.id);
     let claimId;
     await db.tx(async () => {
@@ -257,6 +263,7 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
       exts: ['.jpg', '.jpeg', '.png', '.webp', '.pdf', '.doc', '.docx', '.xlsx'],
     }).array('proofs', 30),
     async (req, res) => {
+      if (req.user.isOwner) fail(403, 'The company owner cannot submit personal expenses');
       if (!req.user.employeeId) fail(400, 'An employee profile is required to submit expenses');
       let entries;
       try {

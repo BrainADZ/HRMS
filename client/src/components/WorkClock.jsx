@@ -278,14 +278,14 @@ function BreakControls({ s }) {
 
 // ---------- reason for the gap ----------
 export function GapReasonModal({ welcome, onClose }) {
-  const { toast } = useApp();
+  const { toast, user } = useApp();
   const s = useWorkday();
   const now = useNow(30000);
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
   const [run, busy] = useAction(toast);
   const w = s?.workday;
-  if (!w) return null;
+  if (user.isOwner || !w) return null;
   const awayMin = w.awaySince
     ? Math.max(0, (now + (s.offset || 0) - Date.parse(w.awaySince)) / 60000)
     : 0;
@@ -365,12 +365,12 @@ export function GapReasonModal({ welcome, onClose }) {
 
 // Buttons used by the check-in cards on My Space and Attendance.
 export function ClockActions({ light }) {
-  const { toast } = useApp();
+  const { toast, user } = useApp();
   const s = useWorkday();
   const [run, busy] = useAction(toast);
   const [ask, setAsk] = useState(false);
   const w = s?.workday;
-  if (!w || (OFF_DAYS.includes(s.dayStatus) && !w.sessions.length)) return null;
+  if (user.isOwner || !w || (OFF_DAYS.includes(s.dayStatus) && !w.sessions.length)) return null;
   const start = async (mode) => {
     if (
       await run(
@@ -489,7 +489,7 @@ export default function WorkClock() {
     [],
   );
 
-  if (!user.employeeId || !w) return null;
+  if (user.isOwner || !user.employeeId || !w) return null;
   if (OFF_DAYS.includes(s.dayStatus) && !w.sessions.length) return null;
   const pct = Math.min(100, (worked / w.requiredMinutes) * 100);
   const left = w.requiredMinutes - worked;
@@ -851,7 +851,7 @@ export function SignInPrompts() {
     }
   };
   useEffect(() => {
-    if (!s?.workday || user.mustChangePassword) return;
+    if (user.isOwner || !s?.workday || user.mustChangePassword) return;
     if (s.workday.signedOutAway && !shown.current.welcome && !seen('welcome')) {
       shown.current.welcome = true;
       setWelcome(true);

@@ -1,5 +1,6 @@
 // A small, deterministic company fixture for local demos. Every person is fictional.
 import { hashPassword } from './auth.js';
+import { isCompanyOwner } from './lib/employee-policy.js';
 import { DEFAULT_SETTINGS, setSetting } from './core.js';
 import * as D from './lib/dates.js';
 import { estimateMonthlyTds } from './lib/payroll.js';
@@ -404,7 +405,7 @@ export async function seed50Demo(db, { today = D.todayIn(), saveFile = null } = 
       ),
     );
     for (const person of people) {
-      for (let back = 4; back >= 0; back--) {
+      for (let back = 4; back >= 0 && !isCompanyOwner(person); back--) {
         const m = D.addMonths(month, -back);
         const leaveDate = firstWorkday(m, 7 + (people.indexOf(person) % 6));
         if (
