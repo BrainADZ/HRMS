@@ -21,6 +21,7 @@ import { ago, greeting } from '../lib/format.js';
 import { useClickOutside, useDebounced } from '../lib/hooks.js';
 import { Avatar, Button, Field, Input, Modal } from './ui.jsx';
 import WorkClock, { SignInPrompts, SignOutModal, LocationGuard } from './WorkClock.jsx';
+import CelebrationBoard from './CelebrationBoard.jsx';
 import { useWorkday } from '../lib/workday.js';
 import CompanyLogo from './CompanyLogo.jsx';
 import ProfilePhoto from './ProfilePhoto.jsx';
@@ -762,6 +763,7 @@ export default function Layout({ children }) {
       {getApp && <GetAppModal onClose={() => setGetApp(false)} />}
       {user.mustChangePassword && <ChangePassword forced onClose={() => {}} />}
       <SignInPrompts />
+      <CelebrationBoard />
       <LocationGuard />
     </div>
   );

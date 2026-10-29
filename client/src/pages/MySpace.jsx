@@ -40,7 +40,6 @@ import { NoticeBoard } from './Dashboard.jsx';
 import { AttentionBanner } from '../components/WorkClock.jsx';
 import { useOnWorkdayChange } from '../lib/workday.js';
 import DailyAttendance from '../components/DailyAttendance.jsx';
-import CelebrationBoard from '../components/CelebrationBoard.jsx';
 import { EmployeeForm, Onboarding } from './Employees.jsx';
 
 export default function MySpace() {
@@ -60,7 +59,6 @@ export default function MySpace() {
         </div>
       )}
       {user.role === 'employee' && <h1 className="sr-only">My Space</h1>}
-      <CelebrationBoard />
       <Tabs
         value={tab}
         onChange={(t) => setSp(t === 'overview' ? {} : { tab: t })}

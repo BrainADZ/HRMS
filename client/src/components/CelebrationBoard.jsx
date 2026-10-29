@@ -6,6 +6,7 @@ import { useApp } from '../context.jsx';
 import { Button, Modal } from './ui.jsx';
 
 const shownThisVisit = new Set();
+export const resetCelebrationReminders = () => shownThisVisit.clear();
 
 export default function CelebrationBoard({ publicView = false }) {
   const { user } = useApp();
@@ -31,68 +32,55 @@ export default function CelebrationBoard({ publicView = false }) {
     if (publicView || !user || !data) return;
     const tomorrow = addDays(data.today, 1);
     if (
-      !data.birthdays.some((item) => item.date === tomorrow) &&
-      !data.holidays.some((item) => item.date === tomorrow)
+      !data.birthdays.some((item) => item.date >= data.today && item.date <= tomorrow) &&
+      !data.holidays.some((item) => item.date >= data.today && item.date <= tomorrow)
     )
       return;
-    const key = `hrms.reminders.tomorrow.${user.id}.${data.today}`;
+    const key = `hrms.reminders.${user.id}.${data.today}`;
     const show = () => {
       if (shownThisVisit.has(key) || document.querySelector('[role="dialog"]')) return;
-      try {
-        if (localStorage.getItem(key)) return;
-      } catch {
-        /* use in-memory fallback */
-      }
       shownThisVisit.add(key);
-      try {
-        localStorage.setItem(key, 'shown');
-      } catch {
-        /* storage unavailable */
-      }
       setReminderDay(data.today);
     };
     const timer = setInterval(show, 500);
     return () => clearInterval(timer);
   }, [data, user?.id, publicView]);
   if (!data || (!data.birthdays.length && !data.holidays.length)) return null;
-  const birthdayToday = data.birthdays.filter((item) => item.date === data.today);
-  const holidayToday = data.holidays.filter((item) => item.date === data.today);
   const tomorrow = addDays(data.today, 1);
-  const futureBirthdays = data.birthdays.filter((item) => item.date === tomorrow);
-  const futureHolidays = data.holidays.filter((item) => item.date === tomorrow);
+  const futureBirthdays = data.birthdays.filter((item) => item.date >= data.today && item.date <= tomorrow);
+  const futureHolidays = data.holidays.filter((item) => item.date >= data.today && item.date <= tomorrow);
   return (
     <>
-      {publicView && (birthdayToday.length > 0 || holidayToday.length > 0) && (
+      {publicView && (futureBirthdays.length > 0 || futureHolidays.length > 0) && (
         <section
           className={`celebration-board ${publicView ? 'public' : ''}`}
           aria-label="Birthdays and holidays"
         >
-          {birthdayToday.length > 0 && (
+          {futureBirthdays.length > 0 && (
             <div className="celebration-block birthday-wishes">
               <h3>
                 <Cake size={19} />
-                Birthday wishes
+                Birthdays & wishes
               </h3>
               <ul>
-                {birthdayToday.map((item, index) => (
+                {futureBirthdays.map((item, index) => (
                   <li key={`${item.name}-${index}`}>
-                    Happy birthday, <strong>{item.name}</strong>! Wishing you a wonderful year
-                    ahead.
+                    <strong>{item.name}</strong> · {item.date === data.today ? 'Happy birthday today! Wishing you a wonderful year ahead.' : 'Birthday tomorrow!'}
                   </li>
                 ))}
               </ul>
             </div>
           )}
-          {holidayToday.length > 0 && (
+          {futureHolidays.length > 0 && (
             <div className="celebration-block holiday-wishes">
               <h3>
                 <CalendarHeart size={19} />
                 Holiday wishes
               </h3>
               <ul>
-                {holidayToday.map((item, index) => (
+                {futureHolidays.map((item, index) => (
                   <li key={`${item.name}-${index}`}>
-                    <strong>{item.name}</strong> — warm wishes to everyone celebrating!
+                    <strong>{item.name}</strong> · {item.date === data.today ? 'Today' : 'Tomorrow'} — warm wishes to everyone celebrating!
                     {item.type === 'Restricted'
                       ? ' Optional / restricted holiday.'
                       : ' Enjoy the holiday.'}
@@ -105,7 +93,7 @@ export default function CelebrationBoard({ publicView = false }) {
       )}
       {!publicView && reminderDay === data.today && (
         <Modal
-          title="Upcoming birthdays & holidays"
+          title="Birthdays & holidays"
           onClose={() => setReminderDay(null)}
           size="narrow"
           footer={
@@ -114,7 +102,7 @@ export default function CelebrationBoard({ publicView = false }) {
             </Button>
           }
         >
-          <p className="small muted">Tomorrow's birthdays and holidays.</p>
+          <p className="small muted">Today's celebrations and tomorrow's reminders.</p>
           <div className="celebration-reminders">
             {futureBirthdays.length > 0 && (
               <div className="celebration-block">
@@ -126,7 +114,7 @@ export default function CelebrationBoard({ publicView = false }) {
                   {futureBirthdays.map((item, index) => (
                     <li key={`${item.name}-${index}`}>
                       <strong>{item.name}</strong>
-                      <span>{fmtDate(item.date, { day: 'numeric', month: 'short' })}</span>
+                      <span>{item.date === data.today ? 'Today · Happy birthday!' : 'Tomorrow'} · {fmtDate(item.date, { day: 'numeric', month: 'short' })}</span>
                     </li>
                   ))}
                 </ul>
@@ -143,7 +131,7 @@ export default function CelebrationBoard({ publicView = false }) {
                     <li key={`${item.name}-${index}`}>
                       <strong>{item.name}</strong>
                       <span>
-                        {fmtDate(item.date, { day: 'numeric', month: 'short' })} · {item.type}
+                        {item.date === data.today ? 'Today' : 'Tomorrow'} · {fmtDate(item.date, { day: 'numeric', month: 'short' })} · {item.type}
                       </span>
                     </li>
                   ))}

@@ -52,7 +52,6 @@ import {
   Ring,
   STATUS,
 } from '../components/charts.jsx';
-import CelebrationBoard from '../components/CelebrationBoard.jsx';
 import '../components/Announcements.css';
 
 const NOTICE_ICON = {
@@ -329,7 +328,6 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
-      <CelebrationBoard />
       <section className="card announcement-panel mb-16" aria-label="Company announcements">
         <NoticeBoard notices={data.notices} onChange={reload} />
       </section>
