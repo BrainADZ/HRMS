@@ -1467,6 +1467,44 @@ textarea {
   padding-top: 14px;
   border-top: 1px solid rgba(255, 255, 255, 0.2);
 }
+.daily-attendance-activity-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.daily-attendance-activity-head h3 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+.daily-attendance-activity-head h3 span {
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 11px;
+  font-weight: 500;
+}
+.daily-attendance-activity-head > span {
+  color: #d5defa;
+  font-size: 11px;
+}
+.daily-attendance-activity-scroll {
+  max-height: 140px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.45) transparent;
+  padding-right: 10px;
+  border-radius: 6px;
+}
+.daily-attendance-activity-scroll:focus-visible {
+  outline: 2px solid #a8c9ff;
+  outline-offset: 3px;
+}
 .daily-attendance .sess {
   flex-wrap: wrap;
 }

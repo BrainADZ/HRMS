@@ -57,14 +57,14 @@ export function useNow(ms = 1000) {
   return now;
 }
 
-// Minutes worked today, counting a running session up to now.
+// Current work period: resumes after breaks and starts fresh after a proper checkout.
 export function workedNow(s, now = Date.now()) {
   const w = s?.workday;
   if (!w) return 0;
   const running = w.openSince
     ? Math.max(0, (now + (s.offset || 0) - Date.parse(w.openSince)) / 60000)
     : 0;
-  return w.workedMinutes + running;
+  return (w.timerMinutes ?? w.workedMinutes) + running;
 }
 
 export const clockText = (minutes, seconds = true) => {

@@ -2,25 +2,29 @@ import { useState } from 'react';
 import { useApp } from '../context.jsx';
 import { Link, useNavigate } from 'react-router-dom';
 import { Search } from 'lucide-react';
-import { Avatar, Badge, Empty } from '../components/ui.jsx';
+import { Avatar, Badge, Empty, ErrorBox } from '../components/ui.jsx';
 import { fmtDate } from '../lib/format.js';
 import { expenseMoney, expenseNumber } from '../components/ExpenseFiles.jsx';
-import ExpenseAdvances from './ExpenseAdvances.jsx';
+import { expensePath, matchesExpenseStatus, expenseStatus } from '../lib/expense-list.js';
 const FILTERS = [
   { label: 'All', value: 'all' },
   { label: 'Awaiting Approval', value: 'Pending' },
   { label: 'Awaiting Reimbursement', value: 'Approved' },
   { label: 'Reimbursed', value: 'Reimbursed' },
   { label: 'Rejected', value: 'Rejected' },
+  { label: 'Awaiting Acceptance', value: 'Awaiting Acceptance' },
+  { label: 'Active Advances', value: 'Active' },
+  { label: 'Submitted Advances', value: 'Submitted' },
+  { label: 'Settled Advances', value: 'Settled' },
 ];
-export default function ExpenseAdminList({ data }) {
+export default function ExpenseAdminList({ data, error, onRetry }) {
   const { user } = useApp();
   const [status, setStatus] = useState('all');
   const [query, setQuery] = useState('');
   const navigate = useNavigate();
   const items = data.items.filter(
     (e) =>
-      (status === 'all' || e.status === status) &&
+      matchesExpenseStatus(e, status) &&
       [
         expenseNumber(e),
         e.first_name,
@@ -38,16 +42,23 @@ export default function ExpenseAdminList({ data }) {
     <section className="expenses-page">
       <div className="page-head">
         <div>
-          <h1>Expense claims</h1>
-          <div className="sub">Review claims and record reimbursements.</div>
+          <h1>Expenses & Advances</h1>
+          <div className="sub">Review employee expenses and advances.</div>
         </div>
         {!user.isOwner && (
-          <Link className="btn primary" to="/expenses">
-            Expense options
-          </Link>
+          <div className="row gap-8">
+            <Link className="btn primary" to="/expenses/new">
+              Add Expense
+            </Link>
+            {data.canCreateAdvance && (
+              <Link className="btn" to="/expenses/bulk?mode=advances">
+                Add Advance
+              </Link>
+            )}
+          </div>
         )}
       </div>
-      <ExpenseAdvances showCreate={false} />
+      {error && <ErrorBox error={error} onRetry={onRetry} />}
       <div className="expense-workspace">
         <div className="expense-toolbar">
           <div className="expense-list-tabs" role="tablist" aria-label="Admin expense status">
@@ -74,7 +85,7 @@ export default function ExpenseAdminList({ data }) {
               onChange={(e) => setQuery(e.target.value)}
             />
           </div>
-          <span className="small muted">{items.length} claims</span>
+          <span className="small muted">{items.length} records</span>
         </div>
         <div className="expense-table-scroll">
           <table className="table expense-admin-table">
@@ -90,20 +101,20 @@ export default function ExpenseAdminList({ data }) {
             <thead>
               <tr>
                 <th>Submitter</th>
-                <th>Expense#</th>
+                <th>Expense / Advance#</th>
                 <th>Report name / Purpose</th>
                 <th>Status</th>
                 <th>Approver</th>
                 <th className="num">Total</th>
-                <th className="num">To be reimbursed</th>
+                <th className="num">Balance / Reimbursement</th>
               </tr>
             </thead>
             <tbody>
               {items.map((e) => (
                 <tr
-                  key={e.id}
+                  key={expenseNumber(e)}
                   className="expense-list-row"
-                  onClick={() => navigate('/expenses/' + e.id)}
+                  onClick={() => navigate(expensePath(e))}
                 >
                   <td>
                     <div className="expense-submitter">
@@ -117,7 +128,7 @@ export default function ExpenseAdminList({ data }) {
                     </div>
                   </td>
                   <td>
-                    <Link to={'/expenses/' + e.id} onClick={(event) => event.stopPropagation()}>
+                    <Link to={expensePath(e)} onClick={(event) => event.stopPropagation()}>
                       {expenseNumber(e)}
                     </Link>
                   </td>
@@ -125,7 +136,7 @@ export default function ExpenseAdminList({ data }) {
                     <Link
                       className="expense-cell-text"
                       title={e.details?.purpose || e.note}
-                      to={'/expenses/' + e.id}
+                      to={expensePath(e)}
                       onClick={(event) => event.stopPropagation()}
                     >
                       {e.details?.purpose || e.note || 'Expense'}
@@ -145,13 +156,21 @@ export default function ExpenseAdminList({ data }) {
                             : 'amber'
                       }
                     >
-                      {e.status}
+                      {expenseStatus(e)}
                     </Badge>
                   </td>
-                  <td>{e.details?.review?.by || '—'}</td>
+                  <td>{e.isAdvance ? 'CEO / Master Admin' : e.details?.review?.by || '—'}</td>
                   <td className="num">{expenseMoney(e.amount)}</td>
                   <td className="num">
-                    {expenseMoney(['Reimbursed', 'Rejected'].includes(e.status) ? 0 : e.amount)}
+                    {expenseMoney(
+                      e.isAdvance
+                        ? e.status === 'Rejected'
+                          ? 0
+                          : e.balance
+                        : ['Reimbursed', 'Rejected'].includes(e.status)
+                          ? 0
+                          : e.amount,
+                    )}
                   </td>
                 </tr>
               ))}
@@ -159,7 +178,7 @@ export default function ExpenseAdminList({ data }) {
           </table>
           {!items.length && (
             <div className="expense-empty">
-              <Empty text="No claims in this view" />
+              <Empty text="No expenses or advances in this view" />
             </div>
           )}
         </div>

@@ -9,6 +9,13 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
     db.all(
       `SELECT u.id FROM users u LEFT JOIN employees e ON e.id=u.employee_id LEFT JOIN departments d ON d.id=e.department_id WHERE u.active=1 AND (u.role='accounts' OR LOWER(d.name) IN ('accounts','finance','accounts & finance','finance & accounts','accounting'))`,
     );
+  const masterAdmins = async () =>
+    (
+      await db.all(
+        "SELECT u.id, e.designation FROM users u JOIN employees e ON e.id=u.employee_id WHERE u.role='admin' AND u.active=1",
+      )
+    ).filter(isCompanyOwner);
+  const canApproveAdvances = (user) => isAdmin(user) && user.isOwner;
   const admins = async () => db.all("SELECT id FROM users WHERE role='admin' AND active=1");
   const reviewer = async (user) =>
     isAdmin(user) || user.role === 'accounts' || (await accounts()).some((u) => u.id === user.id);
@@ -23,7 +30,11 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
       `SELECT a.*, e.first_name, e.last_name, e.code, e.designation, d.name AS department FROM payroll_adjustments a JOIN employees e ON e.id=a.employee_id LEFT JOIN departments d ON d.id=e.department_id WHERE a.kind='Reimbursement' ${canReview ? '' : 'AND a.employee_id=?'} ORDER BY a.created_at DESC LIMIT 200`,
       ...(canReview ? [] : [req.user.employeeId]),
     );
-    res.json({ canReview, canCreateAdvance: req.user.role === 'accounts', items: items.map(view) });
+    res.json({
+      canReview,
+      canCreateAdvance: !req.user.isOwner && (isAdmin(req.user) || req.user.role === 'accounts'),
+      items: items.map(view),
+    });
   });
   r.get('/expenses/merchants', async (req, res) => {
     const rows = await db.all(
@@ -48,7 +59,8 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
     return { ...a, entries, spent, balance: a.amount - spent };
   };
   r.get('/expenses/advances/eligible', async (req, res) => {
-    if (req.user.role !== 'accounts') return res.json({ items: [] });
+    if (req.user.isOwner || (!isAdmin(req.user) && req.user.role !== 'accounts'))
+      return res.json({ items: [] });
     res.json({
       items: (
         await db.all(
@@ -65,8 +77,8 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
     );
     res.json({
       canReview,
-      canCreate: req.user.role === 'accounts',
-      isAdmin: isAdmin(req.user),
+      canCreate: !req.user.isOwner && (isAdmin(req.user) || req.user.role === 'accounts'),
+      canApprove: canApproveAdvances(req.user),
       items: rows.map((a) => ({
         ...advanceView(a),
         isOwner: !req.user.isOwner && a.employee_id === req.user.employeeId,
@@ -74,7 +86,8 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
     });
   });
   r.post('/expenses/advances', async (req, res) => {
-    if (req.user.role !== 'accounts') fail(403, 'Only Accounts can create advances');
+    if (req.user.isOwner || (!isAdmin(req.user) && req.user.role !== 'accounts'))
+      fail(403, 'Only Admin / Accounts can create advances');
     const employeeId = id(req.body.employee_id);
     const employee = await db.get(
       'SELECT id, first_name, last_name, designation FROM employees WHERE id=?',
@@ -111,16 +124,18 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
     });
     await notifyUsers(
       db,
-      (await admins()).map((u) => u.id),
+      (await masterAdmins()).map((u) => u.id),
       `Advance request: ₹${amount} for ${employee.first_name} ${employee.last_name} needs approval`,
       '/expenses/approvals',
     );
     res.json({ id: advanceId });
   });
   r.post('/expenses/advances/:id/decision', async (req, res) => {
-    if (!isAdmin(req.user)) fail(403, 'Only admin can approve advances');
+    if (!canApproveAdvances(req.user))
+      fail(403, 'Only the CEO / Master Admin can approve advances');
     if (!['approve', 'reject'].includes(req.body.action)) fail(400, 'Choose approve or reject');
     const a = await advanceRow(req);
+    if (a.requested_by === req.user.id) fail(403, 'You cannot approve your own advance request');
     if (a.status !== 'Pending Admin') fail(409, 'Advance already reviewed');
     const approved = req.body.action === 'approve';
     await db.update('expense_advances', a.id, {
@@ -136,7 +151,7 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
       db,
       [a.requested_by],
       approved
-        ? `Expense advance #${a.id} was approved by admin`
+        ? `Expense advance #${a.id} was approved by the CEO`
         : `Expense advance request #${a.id} was rejected`,
       '/expenses/approvals',
     );
@@ -171,6 +186,8 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
     if (a.employee_id !== req.user.employeeId)
       fail(403, 'This advance belongs to another employee');
     if (a.status !== 'Active') fail(409, 'Only active advances can be submitted');
+    if (!json(a.entries, []).length)
+      fail(400, 'Add at least one expense against this advance before submitting final expenses');
     await db.update('expense_advances', a.id, {
       status: 'Submitted',
       submitted_at: new Date().toISOString(),

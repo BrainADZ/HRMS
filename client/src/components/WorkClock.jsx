@@ -143,6 +143,51 @@ function usePipWindow() {
   return w;
 }
 
+function CheckoutButton({ size }) {
+  const { toast } = useApp();
+  const [choosing, setChoosing] = useState(false);
+  const [run, busy] = useAction(toast);
+  const finish = async (action) => {
+    if (
+      await run(
+        () => checkOut(action),
+        action === 'break'
+          ? 'On break. Your work timer is paused.'
+          : 'Checked out. Your workday is finished.',
+      )
+    )
+      setChoosing(false);
+  };
+  if (!choosing)
+    return (
+      <Button size={size} icon={LogOut} onClick={() => setChoosing(true)}>
+        Check out
+      </Button>
+    );
+  return (
+    <div className="col" style={{ gap: 6 }}>
+      <span className="small">Taking a break or finishing your day?</span>
+      <div className="row wrap gap-8">
+        <Button size={size} icon={Coffee} disabled={busy} onClick={() => finish('break')}>
+          Pause / Break
+        </Button>
+        <Button
+          size={size}
+          variant="primary"
+          icon={LogOut}
+          disabled={busy}
+          onClick={() => finish('checkout')}
+        >
+          Proper checkout
+        </Button>
+        <Button size={size} disabled={busy} onClick={() => setChoosing(false)}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function FloatingClock({ s }) {
   const now = useNow(1000);
   const { toast } = useApp();
@@ -177,7 +222,13 @@ function FloatingClock({ s }) {
     <div className={`pip-clock${minimized ? ' minimized' : ''}`}>
       <div className="row between pip-summary">
         <span className={`pip-state ${running ? 'on' : ''}`}>
-          {running ? 'Working' : w.breakSince ? 'On break' : 'Paused'}
+          {running
+            ? 'Working'
+            : w.checkedOutAt
+              ? 'Checked out'
+              : w.breakSince
+                ? 'On break'
+                : 'Paused'}
         </span>
         <button
           type="button"
@@ -204,23 +255,13 @@ function FloatingClock({ s }) {
             <span className="xs muted">
               {running
                 ? `Since ${fmtTime(w.openSince)}`
-                : w.awaySince
-                  ? `Away since ${fmtTime(w.awaySince)}`
-                  : 'Not checked in'}
+                : w.checkedOutAt
+                  ? `Checked out at ${fmtTime(w.checkedOutAt)}`
+                  : w.awaySince
+                    ? `Away since ${fmtTime(w.awaySince)}`
+                    : 'Not checked in'}
             </span>
-            {running && (
-              <button
-                type="button"
-                className="btn xs"
-                onClick={() =>
-                  checkOut()
-                    .then(() => toast('Checked out. Your clock is paused.', 'success'))
-                    .catch((e) => toast(e.message, 'error'))
-                }
-              >
-                Check out
-              </button>
-            )}
+            {running && <CheckoutButton size="xs" />}
           </div>
           <BreakControls s={s} />
         </>
@@ -384,7 +425,7 @@ export function ClockActions({ light }) {
   return (
     <div className="col" style={{ gap: 6 }}>
       <div className="row">
-        {!w.sessions.length && (
+        {(!w.sessions.length || w.checkedOutAt) && (
           <>
             <Button variant="primary" icon={LogIn} loading={busy} onClick={() => start('office')}>
               Check in
@@ -394,21 +435,8 @@ export function ClockActions({ light }) {
             </Button>
           </>
         )}
-        {w.openSince && (
-          <Button
-            icon={LogOut}
-            loading={busy}
-            onClick={() =>
-              run(
-                () => checkOut(),
-                (r) => `Checked out after ${r.worked} today. Your clock is paused.`,
-              )
-            }
-          >
-            Check out
-          </Button>
-        )}
-        {!w.openSince && !w.breakSince && w.sessions.length > 0 && (
+        {w.openSince && <CheckoutButton />}
+        {!w.openSince && !w.checkedOutAt && !w.breakSince && w.sessions.length > 0 && (
           <Button variant={light ? '' : 'primary'} icon={LogIn} onClick={() => setAsk(true)}>
             Check in again
           </Button>
@@ -515,13 +543,25 @@ export default function WorkClock() {
         {running ? (
           <span className="pulse" />
         ) : w.sessions.length ? (
-          <Pause size={14} />
+          w.checkedOutAt ? (
+            <LogOut size={14} />
+          ) : (
+            <Pause size={14} />
+          )
         ) : (
           <Timer size={15} />
         )}
         <span className="t">{w.sessions.length ? clockText(worked) : 'Check in'}</span>
         {w.sessions.length > 0 && (
-          <span className="lbl">{running ? 'Working' : w.breakSince ? 'On break' : 'Paused'}</span>
+          <span className="lbl">
+            {running
+              ? 'Working'
+              : w.checkedOutAt
+                ? 'Checked out'
+                : w.breakSince
+                  ? 'On break'
+                  : 'Paused'}
+          </span>
         )}
       </button>
       {open && (
@@ -532,7 +572,9 @@ export default function WorkClock() {
               {running ? (
                 <Badge tone="green">Working</Badge>
               ) : w.sessions.length ? (
-                <Badge tone="gray">{w.breakSince ? 'On break' : 'Paused'}</Badge>
+                <Badge tone="gray">
+                  {w.checkedOutAt ? 'Checked out' : w.breakSince ? 'On break' : 'Paused'}
+                </Badge>
               ) : null}
             </div>
           </div>
@@ -547,7 +589,7 @@ export default function WorkClock() {
             <SessionList w={w} compact />
             <LocationLine />
             <div className="row wrap mt-16" style={{ gap: 8 }}>
-              {!w.sessions.length && (
+              {(!w.sessions.length || w.checkedOutAt) && (
                 <>
                   <Button
                     size="sm"
@@ -563,22 +605,8 @@ export default function WorkClock() {
                   </Button>
                 </>
               )}
-              {running && (
-                <Button
-                  size="sm"
-                  icon={LogOut}
-                  loading={busy}
-                  onClick={() =>
-                    run(
-                      () => checkOut(),
-                      (r) => `Checked out after ${r.worked}. Your clock is paused.`,
-                    )
-                  }
-                >
-                  Check out
-                </Button>
-              )}
-              {!running && !w.breakSince && w.sessions.length > 0 && (
+              {running && <CheckoutButton size="sm" />}
+              {!running && !w.checkedOutAt && !w.breakSince && w.sessions.length > 0 && (
                 <Button
                   size="sm"
                   variant="primary"

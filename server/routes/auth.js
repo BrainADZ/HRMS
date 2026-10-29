@@ -65,7 +65,7 @@ export default function authRoutes(r, { db, passwordResetMailer }) {
                 email: user.email,
                 username: user.username,
                 name: user.display_name || user.email,
-                label: role[0].toUpperCase() + role.slice(1),
+                label: role === 'admin' ? 'Admin / Accountant' : role[0].toUpperCase() + role.slice(1),
                 loginType: role === 'admin' ? 'admin' : 'employee',
                 quickLoginToken: quickToken(user.id),
               },

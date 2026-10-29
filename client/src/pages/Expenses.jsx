@@ -26,6 +26,12 @@ import {
 import ExpenseDetails from './ExpenseDetails.jsx';
 import ExpenseAdminList from './ExpenseAdminList.jsx';
 import ExpenseAdvances from './ExpenseAdvances.jsx';
+import {
+  advanceExpense,
+  expensePath,
+  matchesExpenseStatus,
+  expenseStatus,
+} from '../lib/expense-list.js';
 import './Expenses.css';
 
 const CATEGORIES = [
@@ -64,9 +70,25 @@ const hasContent = (e) =>
   ].some((k) => e[k]);
 
 export default function Expenses() {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const { user } = useApp();
-  const { data, error, reload } = useApi('/expenses');
+  const { data: expenseData, error, reload } = useApi('/expenses');
+  const {
+    data: advanceData,
+    error: advanceError,
+    reload: reloadAdvances,
+  } = useApi('/expenses/advances');
+  const data = expenseData
+    ? {
+        ...expenseData,
+        items: [...expenseData.items, ...(advanceData?.items || []).map(advanceExpense)].sort(
+          (a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')),
+        ),
+      }
+    : null;
+  const advanceId = pathname.match(/^\/expenses\/advances\/(\d+)$/)?.[1];
+  if (advanceId)
+    return <ExpenseAdvances key={advanceId} id={Number(advanceId)} onChanged={reloadAdvances} />;
   const detailId = pathname.match(/^\/expenses\/(\d+)(?:\/reimburse)?$/)?.[1];
   if (detailId)
     return (
@@ -80,23 +102,34 @@ export default function Expenses() {
   if (user.isOwner) {
     if (isEditor) return <Navigate to="/expenses" replace />;
     if (error) return <ErrorBox error={error} onRetry={reload} />;
-    return data ? <ExpenseAdminList data={data} /> : <Loading />;
+    return data ? (
+      <ExpenseAdminList data={data} error={advanceError} onRetry={reloadAdvances} />
+    ) : (
+      <Loading />
+    );
   }
   if (pathname === '/expenses/approvals' && data?.canReview)
-    return <ExpenseAdminList data={data} />;
-  if (isEditor || (pathname === '/expenses' && data?.canReview))
+    return <ExpenseAdminList data={data} error={advanceError} onRetry={reloadAdvances} />;
+  if (isEditor)
     return (
       <ExpenseEditor
-        key={pathname}
+        key={pathname + search}
         bulk={pathname === '/expenses/bulk'}
         canReview={data?.canReview}
         onSaved={reload}
       />
     );
   return data?.canReview ? (
-    <ExpenseAdminList data={data} />
+    <ExpenseAdminList data={data} error={advanceError} onRetry={reloadAdvances} />
   ) : (
-    <ExpenseList data={data} error={error} reload={reload} />
+    <ExpenseList
+      data={data}
+      error={error || advanceError}
+      reload={() => {
+        reload();
+        reloadAdvances();
+      }}
+    />
   );
 }
 
@@ -122,7 +155,7 @@ function ExpenseList({ data, error, reload }) {
   }, []);
   const items = (data?.items || []).filter(
     (e) =>
-      (status === 'All' || e.status === status) &&
+      matchesExpenseStatus(e, status) &&
       [
         expenseNumber(e),
         e.details?.purpose,
@@ -143,11 +176,20 @@ function ExpenseList({ data, error, reload }) {
           <div className="sub">Your expenses, receipts and reimbursement status in one place.</div>
         </div>
       </div>
-      <ExpenseAdvances showCreate={false} />
       <div className="expense-workspace">
         <div className="expense-toolbar">
           <div className="expense-list-tabs" role="tablist" aria-label="Expense status">
-            {['All', 'Pending', 'Approved', 'Reimbursed', 'Rejected'].map((s) => (
+            {[
+              'All',
+              'Pending',
+              'Approved',
+              'Reimbursed',
+              'Rejected',
+              'Awaiting Acceptance',
+              'Active',
+              'Submitted',
+              'Settled',
+            ].map((s) => (
               <button
                 key={s}
                 role="tab"
@@ -224,14 +266,14 @@ function ExpenseList({ data, error, reload }) {
               <tbody>
                 {items.map((e) => (
                   <tr
-                    key={e.id}
+                    key={expenseNumber(e)}
                     className="expense-list-row"
-                    onClick={() => navigate('/expenses/' + e.id)}
+                    onClick={() => navigate(expensePath(e))}
                   >
                     <td>
                       <Link
                         className="expense-number-link"
-                        to={'/expenses/' + e.id}
+                        to={expensePath(e)}
                         onClick={(event) => event.stopPropagation()}
                       >
                         {expenseNumber(e)}
@@ -244,7 +286,7 @@ function ExpenseList({ data, error, reload }) {
                           <div>{fmtDate(e.details?.start_date || e.created_at)}</div>
                           <Link
                             className="expense-category"
-                            to={'/expenses/' + e.id}
+                            to={expensePath(e)}
                             onClick={(event) => event.stopPropagation()}
                           >
                             {e.details?.category || 'Expense'}
@@ -267,7 +309,9 @@ function ExpenseList({ data, error, reload }) {
                       </span>
                     </td>
                     <td>
-                      <Badge>{e.status === 'Pending' ? 'Pending Accounts' : e.status}</Badge>
+                      <Badge>
+                        {e.status === 'Pending' ? 'Pending Accounts' : expenseStatus(e)}
+                      </Badge>
                     </td>
                   </tr>
                 ))}
@@ -414,7 +458,7 @@ function ExpenseEditor({ bulk, canReview, onSaved }) {
   const navigate = useNavigate();
   const { search } = useLocation();
   const [bulkMode, setBulkMode] = useState(() =>
-    search.includes('advance=1') ? 'advances' : 'expenses',
+    new URLSearchParams(search).get('mode') === 'advances' ? 'advances' : 'expenses',
   );
   const { data: merchantData, reload: reloadMerchants } = useApi('/expenses/merchants');
   const { data: advanceData } = useApi('/expenses/advances');
@@ -522,7 +566,7 @@ function ExpenseEditor({ bulk, canReview, onSaved }) {
         setReport('');
       } else {
         saved.current = true;
-        navigate(canReview ? '/expenses/approvals' : '/expenses');
+        navigate(bulk && advanceId ? `/expenses/advances/${advanceId}` : canReview ? '/expenses/approvals' : '/expenses');
       }
     }
   };
@@ -600,7 +644,7 @@ function ExpenseEditor({ bulk, canReview, onSaved }) {
             aria-selected={bulk && bulkMode === 'advances'}
             className={bulk && bulkMode === 'advances' ? 'active' : ''}
             disabled={busy}
-            onClick={() => (bulk ? setBulkMode('advances') : leave('/expenses/bulk?advance=1'))}
+            onClick={() => (bulk ? setBulkMode('advances') : leave('/expenses/bulk?mode=advances'))}
           >
             <Plus size={16} /> Add / Track Advance
           </button>
@@ -622,7 +666,7 @@ function ExpenseEditor({ bulk, canReview, onSaved }) {
       </header>
       <h1 className="sr-only">{bulk ? 'Bulk Add Expenses' : 'Add Expense'}</h1>
       {bulk && bulkMode === 'advances' ? (
-        <ExpenseAdvances />
+        <ExpenseAdvances onChanged={onSaved} />
       ) : (
         <fieldset disabled={busy} className="expense-editor-fields">
           {bulk ? (

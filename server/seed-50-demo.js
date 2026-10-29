@@ -348,8 +348,7 @@ export async function seed50Demo(db, { today = D.todayIn(), saveFile = null } = 
         grade: 'Manager',
         manager,
         location,
-        role:
-          team.department === 'HR' ? 'hr' : team.department === 'Finance' ? 'accounts' : 'manager',
+        role: team.department === 'HR' ? 'hr' : 'manager',
         joinDate: '2020-03-02',
       });
       for (let i = 0; i < team.members; i++) {
@@ -371,7 +370,7 @@ export async function seed50Demo(db, { today = D.todayIn(), saveFile = null } = 
 
     await db.insert('users', {
       email: 'admin@brainadz.com',
-      display_name: 'Demo Admin',
+      display_name: 'Admin / Accountant',
       password_hash: passwordHash,
       role: 'admin',
       must_change_password: 0,
@@ -441,7 +440,7 @@ export async function seed50Demo(db, { today = D.todayIn(), saveFile = null } = 
           });
         }
         for (const date of D.eachDay(D.monthStart(m), m === month ? today : D.monthEnd(m))) {
-          if (!weekday(date) || holidays.has(date) || date < person.join_date) continue;
+          if (date >= today || !weekday(date) || holidays.has(date) || date < person.join_date) continue;
           const onLeave = date === leaveDate;
           const checkIn = onLeave ? null : stamp(date, `09:${D.pad(25 + (person.id % 5) * 5)}`);
           const checkOut = onLeave ? null : stamp(date, `18:${D.pad(30 + (person.id % 4) * 5)}`);
@@ -459,7 +458,7 @@ export async function seed50Demo(db, { today = D.todayIn(), saveFile = null } = 
               start_at: checkIn,
               end_at: checkOut,
               mode: 'office',
-              ended_by: 'employee',
+              ended_by: 'checkout',
             });
           }
         }

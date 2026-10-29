@@ -37,7 +37,9 @@ export default function DailyAttendance({ data: suppliedData, compact = false })
       : w.breakSince
         ? 'On break'
         : first
-          ? 'Checked out / paused'
+          ? w.checkedOutAt
+            ? 'Checked out'
+            : 'Paused'
           : status?.code === 'L'
             ? `On ${status.leave?.name || 'leave'} today`
             : status?.code === 'H'
@@ -89,8 +91,13 @@ export default function DailyAttendance({ data: suppliedData, compact = false })
           </div>
           {first && (
             <div className="daily-attendance-timeline">
-              <h3>Today's activity</h3>
-              <SessionList w={w} />
+              <div className="daily-attendance-activity-head">
+                <h3>Today's activity <span>{w.sessions.length} sessions</span></h3>
+                {w.sessions.length > 3 && <span className="small">Scroll to view all</span>}
+              </div>
+              <div className="daily-attendance-activity-scroll" tabIndex={0} role="region" aria-label="Today's activity history">
+                <SessionList w={w} />
+              </div>
               {w.breakSince && (
                 <div className="small mt-8">
                   On break since {fmtTime(w.breakSince)} · {clockText(breaks)} total break

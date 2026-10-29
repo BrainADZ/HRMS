@@ -142,6 +142,11 @@ export async function workdaySummary(db, employeeId, date, settings) {
   const sessions = await sessionsFor(db, employeeId, date);
   const open = sessions.find((s) => !s.end_at) || null;
   const last = sessions[sessions.length - 1] || null;
+  let timerStart = 0;
+  for (let i = 0; i < sessions.length - 1; i++) {
+    if (sessions[i].ended_by === 'checkout') timerStart = i + 1;
+  }
+  const timerSessions = sessions.slice(timerStart);
   return {
     date,
     sessions: sessions.map((s) => ({
@@ -154,11 +159,13 @@ export async function workdaySummary(db, employeeId, date, settings) {
     })),
     gaps: gapsOf(sessions),
     workedMinutes: workedMinutes(sessions),
+    timerMinutes: workedMinutes(timerSessions),
     openSince: open?.start_at || null,
-    mode: sessions[0]?.mode || null,
-    awaySince: !open && last?.end_at ? last.end_at : null,
+    mode: timerSessions[0]?.mode || null,
+    awaySince: !open && last?.end_at && last.ended_by !== 'checkout' ? last.end_at : null,
+    checkedOutAt: !open && last?.ended_by === 'checkout' ? last.end_at : null,
     breakSince: !open && last?.ended_by === 'break' ? last.end_at : null,
-    breakMinutes: gapsOf(sessions)
+    breakMinutes: gapsOf(timerSessions)
       .filter((g) => g.leftBy === 'break')
       .reduce(
         (total, g) => total + Math.max(0, (Date.parse(g.to) - Date.parse(g.from)) / 60000),
@@ -207,7 +214,7 @@ export async function startSession(
     date,
   );
   if (sessions.some((s) => !s.end_at)) return { error: 'Your work clock is already running' };
-  const returning = sessions.length > 0;
+  const returning = sessions.length > 0 && sessions.at(-1).ended_by !== 'checkout';
   if (returning && sessions.at(-1).ended_by === 'break') gapReason = 'Break';
   if (returning && !gapReason)
     return { error: 'Tell us the reason for the gap before checking in again', needsReason: true };
@@ -216,7 +223,7 @@ export async function startSession(
       employee_id: employeeId,
       date,
       start_at: now,
-      mode: returning ? sessions[0].mode : mode,
+      mode: returning ? sessions.at(-1).mode : mode,
       gap_reason: returning ? gapReason : null,
       gap_note: returning ? gapNote || null : null,
     });
