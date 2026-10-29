@@ -7,6 +7,8 @@ import * as D from './lib/dates.js';
 export const DEMO_PASSWORD = 'Brainadz@2026';
 export const DEMO_ACCOUNTS = [
   { email: 'rajiv.malhotra@brainadz.com', role: 'admin', label: 'CEO · Admin' },
+  { email: 'admin@brainadz.com', role: 'admin', label: 'Admin' },
+  { email: 'neha.bansal@brainadz.com', role: 'accounts', label: 'Accounts' },
   { email: 'priya.sharma@brainadz.com', role: 'hr', label: 'HR Manager' },
   { email: 'vikram.patel@brainadz.com', role: 'manager', label: 'Sales Manager' },
   { email: 'aarav.mehta@brainadz.com', role: 'employee', label: 'Employee' },

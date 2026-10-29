@@ -53,11 +53,11 @@ export default function authRoutes(r, { db, passwordResetMailer }) {
     res.set('Cache-Control', 'no-store');
     const quickAccounts = quickLoginEnabled(req)
       ? await db.all(
-          "SELECT id, email, username, role, display_name FROM users WHERE active = 1 AND role IN ('admin', 'manager', 'employee') ORDER BY id",
+          "SELECT id, email, username, role, display_name FROM users WHERE active = 1 AND role IN ('admin', 'accounts', 'hr', 'manager', 'employee') ORDER BY CASE WHEN employee_id IS NULL THEN 0 ELSE 1 END, id",
         )
       : [];
     res.json({
-      quickAccounts: ['admin', 'manager', 'employee'].flatMap((role) => {
+      quickAccounts: ['admin', 'accounts', 'hr', 'manager', 'employee'].flatMap((role) => {
         const user = quickAccounts.find((account) => account.role === role);
         return user
           ? [

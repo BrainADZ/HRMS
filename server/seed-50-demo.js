@@ -348,7 +348,8 @@ export async function seed50Demo(db, { today = D.todayIn(), saveFile = null } = 
         grade: 'Manager',
         manager,
         location,
-        role: team.department === 'HR' ? 'hr' : 'manager',
+        role:
+          team.department === 'HR' ? 'hr' : team.department === 'Finance' ? 'accounts' : 'manager',
         joinDate: '2020-03-02',
       });
       for (let i = 0; i < team.members; i++) {
@@ -367,6 +368,15 @@ export async function seed50Demo(db, { today = D.todayIn(), saveFile = null } = 
     }
     if (people.length !== 50 || memberIndex !== memberNames.length)
       throw new Error('Demo hierarchy must contain exactly 50 people');
+
+    await db.insert('users', {
+      email: 'admin@brainadz.com',
+      display_name: 'Demo Admin',
+      password_hash: passwordHash,
+      role: 'admin',
+      must_change_password: 0,
+      active: 1,
+    });
 
     const demoCareer = byFirst.get('Aarav');
     const firstCtc = demoCareer.ctc - 120000;
