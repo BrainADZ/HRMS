@@ -16,6 +16,8 @@ import {
   Trash2,
   Video,
   Building2,
+  Cake,
+  CalendarHeart,
 } from 'lucide-react';
 import { useApp } from '../context.jsx';
 import { useApi, useAction } from '../lib/hooks.js';
@@ -51,8 +53,11 @@ import {
   STATUS,
 } from '../components/charts.jsx';
 import CelebrationBoard from '../components/CelebrationBoard.jsx';
+import '../components/Announcements.css';
 
 const NOTICE_ICON = {
+  birthday: Cake,
+  holiday: CalendarHeart,
   health: HeartPulse,
   policy: FileText,
   award: Trophy,
@@ -60,6 +65,8 @@ const NOTICE_ICON = {
   general: Megaphone,
 };
 const NOTICE_TONE = {
+  birthday: 'var(--purple)',
+  holiday: 'var(--green)',
   health: 'var(--red)',
   policy: 'var(--blue)',
   award: 'var(--green)',
@@ -83,6 +90,37 @@ export function VerticalFilterNote() {
 
 export function NoticeBoard({ notices, onChange, compact, headerOnly = false }) {
   const { isHR, isManager, user, toast } = useApp();
+  const { data: celebrations } = useApi('/auth/celebrations');
+  const highlights = celebrations
+    ? [
+        ...celebrations.birthdays.map((item, i) => ({
+          id: `birthday-${i}`,
+          kind: 'birthday',
+          celebration: true,
+          title:
+            item.date === celebrations.today
+              ? `Happy birthday, ${item.name}!`
+              : `${item.name}'s birthday`,
+          body:
+            item.date === celebrations.today
+              ? 'Wishing you a wonderful day and a great year ahead.'
+              : 'A celebration to look forward to. Send your best wishes!',
+          created_at: item.date,
+        })),
+        ...celebrations.holidays.map((item, i) => ({
+          id: `holiday-${i}`,
+          kind: 'holiday',
+          celebration: true,
+          title: item.name,
+          body:
+            item.type === 'Restricted'
+              ? 'Upcoming optional / restricted holiday.'
+              : 'A holiday for the team to celebrate.',
+          created_at: item.date,
+        })),
+      ].sort((a, b) => a.created_at.localeCompare(b.created_at))
+    : [];
+  const feed = [...highlights.slice(0, 3), ...notices.slice(0, 3)];
   const canPost = isHR || isManager;
   const [all, setAll] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -93,20 +131,27 @@ export function NoticeBoard({ notices, onChange, compact, headerOnly = false }) 
     items.map((n) => {
       const Icon = NOTICE_ICON[n.kind] || Megaphone;
       return (
-        <div key={n.id} className="list-item" style={{ padding: compact ? '7px 0' : undefined }}>
-          <Icon size={18} style={{ color: NOTICE_TONE[n.kind], flexShrink: 0 }} />
+        <div
+          key={n.id}
+          className={`list-item announcement-item ${n.celebration ? 'announcement-celebration' : ''}`}
+        >
+          <span className={`announcement-item-icon ${n.kind}`}>
+            <Icon size={20} style={{ color: NOTICE_TONE[n.kind] }} />
+          </span>
           <div className="grow" style={{ minWidth: 0 }}>
-            <div className="ellipsis" style={{ fontSize: 13.5 }}>
-              {n.title}
-            </div>
-            {(all || !compact) && n.body && (
+            <div className="announcement-item-title">{n.title}</div>
+            {n.body && (
               <div className="small muted mt-8" style={{ marginTop: 2 }}>
                 {n.body}
               </div>
             )}
           </div>
-          <span className="small muted nowrap">{fmtDate(n.created_at)}</span>
-          {all && (isHR || n.created_by === user.id) && (
+          <span className="announcement-date">
+            {n.celebration && n.created_at === celebrations?.today
+              ? 'Today'
+              : fmtDate(n.created_at)}
+          </span>
+          {!n.celebration && all && (isHR || n.created_by === user.id) && (
             <button
               type="button"
               className="icon-btn"
@@ -134,8 +179,16 @@ export function NoticeBoard({ notices, onChange, compact, headerOnly = false }) 
     });
   return (
     <>
-      <div className="card-head" style={{ marginBottom: headerOnly ? 0 : 6 }}>
-        <h3>Announcements</h3>
+      <div className="card-head announcement-heading">
+        <div className="row gap-12">
+          <span className="announcement-heading-icon">
+            <Megaphone size={22} />
+          </span>
+          <div>
+            <h3>Announcements</h3>
+            <div className="small muted">Company updates, birthdays & celebrations</div>
+          </div>
+        </div>
         <div className="row">
           {canPost && (
             <button type="button" className="link" onClick={() => setAdding(true)}>
@@ -148,9 +201,19 @@ export function NoticeBoard({ notices, onChange, compact, headerOnly = false }) 
           </button>
         </div>
       </div>
-      {!headerOnly &&
-        (notices.length ? list(notices.slice(0, 3)) : <Empty text="No notices yet" />)}
-      {all && <NoticeList onClose={() => setAll(false)} render={list} />}
+      {!headerOnly && (
+        <div className="announcement-feed">
+          {feed.length ? (
+            list(feed)
+          ) : (
+            <Empty
+              icon={Megaphone}
+              text="You're all caught up. New announcements and birthdays will appear here."
+            />
+          )}
+        </div>
+      )}
+      {all && <NoticeList onClose={() => setAll(false)} render={list} highlights={highlights} />}
       {adding && (
         <Modal
           title="Post an announcement"
@@ -207,11 +270,19 @@ export function NoticeBoard({ notices, onChange, compact, headerOnly = false }) 
   );
 }
 
-function NoticeList({ onClose, render }) {
+function NoticeList({ onClose, render, highlights = [] }) {
   const { data } = useApi('/notices');
   return (
     <Modal title="Announcements" size="wide" onClose={onClose}>
-      {data ? data.items.length ? render(data.items) : <Empty /> : <Loading />}
+      {data ? (
+        data.items.length || highlights.length ? (
+          render([...highlights, ...data.items])
+        ) : (
+          <Empty />
+        )
+      ) : (
+        <Loading />
+      )}
     </Modal>
   );
 }
@@ -257,14 +328,11 @@ export default function Dashboard() {
             <VerticalFilterNote />
           </div>
         </div>
-        <div
-          className="card"
-          style={{ padding: '14px 18px', width: '100%', maxWidth: 420, flex: '0 1 420px' }}
-        >
-          <NoticeBoard notices={data.notices} onChange={reload} headerOnly />
-        </div>
       </div>
       <CelebrationBoard />
+      <section className="card announcement-panel mb-16" aria-label="Company announcements">
+        <NoticeBoard notices={data.notices} onChange={reload} />
+      </section>
       <div className="kpis dashboard-kpis">
         <Kpi
           icon={UserCheck}

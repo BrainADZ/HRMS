@@ -96,6 +96,9 @@ function Overview() {
   return (
     <div>
       <AttentionBanner />
+      <section className="card announcement-panel mb-16" aria-label="Company announcements">
+        <NoticeBoard notices={data.notices} onChange={reload} />
+      </section>
       <div className="grid">
         <div className="span-12">
           <DailyAttendance data={data} compact />
@@ -389,9 +392,6 @@ function Overview() {
               </Card>
             </>
           )}
-          <div className="card tight">
-            <NoticeBoard notices={data.notices} onChange={reload} compact />
-          </div>
         </div>
       </div>
       {modal === 'leave' && <ApplyLeaveModal onClose={() => setModal(null)} onDone={reload} />}

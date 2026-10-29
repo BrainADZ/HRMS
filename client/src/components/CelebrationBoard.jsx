@@ -62,7 +62,7 @@ export default function CelebrationBoard({ publicView = false }) {
   const futureHolidays = data.holidays.filter((item) => item.date === tomorrow);
   return (
     <>
-      {(birthdayToday.length > 0 || holidayToday.length > 0) && (
+      {publicView && (birthdayToday.length > 0 || holidayToday.length > 0) && (
         <section
           className={`celebration-board ${publicView ? 'public' : ''}`}
           aria-label="Birthdays and holidays"
