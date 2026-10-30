@@ -1,5 +1,5 @@
 import { fail, getSettings, notifyUsers, today, userIdForEmployee } from '../core.js';
-import { startSession, workDate } from './workday.js';
+import { startSession, endSession, workDate } from './workday.js';
 import { readCoords } from './geofence.js';
 
 export const TRAVEL_STATUSES = [
@@ -13,9 +13,10 @@ export const TRAVEL_STATUSES = [
 export async function approvedTravel(db, employeeId, day) {
   if (!employeeId) return [];
   return db.all(
-    `SELECT t.id, t.project, t.city, t.site, t.from_date, t.to_date, m.id AS member_id
+    `SELECT t.id, t.project, t.city, t.site, t.from_date, t.to_date, m.id AS member_id,
+       (SELECT u.status FROM travel_updates u WHERE u.member_id=m.id ORDER BY u.created_at DESC,u.id DESC LIMIT 1) AS current_status
      FROM travel_trips t JOIN travel_members m ON m.trip_id=t.id
-     WHERE m.employee_id=? AND t.status='Approved' AND t.from_date<=? AND t.to_date>=?
+     WHERE m.employee_id=? AND t.status='Approved' AND ((t.from_date<=? AND t.to_date>=?) OR (SELECT u.status FROM travel_updates u WHERE u.member_id=m.id ORDER BY u.created_at DESC,u.id DESC LIMIT 1) IN ('Travelling','Travel started'))
      ORDER BY t.from_date, t.id`,
     employeeId,
     day,
@@ -43,9 +44,61 @@ export async function travelWorkDate(db, employeeId, fallback) {
   return fallback;
 }
 
+// Journey status persists on the server without creating attendance or a running clock.
+export async function setJourneyStatus(db, user, tripId, action) {
+  if (!user.employeeId || user.isOwner) fail(403, 'An employee profile is required');
+  if (!Number.isSafeInteger(Number(tripId)) || Number(tripId) <= 0)
+    fail(400, 'Choose an approved trip');
+  if (!['travel', 'reached'].includes(action)) fail(400, 'Choose travel or reached');
+  const day = await today(db);
+  const member = await db.get(
+    'SELECT m.*, t.status, t.from_date, t.to_date, t.approver_id FROM travel_members m JOIN travel_trips t ON t.id=m.trip_id WHERE t.id=? AND m.employee_id=?',
+    tripId,
+    user.employeeId,
+  );
+  if (!member || member.status !== 'Approved') fail(403, 'Choose an approved trip');
+  const latest = await db.get(
+    'SELECT status FROM travel_updates WHERE member_id=? ORDER BY created_at DESC,id DESC LIMIT 1',
+    member.id,
+  );
+  const travelling = ['Travelling', 'Travel started'].includes(latest?.status);
+  if (action === 'travel' && travelling) fail(409, 'You are already travelling');
+  if (action === 'reached' && !travelling) fail(409, 'Start travelling before marking reached');
+  if (action === 'travel' && (day < member.from_date || day > member.to_date))
+    fail(400, 'Travel can start during the approved trip dates');
+  const active = await db.get(
+    'SELECT * FROM work_sessions WHERE employee_id=? AND end_at IS NULL',
+    user.employeeId,
+  );
+  if (active) {
+    if (
+      action === 'reached' &&
+      (active.travel_member_id !== member.id || active.activity_type !== 'travel')
+    )
+      fail(409, 'Finish your current duty first');
+    if (action === 'travel' && active.mode === 'on_duty')
+      fail(409, 'Share a Work completed update before travelling');
+    await endSession(db, { employeeId: user.employeeId, date: active.date, userId: user.id });
+  }
+  const status = action === 'travel' ? 'Travelling' : 'Site reached';
+  await db.insert('travel_updates', {
+    member_id: member.id,
+    user_id: user.id,
+    date: day,
+    status,
+    note: '',
+  });
+  await notifyUsers(db, [member.approver_id], user.name + ': ' + status, '/travel/' + tripId);
+  return { ok: true, tripId, status };
+}
+
 export async function startTravelDuty(db, user, body) {
   if (!user.employeeId || user.isOwner)
     fail(403, 'An employee profile is required for on-duty check-in');
+  if (body.activity_type && !['duty', 'travel'].includes(body.activity_type))
+    fail(400, 'Choose duty or travel');
+  if (body.activity_type === 'travel')
+    return setJourneyStatus(db, user, Number(body.trip_id), 'travel');
   const coords = readCoords(body.location);
   if (!coords) return { needsLocation: true };
   const day = await today(db);
@@ -90,8 +143,13 @@ export async function startTravelDuty(db, user, body) {
   if (!member || member.status !== 'Approved') fail(403, 'Choose an approved trip covering today');
   if (resuming && body.trip_id && Number(body.trip_id) !== member.trip_id)
     fail(409, 'Finish your paused trip duty before starting another trip');
-  const activity = body.activity_type || (resuming ? last.activity_type : 'duty');
-  if (!['duty', 'travel'].includes(activity)) fail(400, 'Choose duty or travel time');
+  const latest = await db.get(
+    'SELECT status FROM travel_updates WHERE member_id=? ORDER BY created_at DESC,id DESC LIMIT 1',
+    member.id,
+  );
+  if (['Travelling', 'Travel started'].includes(latest?.status))
+    fail(409, 'Mark Reached before starting duty');
+  const activity = 'duty';
   const result = await startSession(db, {
     employeeId: user.employeeId,
     date,

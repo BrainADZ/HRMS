@@ -167,7 +167,7 @@ export async function workdaySummary(db, employeeId, date, settings) {
     workedMinutes: workedMinutes(sessions),
     timerMinutes: !open && last?.ended_by === 'checkout' ? 0 : workedMinutes(timerSessions),
     openSince: open?.start_at || null,
-    mode: timerSessions[0]?.mode || null,
+    mode: open?.mode || last?.mode || null,
     activityType: open?.activity_type || last?.activity_type || 'duty',
     awaySince: !open && last?.end_at && last.ended_by !== 'checkout' ? last.end_at : null,
     checkedOutAt: !open && last?.ended_by === 'checkout' ? last.end_at : null,

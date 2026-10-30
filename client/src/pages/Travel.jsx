@@ -7,6 +7,8 @@ import {
   MapPin,
   Clock,
   Camera,
+  Users,
+  ListChecks,
   Send,
   CheckCircle2,
   Search,
@@ -15,7 +17,7 @@ import { useApp } from '../context.jsx';
 import { useApi, useAction } from '../lib/hooks.js';
 import { api, apiUrl } from '../lib/api.js';
 import { withLocation } from '../lib/location.js';
-import { useWorkday, useNow, workedNow, clockText, refreshWorkday } from '../lib/workday.js';
+import { useWorkday, useOnWorkdayChange, clockText, refreshWorkday } from '../lib/workday.js';
 import { fmtDate, fmtTime } from '../lib/format.js';
 import {
   Badge,
@@ -29,7 +31,6 @@ import {
   Select,
   Textarea,
 } from '../components/ui.jsx';
-import { ClockActions } from '../components/WorkClock.jsx';
 import './Travel.css';
 
 const tone = (status) =>
@@ -346,13 +347,15 @@ function TripDetails({ id }) {
   const { data: trip, error, reload } = useApi(`/travel/${id}`);
   const { data: options } = useApi('/travel/options');
   const workday = useWorkday();
-  const now = useNow(1000);
+  useOnWorkdayChange(reload);
   const [run, busy] = useAction(toast);
-  const [status, setStatus] = useState('Site reached');
+  const [status, setStatus] = useState('Setup ongoing');
   const [note, setNote] = useState('');
   const [photo, setPhoto] = useState(null);
   const [summary, setSummary] = useState('');
   const [decisionNote, setDecisionNote] = useState('');
+  const [view, setView] = useState('today');
+  const [finishing, setFinishing] = useState(false);
   useEffect(() => {
     const timer = setInterval(reload, 60000);
     return () => clearInterval(timer);
@@ -366,19 +369,33 @@ function TripDetails({ id }) {
   if (error) return <ErrorBox error={error} onRetry={reload} />;
   if (!trip) return <Loading />;
   const mine = trip.members.find((m) => m.employee_id === user.employeeId);
-  const ownSession = trip.sessions.find((s) => s.employee_id === user.employeeId && !s.end_at);
-  const currentTrip = mine && workday?.workday?.sessions.at(-1)?.travelMemberId === mine.id;
-  const paused = currentTrip && Boolean(workday?.workday?.breakSince);
-  const start = (activity) =>
+  const ownSession = workday?.workday?.sessions.find(
+    (s) => !s.end && s.travelMemberId === mine?.id,
+  );
+  const latest = mine?.latestUpdate;
+  const travelling = ['Travelling', 'Travel started'].includes(latest?.status);
+  const dutyActive = Boolean(ownSession && ownSession.activityType !== 'travel');
+  const finishedToday =
+    !ownSession &&
+    ['Work completed', 'Duty ended'].includes(latest?.status) &&
+    latest?.date === workday?.today;
+  const journey = (action) =>
+    act(
+      () => api.post('/travel/' + id + '/journey', { action }),
+      action === 'travel'
+        ? 'Status set to Travelling'
+        : 'Reached destination. You can start duty now.',
+    );
+  const start = () =>
     act(
       () =>
         withLocation((location) =>
-          api.post(`/travel/${id}/start`, {
-            activity_type: activity,
+          api.post('/travel/' + id + '/start', {
+            activity_type: 'duty',
             ...(location ? { location } : {}),
           }),
         ),
-      activity === 'travel' ? 'Travel timer started' : 'On-duty timer started',
+      'Duty started. Share updates here.',
     );
   const postUpdate = async () => {
     const form = new FormData();
@@ -393,13 +410,12 @@ function TripDetails({ id }) {
       setNote('');
       setPhoto(null);
       reload();
+      await refreshWorkday();
     }
   };
-  const allCompleted = trip.members.every((m) =>
-    trip.updates.some((u) => u.member_id === m.id && u.status === 'Work completed'),
-  );
+  const allCompleted = trip.members.every((m) => m.latestUpdate?.status === 'Work completed');
   return (
-    <div className="travel-page">
+    <div className="travel-page travel-trip">
       <div className="page-head">
         <div className="row gap-12">
           <Link className="btn" aria-label="Back to trips" to="/travel">
@@ -468,149 +484,105 @@ function TripDetails({ id }) {
           </div>
         </section>
       )}
-      {(trip.canStart || ownSession || paused) && (
-        <section className="card travel-duty mb-16">
-          <div>
-            <h3>On-duty check-in</h3>
-            <p className="small muted">
-              Start only while travelling or working. Check out before resting or an overnight stay.
-              Location is recorded at start and end.
-            </p>
-          </div>
-          {ownSession || paused ? (
-            <div>
-              <strong className="travel-timer">{clockText(workedNow(workday, now))}</strong>
-              <span className="small muted">
-                {' '}
-                {paused
-                  ? 'On break'
-                  : ownSession.activity_type === 'travel'
+      <nav className="travel-tabs" aria-label="Trip sections">
+        {[
+          { key: 'today', label: 'My day', icon: ListChecks },
+          { key: 'team', label: 'Team', icon: Users },
+          { key: 'activity', label: 'Activity', icon: Clock },
+        ].map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            type="button"
+            aria-current={view === key ? 'page' : undefined}
+            onClick={() => setView(key)}
+          >
+            <Icon size={17} /> {label}
+            {key === 'team' && <span>{trip.members.length}</span>}
+          </button>
+        ))}
+      </nav>
+      {view === 'today' && (
+        <div className="travel-day">
+          {(trip.canStart || travelling || ownSession) && (
+            <section className="card travel-duty">
+              <div>
+                <h3>
+                  {travelling
                     ? 'Travelling'
-                    : 'On duty'}
-              </span>
-              <ClockActions />
-            </div>
-          ) : (
-            <div className="row wrap gap-8">
-              <Button
-                variant="primary"
-                icon={Clock}
-                disabled={busy || Boolean(workday?.workday?.openSince)}
-                onClick={() => start('duty')}
-              >
-                Start duty
-              </Button>
-              <Button
-                icon={Plane}
-                disabled={busy || Boolean(workday?.workday?.openSince)}
-                onClick={() => start('travel')}
-              >
-                Start travel time
-              </Button>
-            </div>
-          )}
-          {!ownSession && !paused && workday?.workday?.openSince && (
-            <p className="small amber">Check out of your current work session first.</p>
-          )}
-        </section>
-      )}
-      <section className="card mb-16">
-        <h3 className="mb-12">Team tracking</h3>
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Employee</th>
-                <th>Latest update</th>
-                <th>Duty hours</th>
-                <th>Travel time</th>
-                <th>Daily update</th>
-              </tr>
-            </thead>
-            <tbody>
-              {trip.members.map((m) => (
-                <tr key={m.id}>
-                  <td>
-                    <b>{m.name}</b>
-                    <div className="small muted">
-                      {m.code} · {m.designation}
-                    </div>
-                  </td>
-                  <td>
-                    {m.latestUpdate?.status || 'No update yet'}
-                    {m.latestUpdate && (
-                      <div className="small muted">
-                        {fmtDate(m.latestUpdate.created_at)} · {fmtTime(m.latestUpdate.created_at)}
-                      </div>
+                    : dutyActive
+                      ? 'On duty'
+                      : finishedToday
+                        ? 'Duty completed'
+                        : 'Your trip'}
+                </h3>
+                <p className="small muted">
+                  {travelling
+                    ? 'Your team can see you are travelling. Mark Reached when you arrive.'
+                    : dutyActive
+                      ? 'Share your progress below. Choose Work completed when you finish.'
+                      : finishedToday
+                        ? 'Your duty has ended. Your latest update is shared with the team.'
+                        : latest?.status === 'Site reached'
+                          ? 'You have reached your destination. Start duty when work begins.'
+                          : 'Start travelling to let your team know, or start duty if you are already at the site.'}
+                </p>
+              </div>
+              <div className="row wrap gap-8">
+                {travelling ? (
+                  <Button
+                    variant="primary"
+                    icon={MapPin}
+                    loading={busy}
+                    onClick={() => journey('reached')}
+                  >
+                    Reached
+                  </Button>
+                ) : dutyActive ? (
+                  <Badge tone="green">On duty</Badge>
+                ) : finishedToday ? (
+                  <Badge tone="green">Done for today</Badge>
+                ) : (
+                  <>
+                    {latest?.status !== 'Site reached' && (
+                      <Button icon={Plane} loading={busy} onClick={() => journey('travel')}>
+                        Start travelling
+                      </Button>
                     )}
-                    {m.running && <Badge tone="green">Clock running</Badge>}
-                  </td>
-                  <td>{clockText(m.dutyMinutes, false)}</td>
-                  <td>{clockText(m.travelMinutes, false)}</td>
-                  <td>
-                    {m.updatePending ? (
-                      <Badge tone="amber">Pending update</Badge>
-                    ) : (
-                      <span className="small muted">
-                        {trip.status === 'Approved' ? 'Up to date' : '—'}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-      <div className="travel-detail-grid">
-        <section className="card">
-          <h3 className="mb-12">Activity timeline</h3>
-          <div className="travel-timeline">
-            {trip.updates.map((u) => (
-              <article key={u.id}>
-                <span className="travel-event-dot" />
-                <div>
-                  <b>{u.status}</b>
-                  <div className="small muted">
-                    {u.name} · {fmtDate(u.created_at)} · {fmtTime(u.created_at)}
-                  </div>
-                  {u.note && <p>{u.note}</p>}
-                  {u.latitude != null && (
-                    <div className="small muted">
-                      Location: {Number(u.latitude).toFixed(5)}, {Number(u.longitude).toFixed(5)}
-                      {u.accuracy != null ? ` · accuracy ${Math.round(u.accuracy)} m` : ''}
-                    </div>
-                  )}
-                  {u.photo && (
-                    <a
-                      target="_blank"
-                      rel="noreferrer"
-                      href={apiUrl(`/travel/${id}/photos/${u.id}`)}
+                    <Button
+                      variant="primary"
+                      icon={CheckCircle2}
+                      loading={busy}
+                      disabled={Boolean(workday?.workday?.openSince)}
+                      onClick={start}
                     >
-                      <img
-                        className="travel-update-photo"
-                        alt={`Photo shared by ${u.name}`}
-                        src={apiUrl(`/travel/${id}/photos/${u.id}`)}
-                      />
-                    </a>
-                  )}
+                      Start duty
+                    </Button>
+                  </>
+                )}
+              </div>
+              {!travelling && !dutyActive && !finishedToday && workday?.workday?.openSince && (
+                <p className="small muted">
+                  Finish your current work session before starting site duty.
+                </p>
+              )}
+            </section>
+          )}
+          {trip.isMember && trip.canUpdate && dutyActive && (
+            <section className="card travel-update-form">
+              <div className="travel-section-heading">
+                <span className="travel-step">
+                  <Send size={19} />
+                </span>
+                <div>
+                  <h3>Share today’s update</h3>
+                  <p className="small muted">Tell your manager where things stand.</p>
                 </div>
-              </article>
-            ))}
-            {!trip.updates.length && (
-              <Empty text="Trip activity and team updates will appear here" />
-            )}
-          </div>
-        </section>
-        <div className="col" style={{ gap: 16 }}>
-          {trip.isMember && trip.canUpdate && (
-            <section className="card">
-              <h3 className="mb-12">Share daily update</h3>
+              </div>
               <Field label="Status">
                 <Select
                   value={status}
                   onChange={(e) => setStatus(e.target.value)}
-                  options={
+                  options={(
                     options?.statuses || [
                       'Travelling',
                       'Site reached',
@@ -618,7 +590,7 @@ function TripDetails({ id }) {
                       'Event running',
                       'Work completed',
                     ]
-                  }
+                  ).filter((s) => !['Travelling', 'Site reached'].includes(s))}
                 />
               </Field>
               <Field label="Work update">
@@ -629,7 +601,13 @@ function TripDetails({ id }) {
                   placeholder="What did you complete? What's next?"
                 />
               </Field>
-              <Field label="Site photo (optional)">
+              <Field
+                label={
+                  <span className="row gap-8">
+                    <Camera size={16} /> Add a photo (optional)
+                  </span>
+                }
+              >
                 <Input
                   key={photo ? 'selected' : 'empty'}
                   type="file"
@@ -643,34 +621,72 @@ function TripDetails({ id }) {
             </section>
           )}
           {trip.canSubmit && (
-            <section className="card">
-              <h3 className="mb-12">Complete trip</h3>
-              <p className="small muted mb-12">
-                Each team member must share a Work completed update and finish their duty first.
-              </p>
-              <Textarea
-                aria-label="Final trip summary"
-                placeholder="Final work summary and handover notes…"
-                value={summary}
-                maxLength={5000}
-                onChange={(e) => setSummary(e.target.value)}
-              />
-              <Button
-                className="mt-12"
-                variant="primary"
-                icon={CheckCircle2}
-                disabled={
-                  busy || !summary.trim() || !allCompleted || trip.members.some((m) => m.running)
-                }
-                onClick={() =>
-                  act(
-                    () => api.post(`/travel/${id}/submit`, { summary }),
-                    'Trip summary sent for review',
-                  )
-                }
+            <section className="card travel-completion">
+              <button
+                type="button"
+                className="travel-completion-toggle"
+                aria-expanded={finishing}
+                aria-controls="trip-completion-form"
+                onClick={() => setFinishing(!finishing)}
               >
-                Send final summary
-              </Button>
+                <span className="travel-step">
+                  <CheckCircle2 size={19} />
+                </span>
+                <span>
+                  <strong>Ready to finish this trip?</strong>
+                  <small>Check team progress and send the final summary.</small>
+                </span>
+                <span className="travel-toggle-label">{finishing ? 'Hide' : 'View steps'}</span>
+              </button>
+              {finishing && (
+                <div id="trip-completion-form" className="travel-completion-body">
+                  <p className="small muted mb-12">Before sending the final summary:</p>
+                  <ul className="travel-checklist">
+                    <li className={allCompleted ? 'done' : ''}>
+                      <CheckCircle2 size={16} />
+                      {
+                        trip.members.filter((m) => m.latestUpdate?.status === 'Work completed')
+                          .length
+                      }{' '}
+                      of {trip.members.length} members shared “Work completed”
+                    </li>
+                    <li className={!trip.members.some((m) => m.running) ? 'done' : ''}>
+                      <Clock size={16} />
+                      {trip.members.some((m) => m.running)
+                        ? 'Team members still on duty — check Team for details'
+                        : 'Everyone has finished their duty'}
+                    </li>
+                  </ul>
+                  <Field label="Final trip summary">
+                    <Textarea
+                      aria-label="Final trip summary"
+                      placeholder="Final work summary and handover notes…"
+                      value={summary}
+                      maxLength={5000}
+                      onChange={(e) => setSummary(e.target.value)}
+                    />
+                  </Field>
+                  <Button
+                    className="mt-12"
+                    variant="primary"
+                    icon={CheckCircle2}
+                    disabled={
+                      busy ||
+                      !summary.trim() ||
+                      !allCompleted ||
+                      trip.members.some((m) => m.running)
+                    }
+                    onClick={() =>
+                      act(
+                        () => api.post(`/travel/${id}/submit`, { summary }),
+                        'Trip summary sent for review',
+                      )
+                    }
+                  >
+                    Send final summary
+                  </Button>
+                </div>
+              )}
             </section>
           )}
           {trip.final_summary && (
@@ -691,8 +707,122 @@ function TripDetails({ id }) {
               )}
             </section>
           )}
+
+          {!trip.canStart &&
+            !ownSession &&
+            !travelling &&
+            !trip.canUpdate &&
+            !trip.canSubmit &&
+            !trip.final_summary && (
+              <section className="card">
+                <h3>No actions needed right now</h3>
+                <p className="small muted">
+                  {trip.status === 'Pending'
+                    ? 'Your trip is waiting for approval.'
+                    : 'Check Team or Activity for trip updates.'}
+                </p>
+              </section>
+            )}
         </div>
-      </div>
+      )}
+      {view === 'team' && (
+        <div>
+          {' '}
+          <section className="card mb-16">
+            <h3 className="mb-12">Team tracking</h3>
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Latest update</th>
+                    <th>Duty hours</th>
+
+                    <th>Daily update</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {trip.members.map((m) => (
+                    <tr key={m.id}>
+                      <td>
+                        <b>{m.name}</b>
+                        <div className="small muted">
+                          {m.code} · {m.designation}
+                        </div>
+                      </td>
+                      <td>
+                        {m.latestUpdate?.status || 'No update yet'}
+                        {m.latestUpdate && (
+                          <div className="small muted">
+                            {fmtDate(m.latestUpdate.created_at)} ·{' '}
+                            {fmtTime(m.latestUpdate.created_at)}
+                          </div>
+                        )}
+                        {m.running && <Badge tone="green">On duty</Badge>}
+                      </td>
+                      <td>{clockText(m.dutyMinutes, false)}</td>
+
+                      <td>
+                        {m.updatePending ? (
+                          <Badge tone="amber">Pending update</Badge>
+                        ) : (
+                          <span className="small muted">
+                            {trip.status === 'Approved' ? 'Up to date' : '—'}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      )}
+      {view === 'activity' && (
+        <div>
+          {' '}
+          <section className="card">
+            <h3 className="mb-12">Activity timeline</h3>
+            <div className="travel-timeline">
+              {trip.updates.map((u) => (
+                <article key={u.id}>
+                  <span className="travel-event-dot" />
+                  <div>
+                    <b>{u.status}</b>
+                    <div className="small muted">
+                      {u.name} · {fmtDate(u.created_at)} · {fmtTime(u.created_at)}
+                    </div>
+                    {u.note && <p>{u.note}</p>}
+                    {u.latitude != null && (
+                      <div className="small muted">
+                        Location: {Number(u.latitude).toFixed(5)}, {Number(u.longitude).toFixed(5)}
+                        {u.accuracy != null ? ` · accuracy ${Math.round(u.accuracy)} m` : ''}
+                      </div>
+                    )}
+                    {u.photo && (
+                      <a
+                        target="_blank"
+                        rel="noreferrer"
+                        href={apiUrl(`/travel/${id}/photos/${u.id}`)}
+                      >
+                        <img
+                          className="travel-update-photo"
+                          alt={`Photo shared by ${u.name}`}
+                          src={apiUrl(`/travel/${id}/photos/${u.id}`)}
+                        />
+                      </a>
+                    )}
+                  </div>
+                </article>
+              ))}
+              {!trip.updates.length && (
+                <Empty text="Trip activity and team updates will appear here" />
+              )}
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

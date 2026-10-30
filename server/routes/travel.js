@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { endSession } from '../services/workday.js';
 import {
   fail,
   id,
@@ -18,6 +19,7 @@ import {
   TRAVEL_STATUSES,
   approvedTravel,
   startTravelDuty,
+  setJourneyStatus,
   travelReminders,
 } from '../services/travel.js';
 
@@ -275,6 +277,11 @@ export default function travelRoutes(r, { db, upload, uploads }) {
     res.json({ ok: true });
   });
 
+  r.post('/travel/:id/journey', async (req, res) => {
+    await tripRow(req, true);
+    res.json(await setJourneyStatus(db, req.user, id(req.params.id), req.body.action));
+  });
+
   r.post('/travel/:id/start', async (req, res) => {
     await tripRow(req, true);
     const result = await startTravelDuty(db, req.user, { ...req.body, trip_id: id(req.params.id) });
@@ -305,6 +312,28 @@ export default function travelRoutes(r, { db, upload, uploads }) {
       if ((day < trip.from_date || day > trip.to_date) && !overnight)
         fail(400, 'Updates are available during the approved trip dates');
       if (!TRAVEL_STATUSES.includes(req.body.status)) fail(400, 'Choose a valid travel update');
+      if (['Travelling', 'Site reached'].includes(req.body.status))
+        fail(400, 'Use Start travelling or Reached to change journey status');
+      const latest = await db.get(
+        'SELECT status FROM travel_updates WHERE member_id=? ORDER BY created_at DESC,id DESC LIMIT 1',
+        member.id,
+      );
+      if (['Travelling', 'Travel started'].includes(latest?.status))
+        fail(409, 'Mark Reached before sharing a duty update');
+      if (req.body.status === 'Work completed') {
+        const active = await db.get(
+          'SELECT * FROM work_sessions WHERE employee_id=? AND end_at IS NULL',
+          req.user.employeeId,
+        );
+        if (active && active.travel_member_id !== member.id)
+          fail(409, 'This work session belongs to another activity');
+        if (active)
+          await endSession(db, {
+            employeeId: req.user.employeeId,
+            date: active.date,
+            userId: req.user.id,
+          });
+      }
       await db.insert('travel_updates', {
         member_id: member.id,
         user_id: req.user.id,
@@ -346,7 +375,7 @@ export default function travelRoutes(r, { db, upload, uploads }) {
     );
     if (open) fail(409, 'All team members must finish their duty before submitting the trip');
     const completed = await db.all(
-      "SELECT DISTINCT u.member_id FROM travel_updates u JOIN travel_members m ON m.id=u.member_id WHERE m.trip_id=? AND u.status='Work completed'",
+      "SELECT m.id AS member_id FROM travel_members m WHERE m.trip_id=? AND (SELECT u.status FROM travel_updates u WHERE u.member_id=m.id ORDER BY u.created_at DESC,u.id DESC LIMIT 1)='Work completed'",
       trip.id,
     );
     if (members.some((m) => !completed.some((c) => c.member_id === m.id)))

@@ -53,7 +53,7 @@ const ONBOARDING = [
 ];
 
 const BASE_SELECT = `
-  SELECT e.*, d.name AS department, v.name AS vertical, v.short AS vertical_short, v.color AS vertical_color, l.name AS location,
+  SELECT e.*, (SELECT u.status FROM travel_members tm JOIN travel_trips tt ON tt.id=tm.trip_id JOIN LATERAL (SELECT status FROM travel_updates WHERE member_id=tm.id ORDER BY created_at DESC,id DESC LIMIT 1) u ON true WHERE tm.employee_id=e.id AND tt.status='Approved' AND u.status IN ('Travelling','Travel started','Site reached','Duty started','Setup ongoing','Event running') ORDER BY tt.id DESC LIMIT 1) AS travel_status, d.name AS department, v.name AS vertical, v.short AS vertical_short, v.color AS vertical_color, l.name AS location,
          m.first_name AS m_first, m.last_name AS m_last, m.designation AS m_designation, m.photo AS m_photo
   FROM employees e
   LEFT JOIN departments d ON d.id = e.department_id
@@ -81,6 +81,12 @@ function listRow(e, leaveSet) {
     name: fullName(e),
     first_name: e.first_name,
     last_name: e.last_name,
+    travel_status:
+      e.travel_status === 'Travel started'
+        ? 'Travelling'
+        : e.travel_status === 'Duty started'
+          ? 'On duty'
+          : e.travel_status,
     designation: e.designation,
     grade: e.grade,
     department: e.department,

@@ -255,6 +255,9 @@ export default function attendanceRoutes(r, { db }) {
           .json({ code: 'location_required', error: 'Share your location for on-duty check-in' });
       return res.json(out);
     }
+    const trips = await approvedTravel(db, req.user.employeeId, await today(db));
+    if (trips.some((trip) => ['Travelling', 'Travel started'].includes(trip.current_status)))
+      fail(409, 'Mark Reached on your trip before starting work');
     const existing = await db.get(
       'SELECT mode FROM work_sessions WHERE employee_id=? AND end_at IS NULL',
       req.user.employeeId,
@@ -344,11 +347,11 @@ export default function attendanceRoutes(r, { db }) {
       'SELECT * FROM work_sessions WHERE employee_id=? AND end_at IS NULL ORDER BY start_at DESC LIMIT 1',
       req.user.employeeId,
     );
-    const coords = active?.mode === 'on_duty' ? readCoords(req.body.location) : null;
-    if (active?.mode === 'on_duty' && !coords)
-      return res
-        .status(403)
-        .json({ code: 'location_required', error: 'Share your location to end on-duty work' });
+    if (active?.mode === 'on_duty')
+      fail(
+        409,
+        'Use the trip page: Reached for travel, or share a Work completed update to finish duty',
+      );
     const out = await endSession(db, {
       employeeId: req.user.employeeId,
       date: active?.mode === 'on_duty' ? active.date : workDate(await today(db), await settings()),
@@ -356,22 +359,6 @@ export default function attendanceRoutes(r, { db }) {
       userId: req.user.id,
     });
     if (!out) fail(400, 'Your work clock is not running');
-    if (coords && active.travel_member_id)
-      await db.insert('travel_updates', {
-        member_id: active.travel_member_id,
-        user_id: req.user.id,
-        date: await today(db),
-        status:
-          by === 'break'
-            ? 'Break started'
-            : active.activity_type === 'travel'
-              ? 'Travel ended'
-              : 'Duty ended',
-        note: '',
-        latitude: coords.lat,
-        longitude: coords.lng,
-        accuracy: coords.accuracy,
-      });
     res.json({
       ok: true,
       at: out.at,

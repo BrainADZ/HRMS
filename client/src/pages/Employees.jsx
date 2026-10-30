@@ -294,6 +294,11 @@ function People({ selectedId }) {
                         </td>
                         <td>
                           <StatusDot status={e.status} />
+                          {e.travel_status && (
+                            <div className="mt-8">
+                              <Badge tone="blue">{e.travel_status}</Badge>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}

@@ -3,7 +3,7 @@
 // gap" step when someone comes back, and the short-hours prompt.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
   Timer,
   LogIn,
@@ -145,7 +145,28 @@ function usePipWindow() {
   return w;
 }
 
+function activeTrip(s) {
+  const session = s?.workday?.sessions.find((session) => !session.end && session.travelMemberId);
+  return s?.travelTrips?.find(
+    (trip) =>
+      ['Travelling', 'Travel started'].includes(trip.current_status) ||
+      trip.member_id === session?.travelMemberId,
+  );
+}
+
+function TripStatus({ trip }) {
+  if (!trip) return null;
+  const travelling = ['Travelling', 'Travel started'].includes(trip.current_status);
+  return (
+    <Link className="btn" to={'/travel/' + trip.id}>
+      <MapPin size={16} />
+      {travelling ? 'Travelling' : 'On duty'} · View trip
+    </Link>
+  );
+}
+
 function CheckoutButton({ size }) {
+  const s = useWorkday();
   const { toast } = useApp();
   const [choosing, setChoosing] = useState(false);
   const [run, busy] = useAction(toast);
@@ -160,6 +181,7 @@ function CheckoutButton({ size }) {
     )
       setChoosing(false);
   };
+  if (s?.workday?.mode === 'on_duty') return <TripStatus trip={activeTrip(s)} />;
   if (!choosing)
     return (
       <Button size={size} icon={LogOut} onClick={() => setChoosing(true)}>
@@ -278,7 +300,7 @@ function BreakControls({ s }) {
   const now = useNow();
   const [run, busy] = useAction(toast);
   const w = s?.workday;
-  if (!w?.sessions.length) return null;
+  if (!w?.sessions.length || w.mode === 'on_duty') return null;
   const total = breakNow(s, now);
   const current = w.breakSince
     ? Math.max(0, (now + (s.offset || 0) - Date.parse(w.breakSince)) / 60000)
@@ -408,12 +430,14 @@ export function GapReasonModal({ welcome, onClose }) {
 
 // Buttons used by the check-in cards on My Space and Attendance.
 export function ClockActions({ light }) {
+  const { pathname } = useLocation();
   const { toast, user } = useApp();
   const s = useWorkday();
   const [run, busy] = useAction(toast);
   const [ask, setAsk] = useState(false);
   const w = s?.workday;
   if (user.isOwner || !w || (OFF_DAYS.includes(s.dayStatus) && !w.sessions.length)) return null;
+  if (pathname.startsWith('/travel') || activeTrip(s)) return <TripStatus trip={activeTrip(s)} />;
   const start = async (mode) => {
     if (
       await run(
@@ -494,6 +518,7 @@ export function SessionList({ w, compact }) {
 
 // ---------- top-bar clock ----------
 export default function WorkClock() {
+  const { pathname } = useLocation();
   const { user, toast } = useApp();
   const s = useWorkday();
   const now = useNow(1000);
@@ -530,6 +555,7 @@ export default function WorkClock() {
 
   if (user.isOwner || !user.employeeId || !w) return null;
   if (OFF_DAYS.includes(s.dayStatus) && !w.sessions.length) return null;
+  if (pathname.startsWith('/travel') || activeTrip(s)) return <TripStatus trip={activeTrip(s)} />;
   const pct = Math.min(100, (worked / w.requiredMinutes) * 100);
   const left = w.requiredMinutes - worked;
   const popOut = () =>
