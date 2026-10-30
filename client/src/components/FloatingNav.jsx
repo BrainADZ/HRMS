@@ -23,6 +23,7 @@ const KEYWORDS = {
   '/': 'home overview summary kpi',
   '/my': 'home profile payslips requests',
   '/expenses': 'expense claims receipts merchant reimbursement bulk',
+  '/travel': 'travel on duty expo field site trip business',
   '/hiring': 'jobs candidates recruitment pipeline interviews offers',
   '/screener': 'resume cv ai screening',
   '/employees': 'people staff directory team profiles',

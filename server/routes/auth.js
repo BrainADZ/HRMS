@@ -65,7 +65,8 @@ export default function authRoutes(r, { db, passwordResetMailer }) {
                 email: user.email,
                 username: user.username,
                 name: user.display_name || user.email,
-                label: role === 'admin' ? 'Admin / Accountant' : role[0].toUpperCase() + role.slice(1),
+                label:
+                  role === 'admin' ? 'Admin / Accountant' : role[0].toUpperCase() + role.slice(1),
                 loginType: role === 'admin' ? 'admin' : 'employee',
                 quickLoginToken: quickToken(user.id),
               },
@@ -228,13 +229,21 @@ export default function authRoutes(r, { db, passwordResetMailer }) {
   // pause: true stops the work clock; the next sign-in asks why the employee was away.
   r.post('/auth/logout', async (req, res) => {
     let paused = null;
-    if (req.user?.employeeId && !req.user.isOwner && req.body?.pause)
+    if (req.user?.employeeId && !req.user.isOwner && req.body?.pause) {
+      const active = await db.get(
+        'SELECT date, mode FROM work_sessions WHERE employee_id=? AND end_at IS NULL ORDER BY start_at DESC LIMIT 1',
+        req.user.employeeId,
+      );
       paused = await endSession(db, {
         employeeId: req.user.employeeId,
-        date: workDate(await today(db), await getSettings(db)),
+        date:
+          active?.mode === 'on_duty'
+            ? active.date
+            : workDate(await today(db), await getSettings(db)),
         by: 'signout',
         userId: req.user.id,
       });
+    }
     await destroySession(db, req, res);
     res.json({ ok: true, paused: Boolean(paused) });
   });

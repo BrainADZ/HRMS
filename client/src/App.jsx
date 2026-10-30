@@ -9,6 +9,7 @@ import ResetPassword from './pages/ResetPassword.jsx';
 
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const Expenses = lazy(() => import('./pages/Expenses.jsx'));
+const Travel = lazy(() => import('./pages/Travel.jsx'));
 const MySpace = lazy(() => import('./pages/MySpace.jsx'));
 const Hiring = lazy(() => import('./pages/Hiring.jsx'));
 const Screener = lazy(() => import('./pages/Screener.jsx'));
@@ -112,6 +113,8 @@ function AppRoutes() {
                     />
                     <Route path="/my" element={<MySpace />} />
                     <Route path="/expenses/*" element={<Expenses />} />
+                    <Route path="/travel" element={<Travel />} />
+                    <Route path="/travel/:id" element={<Travel />} />
                     <Route
                       path="/hiring"
                       element={

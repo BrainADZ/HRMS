@@ -13,6 +13,7 @@ import {
   Smartphone,
   ChevronsLeft,
   Receipt,
+  Plane,
   FileText,
 } from 'lucide-react';
 import { useApp } from '../context.jsx';
@@ -130,8 +131,14 @@ const NAV = [
     roles: ['admin', 'accounts', 'hr', 'manager'],
     end: true,
   },
-  { to: '/my', label: 'My Space', icon: IconMySpace, roles: ['employee', 'manager', 'accounts'] },
+  {
+    to: '/my',
+    label: 'My Space',
+    icon: IconMySpace,
+    roles: ['employee', 'manager', 'accounts', 'hr'],
+  },
   { to: '/expenses', label: 'Expenses', icon: Receipt },
+  { to: '/travel', label: 'Travel & On Duty', icon: Plane },
   {
     to: '/hiring',
     label: 'Hiring',
@@ -169,7 +176,12 @@ const readFloating = () => {
 function Sidebar({ open, onClose, onFloat, collapsed, onToggle }) {
   const { user, setVertical } = useApp();
   const { pathname } = useLocation();
-  const items = NAV.filter((n) => !n.roles || n.roles.includes(user.role));
+  const items = NAV.filter((n) =>
+    n.to === '/my'
+      ? !user.isOwner &&
+        (n.roles.includes(user.role) || (user.role === 'admin' && Boolean(user.employeeId)))
+      : !n.roles || n.roles.includes(user.role),
+  );
   return (
     <>
       {open && <div className="scrim" onClick={onClose} />}
@@ -698,7 +710,12 @@ export default function Layout({ children }) {
     }
     setTimeout(() => document.querySelector('.nav-act')?.focus({ preventScroll: true }), 60);
   };
-  const floatItems = NAV.filter((n) => !n.roles || n.roles.includes(user.role));
+  const floatItems = NAV.filter((n) =>
+    n.to === '/my'
+      ? !user.isOwner &&
+        (n.roles.includes(user.role) || (user.role === 'admin' && Boolean(user.employeeId)))
+      : !n.roles || n.roles.includes(user.role),
+  );
   const [more, setMore] = useState(false);
   const [getApp, setGetApp] = useState(false);
   const app = useInstall();

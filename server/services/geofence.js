@@ -81,6 +81,19 @@ export async function exemption(db, user, settings, today) {
   if (user.role === 'admin') return { reason: 'Administrator' };
   if (
     user.employeeId &&
+    (await db.value(
+      `SELECT t.id FROM travel_trips t JOIN travel_members m ON m.trip_id=t.id
+     WHERE m.employee_id=? AND t.status='Approved' AND
+       ((t.from_date<=? AND t.to_date>=?) OR EXISTS
+        (SELECT 1 FROM work_sessions w WHERE w.travel_member_id=m.id AND w.end_at IS NULL)) LIMIT 1`,
+      user.employeeId,
+      today,
+      today,
+    ))
+  )
+    return { reason: 'Approved business travel / on duty', dayOnly: true };
+  if (
+    user.employeeId &&
     (await db.value('SELECT work_place FROM employees WHERE id = ?', user.employeeId)) === 'wfh'
   )
     return { reason: 'Assigned work from home' };

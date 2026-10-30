@@ -1,5 +1,6 @@
 import { asyncMap, asyncFilter } from '../database/async.js';
 import { isCompanyOwner } from '../lib/employee-policy.js';
+import { approvedTravel, startTravelDuty, travelWorkDate } from '../services/travel.js';
 import {
   today,
   isHR,
@@ -195,7 +196,7 @@ export default function attendanceRoutes(r, { db }) {
   r.get('/attendance/workday', async (req, res) => {
     const s = await settings();
     const calendarToday = await today(db);
-    const T = workDate(calendarToday, s);
+    const T = await travelWorkDate(db, req.user.employeeId, workDate(calendarToday, s));
     const out = {
       today: T,
       serverNow: new Date().toISOString(),
@@ -204,6 +205,7 @@ export default function attendanceRoutes(r, { db }) {
       toExplain: 0,
       toApprove: 0,
       workdayEnd: s.workdayEnd,
+      travelTrips: await approvedTravel(db, req.user.employeeId, calendarToday),
     };
     if (req.user.employeeId && !req.user.isOwner) {
       await generateShortfalls(db, {
@@ -245,6 +247,19 @@ export default function attendanceRoutes(r, { db }) {
   r.post('/attendance/check-in', async (req, res) => {
     if (req.user.isOwner) fail(403, 'The company owner does not need to check in');
     if (!req.user.employeeId) fail(400, 'Your login is not linked to an employee record');
+    if (req.body.mode === 'on_duty') {
+      const out = await startTravelDuty(db, req.user, req.body);
+      if (out.needsLocation)
+        return res
+          .status(403)
+          .json({ code: 'location_required', error: 'Share your location for on-duty check-in' });
+      return res.json(out);
+    }
+    const existing = await db.get(
+      'SELECT mode FROM work_sessions WHERE employee_id=? AND end_at IS NULL',
+      req.user.employeeId,
+    );
+    if (existing) fail(409, 'Your work clock is already running');
     let mode = oneOf(req.body.mode || 'office', ['office', 'wfh'], { name: 'Mode' });
     const employee = await db.get(
       'SELECT work_place FROM employees WHERE id = ?',
@@ -325,13 +340,38 @@ export default function attendanceRoutes(r, { db }) {
     if (req.user.isOwner) fail(403, 'The company owner does not need to check out');
     if (!req.user.employeeId) fail(400, 'Your login is not linked to an employee record');
     const by = oneOf(req.body.action || 'checkout', ['checkout', 'break'], { name: 'Action' });
+    const active = await db.get(
+      'SELECT * FROM work_sessions WHERE employee_id=? AND end_at IS NULL ORDER BY start_at DESC LIMIT 1',
+      req.user.employeeId,
+    );
+    const coords = active?.mode === 'on_duty' ? readCoords(req.body.location) : null;
+    if (active?.mode === 'on_duty' && !coords)
+      return res
+        .status(403)
+        .json({ code: 'location_required', error: 'Share your location to end on-duty work' });
     const out = await endSession(db, {
       employeeId: req.user.employeeId,
-      date: workDate(await today(db), await settings()),
+      date: active?.mode === 'on_duty' ? active.date : workDate(await today(db), await settings()),
       by,
       userId: req.user.id,
     });
     if (!out) fail(400, 'Your work clock is not running');
+    if (coords && active.travel_member_id)
+      await db.insert('travel_updates', {
+        member_id: active.travel_member_id,
+        user_id: req.user.id,
+        date: await today(db),
+        status:
+          by === 'break'
+            ? 'Break started'
+            : active.activity_type === 'travel'
+              ? 'Travel ended'
+              : 'Duty ended',
+        note: '',
+        latitude: coords.lat,
+        longitude: coords.lng,
+        accuracy: coords.accuracy,
+      });
     res.json({
       ok: true,
       at: out.at,

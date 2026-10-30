@@ -139,7 +139,11 @@ export function requiredMinutes(settings) {
 
 export async function workdaySummary(db, employeeId, date, settings) {
   settings ??= await getSettings(db);
-  const sessions = await sessionsFor(db, employeeId, date);
+  const sessions = (await sessionsFor(db, employeeId, date)).map((session) =>
+    settings.demo && session.ended_by === 'employee'
+      ? { ...session, ended_by: 'checkout' }
+      : session,
+  );
   const open = sessions.find((s) => !s.end_at) || null;
   const last = sessions[sessions.length - 1] || null;
   let timerStart = 0;
@@ -156,12 +160,15 @@ export async function workdaySummary(db, employeeId, date, settings) {
       endedBy: s.ended_by,
       gapReason: s.gap_reason || null,
       gapNote: s.gap_note || null,
+      activityType: s.activity_type || 'duty',
+      travelMemberId: s.travel_member_id || null,
     })),
     gaps: gapsOf(sessions),
     workedMinutes: workedMinutes(sessions),
-    timerMinutes: workedMinutes(timerSessions),
+    timerMinutes: !open && last?.ended_by === 'checkout' ? 0 : workedMinutes(timerSessions),
     openSince: open?.start_at || null,
     mode: timerSessions[0]?.mode || null,
+    activityType: open?.activity_type || last?.activity_type || 'duty',
     awaySince: !open && last?.end_at && last.ended_by !== 'checkout' ? last.end_at : null,
     checkedOutAt: !open && last?.ended_by === 'checkout' ? last.end_at : null,
     breakSince: !open && last?.ended_by === 'break' ? last.end_at : null,
@@ -214,7 +221,9 @@ export async function startSession(
     date,
   );
   if (sessions.some((s) => !s.end_at)) return { error: 'Your work clock is already running' };
-  const returning = sessions.length > 0 && sessions.at(-1).ended_by !== 'checkout';
+  const last = sessions.at(-1);
+  const legacyDemoCheckout = last?.ended_by === 'employee' && (await getSettings(db)).demo;
+  const returning = sessions.length > 0 && last.ended_by !== 'checkout' && !legacyDemoCheckout;
   if (returning && sessions.at(-1).ended_by === 'break') gapReason = 'Break';
   if (returning && !gapReason)
     return { error: 'Tell us the reason for the gap before checking in again', needsReason: true };
@@ -260,7 +269,7 @@ export async function endSession(
 export async function closeStaleSessions(db, today, settings, now = new Date().toISOString()) {
   settings ??= await getSettings(db);
   const stale = await db.all(
-    'SELECT * FROM work_sessions WHERE end_at IS NULL AND date < ?',
+    "SELECT * FROM work_sessions WHERE end_at IS NULL AND date < ? AND mode != 'on_duty'",
     today,
   );
   for (const s of stale) {
@@ -284,7 +293,7 @@ export async function closeStaleSessions(db, today, settings, now = new Date().t
       a.employee_id,
       a.date,
     );
-    if (!s) continue;
+    if (!s || s.mode === 'on_duty') continue;
     const end = shiftEnd(a.date, settings);
     if (end > now) continue;
     await db.run(

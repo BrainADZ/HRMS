@@ -368,7 +368,7 @@ export async function seed50Demo(db, { today = D.todayIn(), saveFile = null } = 
     if (people.length !== 50 || memberIndex !== memberNames.length)
       throw new Error('Demo hierarchy must contain exactly 50 people');
 
-    await db.insert('users', {
+    await db.update('users', byFirst.get('Neha').userId, {
       email: 'admin@brainadz.com',
       display_name: 'Admin / Accountant',
       password_hash: passwordHash,

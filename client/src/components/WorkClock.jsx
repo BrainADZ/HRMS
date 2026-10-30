@@ -36,6 +36,8 @@ import { getPosition, setLocationStatus, useLocationStatus, fmtDistance } from '
 import { Button, Modal, Field, Textarea, Progress, Badge } from './ui.jsx';
 
 const OFF_DAYS = ['H', 'WO', 'L'];
+const activeWorkLabel = (w) =>
+  w.mode === 'on_duty' ? (w.activityType === 'travel' ? 'Travelling' : 'On duty') : 'Working';
 const BASE_TITLE = 'BrainADZ HRMS';
 const POP_PREF = 'hrms.popOutOnCheckIn';
 const canPopOut = () =>
@@ -223,7 +225,7 @@ function FloatingClock({ s }) {
       <div className="row between pip-summary">
         <span className={`pip-state ${running ? 'on' : ''}`}>
           {running
-            ? 'Working'
+            ? activeWorkLabel(w)
             : w.checkedOutAt
               ? 'Checked out'
               : w.breakSince
@@ -433,6 +435,11 @@ export function ClockActions({ light }) {
             <Button icon={House} loading={busy} onClick={() => start('wfh')}>
               Work from home
             </Button>
+            {s.travelTrips?.length > 0 && (
+              <Button icon={MapPin} loading={busy} onClick={() => start('on_duty')}>
+                On Duty
+              </Button>
+            )}
           </>
         )}
         {w.openSince && <CheckoutButton />}
@@ -516,6 +523,10 @@ export default function WorkClock() {
     },
     [],
   );
+  useEffect(() => {
+    const timer = setInterval(() => refreshWorkday().catch(() => {}), 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   if (user.isOwner || !user.employeeId || !w) return null;
   if (OFF_DAYS.includes(s.dayStatus) && !w.sessions.length) return null;
@@ -531,6 +542,21 @@ export default function WorkClock() {
     if ((await run(() => checkIn({ mode }), 'Checked in. Your clock is running.')) && pref)
       popOut();
   };
+
+  if (w.checkedOutAt || !w.sessions.length) {
+    return (
+      <div className="row gap-8">
+        <Button variant="primary" icon={LogIn} loading={busy} onClick={() => start('office')}>
+          Check in
+        </Button>
+        {s.travelTrips?.length > 0 && (
+          <Button icon={MapPin} loading={busy} onClick={() => start('on_duty')}>
+            On Duty
+          </Button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div ref={ref} className="clock-wrap">
@@ -555,7 +581,7 @@ export default function WorkClock() {
         {w.sessions.length > 0 && (
           <span className="lbl">
             {running
-              ? 'Working'
+              ? activeWorkLabel(w)
               : w.checkedOutAt
                 ? 'Checked out'
                 : w.breakSince
@@ -570,7 +596,7 @@ export default function WorkClock() {
             <div className="row between">
               <span>{fmtDay(s.today)}</span>
               {running ? (
-                <Badge tone="green">Working</Badge>
+                <Badge tone="green">{activeWorkLabel(w)}</Badge>
               ) : w.sessions.length ? (
                 <Badge tone="gray">
                   {w.checkedOutAt ? 'Checked out' : w.breakSince ? 'On break' : 'Paused'}
@@ -700,7 +726,11 @@ export function LocationGuard() {
   const geo = meta?.geofence;
   const running = Boolean(s?.workday?.openSince);
   const track = Boolean(
-    geo && geo.mode !== 'off' && !geo.exempt && (geo.mode === 'strict' || running),
+    geo &&
+    geo.mode !== 'off' &&
+    !geo.exempt &&
+    s?.workday?.mode !== 'on_duty' &&
+    (geo.mode === 'strict' || running),
   );
   const warned = useRef(false);
   const last = useRef(0);

@@ -33,7 +33,11 @@ export default function DailyAttendance({ data: suppliedData, compact = false })
   const title = !w
     ? 'Loading today’s status…'
     : w.openSince
-      ? 'Working'
+      ? w.mode === 'on_duty'
+        ? w.activityType === 'travel'
+          ? 'Travelling'
+          : 'On duty'
+        : 'Working'
       : w.breakSince
         ? 'On break'
         : first
@@ -92,10 +96,17 @@ export default function DailyAttendance({ data: suppliedData, compact = false })
           {first && (
             <div className="daily-attendance-timeline">
               <div className="daily-attendance-activity-head">
-                <h3>Today's activity <span>{w.sessions.length} sessions</span></h3>
+                <h3>
+                  Today's activity <span>{w.sessions.length} sessions</span>
+                </h3>
                 {w.sessions.length > 3 && <span className="small">Scroll to view all</span>}
               </div>
-              <div className="daily-attendance-activity-scroll" tabIndex={0} role="region" aria-label="Today's activity history">
+              <div
+                className="daily-attendance-activity-scroll"
+                tabIndex={0}
+                role="region"
+                aria-label="Today's activity history"
+              >
                 <SessionList w={w} />
               </div>
               {w.breakSince && (

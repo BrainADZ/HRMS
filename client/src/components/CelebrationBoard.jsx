@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Cake, CalendarHeart } from 'lucide-react';
+import { Cake, CalendarHeart, Megaphone } from 'lucide-react';
 import { api } from '../lib/api.js';
 import { addDays, fmtDate } from '../lib/format.js';
 import { useApp } from '../context.jsx';
@@ -15,10 +15,12 @@ export default function CelebrationBoard({ publicView = false }) {
   useEffect(() => {
     let alive = true;
     const load = () =>
-      api
-        .get('/auth/celebrations')
-        .then((result) => {
-          if (alive) setData(result);
+      Promise.all([
+        api.get('/auth/celebrations'),
+        !publicView && user ? api.get('/notices') : Promise.resolve({ items: [] }),
+      ])
+        .then(([result, notices]) => {
+          if (alive) setData({ ...result, announcements: notices.items || [] });
         })
         .catch(() => {});
     load();
@@ -27,13 +29,14 @@ export default function CelebrationBoard({ publicView = false }) {
       alive = false;
       clearInterval(timer);
     };
-  }, []);
+  }, [publicView, user?.id]);
   useEffect(() => {
     if (publicView || !user || !data) return;
     const tomorrow = addDays(data.today, 1);
     if (
       !data.birthdays.some((item) => item.date >= data.today && item.date <= tomorrow) &&
-      !data.holidays.some((item) => item.date >= data.today && item.date <= tomorrow)
+      !data.holidays.some((item) => item.date >= data.today && item.date <= tomorrow) &&
+      !data.announcements?.length
     )
       return;
     const key = `hrms.reminders.${user.id}.${data.today}`;
@@ -45,17 +48,23 @@ export default function CelebrationBoard({ publicView = false }) {
     const timer = setInterval(show, 500);
     return () => clearInterval(timer);
   }, [data, user?.id, publicView]);
-  if (!data || (!data.birthdays.length && !data.holidays.length)) return null;
+  if (!data) return null;
   const tomorrow = addDays(data.today, 1);
   const futureBirthdays = data.birthdays.filter((item) => item.date >= data.today && item.date <= tomorrow);
   const futureHolidays = data.holidays.filter((item) => item.date >= data.today && item.date <= tomorrow);
   return (
     <>
-      {publicView && (futureBirthdays.length > 0 || futureHolidays.length > 0) && (
+      {publicView && (
         <section
           className={`celebration-board ${publicView ? 'public' : ''}`}
           aria-label="Birthdays and holidays"
         >
+          {!futureBirthdays.length && !futureHolidays.length && (
+            <div className="celebration-block">
+              <h3><CalendarHeart size={19} /> Birthdays & holidays</h3>
+              <p className="small muted">No birthdays or holidays today or tomorrow. Company announcements are available after sign-in.</p>
+            </div>
+          )}
           {futureBirthdays.length > 0 && (
             <div className="celebration-block birthday-wishes">
               <h3>
@@ -93,7 +102,7 @@ export default function CelebrationBoard({ publicView = false }) {
       )}
       {!publicView && reminderDay === data.today && (
         <Modal
-          title="Birthdays & holidays"
+          title="Announcements & celebrations"
           onClose={() => setReminderDay(null)}
           size="narrow"
           footer={
@@ -102,8 +111,20 @@ export default function CelebrationBoard({ publicView = false }) {
             </Button>
           }
         >
-          <p className="small muted">Today's celebrations and tomorrow's reminders.</p>
+          <p className="small muted">Company updates, today's celebrations and tomorrow's reminders.</p>
           <div className="celebration-reminders">
+            {data.announcements?.length > 0 && (
+              <div className="celebration-block" style={{ maxHeight: 260, overflowY: 'auto' }}>
+                <h3><Megaphone size={19} /> Announcements</h3>
+                {data.announcements.slice(0, 5).map((item) => (
+                  <div key={item.id} style={{ padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+                    <strong>{item.title}</strong>
+                    {item.body && <p className="small muted" style={{ marginTop: 4, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{item.body}</p>}
+                    <span className="small muted">{fmtDate(item.created_at)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             {futureBirthdays.length > 0 && (
               <div className="celebration-block">
                 <h3>

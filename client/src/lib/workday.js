@@ -7,6 +7,7 @@ import { withLocation } from './location.js';
 
 let state = null;
 let pending = null;
+let generation = 0;
 const subscribers = new Set();
 const emit = () => subscribers.forEach((f) => f());
 const subscribe = (f) => {
@@ -16,10 +17,12 @@ const subscribe = (f) => {
 
 export function refreshWorkday() {
   if (pending) return pending;
+  const requestGeneration = generation;
   const sentAt = Date.now();
   pending = api
     .get('/attendance/workday')
     .then((r) => {
+      if (requestGeneration !== generation) return null;
       // Offset between the server clock and this device, so the running time
       // is right even when the device clock is not.
       const offset = Date.parse(r.serverNow) - (sentAt + Date.now()) / 2;
@@ -29,12 +32,14 @@ export function refreshWorkday() {
       return state;
     })
     .finally(() => {
-      pending = null;
+      if (requestGeneration === generation) pending = null;
     });
   return pending;
 }
 
 export function clearWorkday() {
+  generation += 1;
+  pending = null;
   state = null;
   emit();
 }
@@ -61,6 +66,7 @@ export function useNow(ms = 1000) {
 export function workedNow(s, now = Date.now()) {
   const w = s?.workday;
   if (!w) return 0;
+  if (w.checkedOutAt && !w.openSince) return 0;
   const running = w.openSince
     ? Math.max(0, (now + (s.offset || 0) - Date.parse(w.openSince)) / 60000)
     : 0;
@@ -79,6 +85,8 @@ export const clockText = (minutes, seconds = true) => {
 
 // Office check-in needs the device's location when the office-only rule is on.
 export async function checkIn(body) {
+  if (body.mode === 'on_duty')
+    body = { ...body, trip_id: body.trip_id || state?.travelTrips?.[0]?.id };
   const r = await withLocation((location) =>
     api.post('/attendance/check-in', { ...body, ...(location ? { location } : {}) }),
   );
@@ -87,7 +95,9 @@ export async function checkIn(body) {
 }
 
 export async function checkOut(action = 'checkout') {
-  const r = await api.post('/attendance/check-out', { action });
+  const r = await withLocation((location) =>
+    api.post('/attendance/check-out', { action, ...(location ? { location } : {}) }),
+  );
   await refreshWorkday();
   return r;
 }

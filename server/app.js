@@ -28,6 +28,10 @@ import performanceRoutes from './routes/performance.js';
 import reportRoutes from './routes/reports.js';
 import settingsRoutes from './routes/settings.js';
 import trainingRoutes from './routes/training.js';
+import travelRoutes from './routes/travel.js';
+import { travelReminders } from './services/travel.js';
+import { nowTimeIn } from './lib/dates.js';
+import { getSettings } from './core.js';
 import { atomicRouter, workflow } from './database/workflows.js';
 import { cleanUploads, validateUploads } from './services/uploads.js';
 import { createPasswordResetMailer } from './services/reset-mail.js';
@@ -80,6 +84,9 @@ export async function createApp({
   const shortHoursCheck = async () => {
     try {
       await workflow(db, async () => generateShortfalls(db, { today: await companyToday(db) }));
+      const settings = await getSettings(db);
+      if (nowTimeIn(settings.timezone) >= '17:00')
+        await workflow(db, async () => travelReminders(db));
     } catch (e) {
       console.error('Short-hours check failed', e);
     }
@@ -206,6 +213,7 @@ export async function createApp({
     dashboardRoutes,
     employeeRoutes,
     trainingRoutes,
+    travelRoutes,
     leaveRoutes,
     attendanceRoutes,
     correctionRoutes,
