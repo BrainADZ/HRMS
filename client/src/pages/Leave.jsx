@@ -70,7 +70,9 @@ export default function Leave({ embedded = false }) {
   const [sp, setSp] = useSearchParams();
   const { meta, user, isHR } = useApp();
   const tab = sp.get('tab') || 'overview';
-  const [year, setYear] = useState(Number(meta.today.slice(0, 4)));
+  const [year, setYear] = useState(
+    Number(meta.today.slice(0, 4)) - (Number(meta.today.slice(5, 7)) < 4 ? 1 : 0),
+  );
   const tabs = [
     { value: 'overview', label: 'Overview' },
     { value: 'manage', label: 'Leave Management' },
@@ -102,14 +104,16 @@ export default function Leave({ embedded = false }) {
           Policy Year
           <select
             className="select sm"
-            style={{ width: 100 }}
+            style={{ width: 125 }}
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}
           >
             {[year - 1, year, year + 1]
               .filter((y, i, a) => a.indexOf(y) === i)
               .map((y) => (
-                <option key={y}>{y}</option>
+                <option key={y} value={y}>
+                  {y}–{String(y + 1).slice(-2)}
+                </option>
               ))}
           </select>
         </div>
@@ -334,7 +338,8 @@ function Workflow({ onChanged }) {
 }
 
 function HolidayCalendar({ year, today }) {
-  const start = today.slice(0, 4) === String(year) ? today.slice(0, 7) : `${year}-01`;
+  const start =
+    today >= `${year}-04-01` && today <= `${year + 1}-03-31` ? today.slice(0, 7) : `${year}-04`;
   const [month, setMonth] = useState(start);
   const { data } = useApi(`/holidays?year=${month.slice(0, 4)}`);
   const marks = Object.fromEntries(
@@ -563,8 +568,12 @@ function PolicyBuilder() {
               <span className="grow">{t.name}</span>
               <span className="muted">
                 {t.accrual === 'monthly'
-                  ? `${Math.round((t.annual_quota / 12) * 100) / 100} days/month`
-                  : 'Credited in January, pro-rated for joiners'}
+                  ? `${Math.round((t.annual_quota / 12) * 100) / 100} days per completed month`
+                  : t.accrual === 'quarterly'
+                    ? `${t.annual_quota / 4} days/quarter (April, July, October, January)`
+                    : t.accrual === 'event'
+                      ? 'Full allowance; not pro-rated for joiners'
+                      : 'Credited in April, pro-rated for joiners'}
               </span>
             </div>
           ))}
@@ -688,7 +697,7 @@ function Manage({ year }) {
   const [type, setType] = useState('');
   const [modal, setModal] = useState(null);
   const { data, reload } = useApi(
-    `/leave/requests?scope=${scope}&limit=300${status ? `&status=${status}` : ''}${type ? `&type=${type}` : ''}&from=${year}-01-01&to=${year}-12-31`,
+    `/leave/requests?scope=${scope}&limit=300${status ? `&status=${status}` : ''}${type ? `&type=${type}` : ''}&from=${year}-04-01&to=${year + 1}-03-31`,
   );
   const [run] = useAction(toast);
   const [note, setNote] = useState(null);
@@ -846,7 +855,7 @@ function Manage({ year }) {
           </Card>
           <Card
             className="span-6"
-            title={`Leave register ${year}`}
+            title={`Leave register ${year}–${year + 1}`}
             action={
               <Button
                 size="sm"
@@ -1004,7 +1013,7 @@ function LeaveRegister({ year }) {
     [data, q],
   );
   if (!data) return <Loading />;
-  const codes = ['EL', 'CL', 'SL', 'WFH'];
+  const codes = ['EL', 'CL', 'WFH'];
   return (
     <div>
       <Input
@@ -1020,7 +1029,7 @@ function LeaveRegister({ year }) {
               <th>Employee</th>
               {codes.map((c) => (
                 <th key={c} className="num">
-                  {c}
+                  {c === 'CL' ? 'CL/SL' : c}
                 </th>
               ))}
             </tr>

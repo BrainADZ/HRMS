@@ -6,7 +6,7 @@ import * as D from '../lib/dates.js';
 import { calendarCtx } from '../services/calendar.js';
 import { balances } from '../services/leave.js';
 import { headcountOn } from './dashboard.js';
-import { countLeaveDays } from '../lib/leave.js';
+import { countLeaveDays, leaveYear, leaveYearBounds } from '../lib/leave.js';
 
 export default function reportRoutes(r, { db }) {
   r.get('/reports/summary', async (req, res) => {
@@ -98,23 +98,23 @@ export default function reportRoutes(r, { db }) {
     const T = await today(db);
     const year = req.query.year
       ? num(req.query.year, { min: 1900, max: 2200, int: true, required: true, name: 'Year' })
-      : D.yearOf(T);
+      : leaveYear(T);
     const filter = employeeFilter(req.query);
     const ctx = await calendarCtx(db);
     const types = await db.all('SELECT * FROM leave_types WHERE active = 1 ORDER BY sort');
     const rows = await asyncMap(
       await db.all(
         `SELECT e.*, d.name AS department FROM employees e LEFT JOIN departments d ON d.id = e.department_id WHERE e.join_date <= ? AND (e.exit_date IS NULL OR e.exit_date >= ?) AND ${filter.sql} ORDER BY e.code`,
-        `${year}-12-31`,
-        `${year}-01-01`,
+        leaveYearBounds(year).end,
+        leaveYearBounds(year).start,
         ...filter.params,
       ),
       async (e) => ({
         e,
         b: new Map(
-          (await balances(db, e, year, year === D.yearOf(T) ? T : `${year}-12-31`, ctx)).map(
-            (x) => [x.code, x],
-          ),
+          (
+            await balances(db, e, year, year === leaveYear(T) ? T : leaveYearBounds(year).end, ctx)
+          ).map((x) => [x.code, x]),
         ),
       }),
     );

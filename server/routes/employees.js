@@ -33,6 +33,7 @@ import { hashPassword, tempPassword, loginDetails, protectEmployeeAccount } from
 import * as D from '../lib/dates.js';
 import { salaryStructure, estimateMonthlyTds } from '../lib/payroll.js';
 import { balances } from '../services/leave.js';
+import { leaveYear } from '../lib/leave.js';
 import { calendarCtx, dayStatuses } from '../services/calendar.js';
 import { IFSC_RE, ACCOUNT_RE } from '../services/payroll.js';
 import { invalidatePayrollInputs } from '../services/payroll-inputs.js';
@@ -406,7 +407,7 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
         (await db.value('SELECT completed_at FROM posh_training WHERE employee_id = ?', eid)) ||
         null,
       leave: {
-        balances: await balances(db, e, D.yearOf(T), T, await calendarCtx(db)),
+        balances: await balances(db, e, leaveYear(T), T, await calendarCtx(db)),
         requests: await db.all(
           `SELECT r.*, t.name AS type, t.code, t.color FROM leave_requests r JOIN leave_types t ON t.id = r.leave_type_id
           WHERE r.employee_id = ? ORDER BY r.from_date DESC LIMIT 20`,

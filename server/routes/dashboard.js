@@ -1,6 +1,7 @@
 import { today, isHR, scopeIds, fullName, fail } from '../core.js';
 import * as D from '../lib/dates.js';
 import { balances } from '../services/leave.js';
+import { leaveYear } from '../lib/leave.js';
 import { calendarCtx, dayStatuses } from '../services/calendar.js';
 import { runSummary } from '../services/payroll.js';
 
@@ -422,7 +423,7 @@ export default function dashboardRoutes(r, { db }) {
         status: e.status,
       },
       attendance: { today: att, monthSummary: summary, todayStatus: statuses.get(T) },
-      balances: await balances(db, e, D.yearOf(T), T, await calendarCtx(db)),
+      balances: await balances(db, e, leaveYear(T), T, await calendarCtx(db)),
       myRequests: await db.all(
         `SELECT r.*, t.name AS type, t.code, t.color FROM leave_requests r JOIN leave_types t ON t.id = r.leave_type_id WHERE r.employee_id = ? ORDER BY r.created_at DESC LIMIT 5`,
         empId,
