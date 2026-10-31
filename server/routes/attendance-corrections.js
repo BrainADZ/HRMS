@@ -112,7 +112,7 @@ export default function correctionRoutes(r, { db }) {
         );
       await invalidatePayrollInputs(db, row.date, row.date, { rejectLocked: true });
       await db.run(
-        `INSERT INTO attendance (employee_id,date,status,note,updated_by) VALUES (?,?,?,?,?) ON CONFLICT(employee_id,date) DO UPDATE SET status=excluded.status,note=excluded.note,updated_by=excluded.updated_by`,
+        `INSERT INTO attendance (employee_id,date,status,note,updated_by) VALUES (?,?,?,?,?) ON CONFLICT(employee_id,date) DO UPDATE SET status=excluded.status,note=excluded.note,updated_by=excluded.updated_by,auto_absent=0`,
         row.employee_id,
         row.date,
         row.requested_status,

@@ -1,3 +1,9 @@
+import {
+  currentWorkStatus,
+  workStatusHistory,
+  startWorkStatus,
+  endWorkStatus,
+} from '../services/work-status.js';
 import path from 'node:path';
 import { endSession } from '../services/workday.js';
 import {
@@ -37,6 +43,26 @@ const minutes = (rows, type) =>
     );
 
 export default function travelRoutes(r, { db, upload, uploads }) {
+  r.get('/work-status', async (req, res) =>
+    res.json({
+      current: await currentWorkStatus(db, req.user.employeeId),
+      items: await workStatusHistory(db, req.user),
+    }),
+  );
+  r.post('/work-status', async (req, res) => {
+    const status = await startWorkStatus(db, req.user, req.body);
+    await audit(db, req.user, 'work_status.start', 'employee', req.user.employeeId, {
+      kind: status.kind,
+      date: req.body.date,
+      reason: status.reason,
+    });
+    res.json(status);
+  });
+  r.post('/work-status/:statusId/end', async (req, res) => {
+    const result = await endWorkStatus(db, req.user, id(req.params.statusId));
+    await audit(db, req.user, 'work_status.end', 'employee', req.user.employeeId);
+    res.json(result);
+  });
   const tripRow = async (req, lock = false) => {
     const trip = await db.get(
       `SELECT * FROM travel_trips WHERE id=?${lock ? ' FOR UPDATE' : ''}`,
@@ -279,7 +305,7 @@ export default function travelRoutes(r, { db, upload, uploads }) {
 
   r.post('/travel/:id/journey', async (req, res) => {
     await tripRow(req, true);
-    res.json(await setJourneyStatus(db, req.user, id(req.params.id), req.body.action));
+    res.json(await setJourneyStatus(db, req.user, id(req.params.id), req.body.action, req.body));
   });
 
   r.post('/travel/:id/start', async (req, res) => {
@@ -339,7 +365,7 @@ export default function travelRoutes(r, { db, upload, uploads }) {
         user_id: req.user.id,
         date: day,
         status: req.body.status,
-        note: str(req.body.note, { max: 2000 }),
+        note: str(req.body.note, { max: 2000 }) || '',
         photo: req.file?.filename || null,
       });
       await notifyUsers(

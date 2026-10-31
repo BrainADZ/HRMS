@@ -30,27 +30,31 @@ export default function DailyAttendance({ data: suppliedData, compact = false })
   const breaks = breakNow(s, now);
   const first = w?.sessions[0];
   const last = w?.sessions.at(-1);
-  const title = !w
-    ? 'Loading today’s status…'
-    : w.openSince
-      ? w.mode === 'on_duty'
-        ? w.activityType === 'travel'
-          ? 'Travelling'
-          : 'On duty'
-        : 'Working'
-      : w.breakSince
-        ? 'On break'
-        : first
-          ? w.checkedOutAt
-            ? 'Checked out'
-            : 'Paused'
-          : status?.code === 'L'
-            ? `On ${status.leave?.name || 'leave'} today`
-            : status?.code === 'H'
-              ? 'Holiday today'
-              : status?.code === 'WO'
-                ? 'Weekly off today'
-                : 'Not checked in yet';
+  const title = s?.currentWorkStatus
+    ? s.currentWorkStatus.kind === 'travel'
+      ? 'Travelling'
+      : 'On-site duty'
+    : !w
+      ? 'Loading today’s status…'
+      : w.openSince
+        ? w.mode === 'on_duty'
+          ? w.activityType === 'travel'
+            ? 'Travelling'
+            : 'On duty'
+          : 'Working'
+        : w.breakSince
+          ? 'On break'
+          : first
+            ? w.checkedOutAt
+              ? 'Checked out'
+              : 'Paused'
+            : status?.code === 'L'
+              ? `On ${status.leave?.name || 'leave'} today`
+              : status?.code === 'H'
+                ? 'Holiday today'
+                : status?.code === 'WO'
+                  ? 'Weekly off today'
+                  : 'Not checked in yet';
   const summary = data.attendance.monthSummary;
   return (
     <section
@@ -67,21 +71,23 @@ export default function DailyAttendance({ data: suppliedData, compact = false })
         </div>
         <ClockActions light />
       </div>
-      <dl className="daily-attendance-metrics">
-        {[
-          ['First check-in', first ? fmtTime(first.start) : '—'],
-          ['Last check-out', last?.end ? fmtTime(last.end) : '—'],
-          ['Worked today', w ? clockText(worked) : '—'],
-          ['Break time', w ? clockText(breaks) : '—'],
-          ['Daily target', w ? clockText(w.requiredMinutes, false) : '—'],
-        ].map(([label, value]) => (
-          <div key={label}>
-            <dt>{label}</dt>
-            <dd>{value}</dd>
-          </div>
-        ))}
-      </dl>
-      {w && (
+      {s?.currentWorkStatus?.kind !== 'travel' && (
+        <dl className="daily-attendance-metrics">
+          {[
+            ['First check-in', first ? fmtTime(first.start) : '—'],
+            ['Last check-out', last?.end ? fmtTime(last.end) : '—'],
+            ['Worked today', w ? clockText(worked) : '—'],
+            ['Break time', w ? clockText(breaks) : '—'],
+            ['Daily target', w ? clockText(w.requiredMinutes, false) : '—'],
+          ].map(([label, value]) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {w && s?.currentWorkStatus?.kind !== 'travel' && (
         <>
           <Progress
             value={w.requiredMinutes ? Math.min(100, (worked / w.requiredMinutes) * 100) : 0}
@@ -118,6 +124,7 @@ export default function DailyAttendance({ data: suppliedData, compact = false })
           )}
         </>
       )}
+      {s?.currentWorkStatus && <p className="small">{s.currentWorkStatus.reason}</p>}
       <div className="row wrap daily-attendance-month">
         <span>This month:</span>
         <span>

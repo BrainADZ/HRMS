@@ -1,3 +1,4 @@
+import MissingAttendanceModal from './MissingAttendanceModal.jsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -13,7 +14,6 @@ import {
   Smartphone,
   ChevronsLeft,
   Receipt,
-  Plane,
   FileText,
 } from 'lucide-react';
 import { useApp } from '../context.jsx';
@@ -138,7 +138,6 @@ const NAV = [
     roles: ['employee', 'manager', 'accounts', 'hr'],
   },
   { to: '/expenses', label: 'Expenses', icon: Receipt },
-  { to: '/travel', label: 'Travel & On Duty', icon: Plane },
   {
     to: '/hiring',
     label: 'Hiring',
@@ -780,6 +779,7 @@ export default function Layout({ children }) {
       {getApp && <GetAppModal onClose={() => setGetApp(false)} />}
       {user.mustChangePassword && <ChangePassword forced onClose={() => {}} />}
       <SignInPrompts />
+      <MissingAttendanceModal />
       <CelebrationBoard />
       <LocationGuard />
     </div>

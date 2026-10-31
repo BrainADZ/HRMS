@@ -53,7 +53,7 @@ const ONBOARDING = [
 ];
 
 const BASE_SELECT = `
-  SELECT e.*, (SELECT u.status FROM travel_members tm JOIN travel_trips tt ON tt.id=tm.trip_id JOIN LATERAL (SELECT status FROM travel_updates WHERE member_id=tm.id ORDER BY created_at DESC,id DESC LIMIT 1) u ON true WHERE tm.employee_id=e.id AND tt.status='Approved' AND u.status IN ('Travelling','Travel started','Site reached','Duty started','Setup ongoing','Event running') ORDER BY tt.id DESC LIMIT 1) AS travel_status, d.name AS department, v.name AS vertical, v.short AS vertical_short, v.color AS vertical_color, l.name AS location,
+  SELECT e.*, COALESCE((SELECT CASE kind WHEN 'travel' THEN 'Travelling' ELSE 'On-site duty' END FROM work_statuses WHERE employee_id=e.id AND end_at IS NULL LIMIT 1), (SELECT u.status FROM travel_members tm JOIN travel_trips tt ON tt.id=tm.trip_id JOIN LATERAL (SELECT status FROM travel_updates WHERE member_id=tm.id ORDER BY created_at DESC,id DESC LIMIT 1) u ON true WHERE tm.employee_id=e.id AND tt.status='Approved' AND u.status IN ('Travelling','Travel started','Site reached','Duty started','Setup ongoing','Event running') ORDER BY tt.id DESC LIMIT 1)) AS travel_status, d.name AS department, v.name AS vertical, v.short AS vertical_short, v.color AS vertical_color, l.name AS location,
          m.first_name AS m_first, m.last_name AS m_last, m.designation AS m_designation, m.photo AS m_photo
   FROM employees e
   LEFT JOIN departments d ON d.id = e.department_id

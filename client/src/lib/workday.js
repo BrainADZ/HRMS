@@ -1,3 +1,4 @@
+import { withAbsenceReasons } from './missing-attendance.js';
 // Shared state of the signed-in employee's work clock: today's sessions,
 // whether the clock is running, and what needs attention. The top-bar clock,
 // the check-in cards and the prompts all read and update this one store.
@@ -85,6 +86,7 @@ export const clockText = (minutes, seconds = true) => {
 
 // Office check-in needs the device's location when the office-only rule is on.
 export async function checkIn(body) {
+  body = await withAbsenceReasons(body);
   if (body.mode === 'on_duty')
     body = { ...body, trip_id: body.trip_id || state?.travelTrips?.[0]?.id };
   const r = await withLocation((location) =>

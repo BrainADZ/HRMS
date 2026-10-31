@@ -1,3 +1,4 @@
+import { validateAbsenceReasons, saveAbsenceReasons } from './missed-attendance.js';
 import { fail, getSettings, notifyUsers, today, userIdForEmployee } from '../core.js';
 import { startSession, endSession, workDate } from './workday.js';
 import { readCoords } from './geofence.js';
@@ -34,7 +35,8 @@ export async function travelWorkDate(db, employeeId, fallback) {
      WHERE w.employee_id=? ORDER BY w.start_at DESC, w.id DESC LIMIT 1`,
     employeeId,
   );
-  if (last?.mode !== 'on_duty' || last.trip_status !== 'Approved') return fallback;
+  if (last?.mode !== 'on_duty' || (!last.work_status_id && last.trip_status !== 'Approved'))
+    return fallback;
   if (
     !last.end_at ||
     (['break', 'signout'].includes(last.ended_by) &&
@@ -45,11 +47,12 @@ export async function travelWorkDate(db, employeeId, fallback) {
 }
 
 // Journey status persists on the server without creating attendance or a running clock.
-export async function setJourneyStatus(db, user, tripId, action) {
+export async function setJourneyStatus(db, user, tripId, action, body = {}) {
   if (!user.employeeId || user.isOwner) fail(403, 'An employee profile is required');
   if (!Number.isSafeInteger(Number(tripId)) || Number(tripId) <= 0)
     fail(400, 'Choose an approved trip');
   if (!['travel', 'reached'].includes(action)) fail(400, 'Choose travel or reached');
+  const absenceReasons = action === 'travel' ? await validateAbsenceReasons(db, user, body) : [];
   const day = await today(db);
   const member = await db.get(
     'SELECT m.*, t.status, t.from_date, t.to_date, t.approver_id FROM travel_members m JOIN travel_trips t ON t.id=m.trip_id WHERE t.id=? AND m.employee_id=?',
@@ -89,6 +92,7 @@ export async function setJourneyStatus(db, user, tripId, action) {
     note: '',
   });
   await notifyUsers(db, [member.approver_id], user.name + ': ' + status, '/travel/' + tripId);
+  await saveAbsenceReasons(db, user, absenceReasons);
   return { ok: true, tripId, status };
 }
 
@@ -98,7 +102,8 @@ export async function startTravelDuty(db, user, body) {
   if (body.activity_type && !['duty', 'travel'].includes(body.activity_type))
     fail(400, 'Choose duty or travel');
   if (body.activity_type === 'travel')
-    return setJourneyStatus(db, user, Number(body.trip_id), 'travel');
+    return setJourneyStatus(db, user, Number(body.trip_id), 'travel', body);
+  const absenceReasons = await validateAbsenceReasons(db, user, body);
   const coords = readCoords(body.location);
   if (!coords) return { needsLocation: true };
   const day = await today(db);
@@ -177,6 +182,7 @@ export async function startTravelDuty(db, user, body) {
     longitude: coords.lng,
     accuracy: coords.accuracy,
   });
+  await saveAbsenceReasons(db, user, absenceReasons);
   return { ...result, tripId: member.trip_id };
 }
 

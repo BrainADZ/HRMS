@@ -39,7 +39,7 @@ export async function buildPayroll(db, month, { today, settings } = {}) {
     let unmarked = 0;
     for (const s of days.values()) {
       lop += s.lop;
-      if (s.code === 'U') unmarked++;
+      if (s.code === 'U' || s.automaticAbsent) unmarked++;
     }
     const start = e.join_date > from ? e.join_date : from;
     const end = e.exit_date && e.exit_date < to ? e.exit_date : to;

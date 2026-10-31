@@ -22,6 +22,7 @@ export function credentials(base, identifier) {
 // Boots an app on a random port with a fresh demo database in a temp dir.
 export async function boot({
   serveClient = false,
+  unexplainedAbsences = false,
   clientOrigin,
   relativeDataDir = false,
   passwordResetMailer = null,
@@ -64,6 +65,12 @@ export async function boot({
     clientOrigin,
     passwordResetMailer,
   });
+  // Fixtures normally start with historical absence reasons already handled.
+  // Absence tests opt into the real outstanding-reason state explicitly.
+  if (!unexplainedAbsences)
+    await db.run(
+      "UPDATE hour_shortfalls SET status='Approved',reason='Historical absence already explained in test fixture' WHERE kind='absence' AND status='Awaiting explanation'",
+    );
   const server = await new Promise((resolve) => {
     const s = app.listen(0, () => resolve(s));
   });

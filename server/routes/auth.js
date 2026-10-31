@@ -231,18 +231,19 @@ export default function authRoutes(r, { db, passwordResetMailer }) {
     let paused = null;
     if (req.user?.employeeId && !req.user.isOwner && req.body?.pause) {
       const active = await db.get(
-        'SELECT date, mode FROM work_sessions WHERE employee_id=? AND end_at IS NULL ORDER BY start_at DESC LIMIT 1',
+        'SELECT date, mode, work_status_id FROM work_sessions WHERE employee_id=? AND end_at IS NULL ORDER BY start_at DESC LIMIT 1',
         req.user.employeeId,
       );
-      paused = await endSession(db, {
-        employeeId: req.user.employeeId,
-        date:
-          active?.mode === 'on_duty'
-            ? active.date
-            : workDate(await today(db), await getSettings(db)),
-        by: 'signout',
-        userId: req.user.id,
-      });
+      if (!active?.work_status_id)
+        paused = await endSession(db, {
+          employeeId: req.user.employeeId,
+          date:
+            active?.mode === 'on_duty'
+              ? active.date
+              : workDate(await today(db), await getSettings(db)),
+          by: 'signout',
+          userId: req.user.id,
+        });
     }
     await destroySession(db, req, res);
     res.json({ ok: true, paused: Boolean(paused) });

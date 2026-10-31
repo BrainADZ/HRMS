@@ -1084,7 +1084,7 @@ textarea {
   container-type: inline-size;
 }
 .attendance-kpis {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 12px;
 }
 .attendance-kpis .kpi {
@@ -4032,4 +4032,9 @@ body.fnav-dragging * {
   width: 152px;
   height: auto;
   max-width: 100%;
+}
+
+.c-OD {
+  background: var(--blue-soft);
+  color: var(--blue);
 }

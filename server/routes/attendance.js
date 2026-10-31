@@ -1,3 +1,10 @@
+import {
+  reconcileMissedAttendance,
+  pendingAbsences,
+  validateAbsenceReasons,
+  saveAbsenceReasons,
+} from '../services/missed-attendance.js';
+import { currentWorkStatus } from '../services/work-status.js';
 import { asyncMap, asyncFilter } from '../database/async.js';
 import { isCompanyOwner } from '../lib/employee-policy.js';
 import { approvedTravel, startTravelDuty, travelWorkDate } from '../services/travel.js';
@@ -96,11 +103,26 @@ async function canMark(db, user, employeeId) {
 }
 
 function summarize(days) {
-  const s = { P: 0, WFH: 0, HD: 0, A: 0, L: 0, U: 0, H: 0, WO: 0, lop: 0, late: 0 };
+  const s = {
+    P: 0,
+    WFH: 0,
+    HD: 0,
+    A: 0,
+    L: 0,
+    U: 0,
+    H: 0,
+    WO: 0,
+    onDuty: 0,
+    travelled: 0,
+    lop: 0,
+    late: 0,
+  };
   for (const d of days.values()) {
     if (d.code in s) s[d.code]++;
     s.lop += d.lop;
     if (d.late) s.late++;
+    if (d.onDuty) s.onDuty++;
+    if (d.travelled) s.travelled++;
   }
   return s;
 }
@@ -163,6 +185,12 @@ export default function attendanceRoutes(r, { db }) {
           vertical: e.vertical,
           has_photo: Boolean(e.photo),
           code_today: d.code,
+          onDuty: Boolean(d.onDuty),
+          travelled: Boolean(d.travelled),
+          travelRunning: Boolean(d.travelRunning),
+          statusReason: d.statusReason,
+          dutyMinutes: d.dutyMinutes || 0,
+          dutyRunning: Boolean(d.dutyRunning),
           leave: d.leave?.name,
           leaveReason: d.code === 'L' ? leaveReasons.get(e.id) || null : null,
           checkIn: d.checkIn,
@@ -178,6 +206,7 @@ export default function attendanceRoutes(r, { db }) {
           total: rows.length,
           present: count('P'),
           wfh: count('WFH'),
+          onDuty: rows.filter((x) => x.onDuty).length,
           halfDay: count('HD'),
           absent: count('A'),
           onLeave: count('L'),
@@ -193,6 +222,12 @@ export default function attendanceRoutes(r, { db }) {
   // ---------- work clock ----------
   // Today's sessions for the signed-in employee, plus what needs their
   // attention (short days to explain) or their approval (team short days).
+  r.get('/attendance/missing-days', async (req, res) => {
+    if (!req.user.employeeId || req.user.isOwner) return res.json({ items: [] });
+    await reconcileMissedAttendance(db, { employeeIds: [req.user.employeeId] });
+    res.json({ items: await pendingAbsences(db, req.user.employeeId) });
+  });
+
   r.get('/attendance/workday', async (req, res) => {
     const s = await settings();
     const calendarToday = await today(db);
@@ -205,6 +240,7 @@ export default function attendanceRoutes(r, { db }) {
       toExplain: 0,
       toApprove: 0,
       workdayEnd: s.workdayEnd,
+      currentWorkStatus: await currentWorkStatus(db, req.user.employeeId),
       travelTrips: await approvedTravel(db, req.user.employeeId, calendarToday),
     };
     if (req.user.employeeId && !req.user.isOwner) {
@@ -247,6 +283,9 @@ export default function attendanceRoutes(r, { db }) {
   r.post('/attendance/check-in', async (req, res) => {
     if (req.user.isOwner) fail(403, 'The company owner does not need to check in');
     if (!req.user.employeeId) fail(400, 'Your login is not linked to an employee record');
+    const absenceReasons = await validateAbsenceReasons(db, req.user, req.body);
+    if (await currentWorkStatus(db, req.user.employeeId))
+      fail(409, 'Finish your current work status first');
     if (req.body.mode === 'on_duty') {
       const out = await startTravelDuty(db, req.user, req.body);
       if (out.needsLocation)
@@ -336,6 +375,7 @@ export default function attendanceRoutes(r, { db }) {
       userId: req.user.id,
     });
     if (out.error) fail(out.needsReason ? 400 : 409, out.error);
+    await saveAbsenceReasons(db, req.user, absenceReasons);
     res.json(out);
   });
 
@@ -502,6 +542,33 @@ export default function attendanceRoutes(r, { db }) {
       to,
       ...ids,
     );
+    const statuses = await dayStatuses(db, employees, from, to, await today(db), s);
+    const statusHistory = await db.all(
+      'SELECT * FROM work_statuses WHERE employee_id IN (' +
+        placeholders +
+        ') AND start_at < ? AND (end_at IS NULL OR end_at >= ?)',
+      ...ids,
+      D.zonedIso(D.addDays(to, 1), '00:00', s.timezone),
+      D.zonedIso(from, '00:00', s.timezone),
+    );
+    const localDay = (timestamp) =>
+      new Intl.DateTimeFormat('en-CA', {
+        timeZone: s.timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date(timestamp));
+    for (const status of statusHistory) {
+      const start = localDay(status.start_at) < from ? from : localDay(status.start_at);
+      const end = status.end_at && localDay(status.end_at) < to ? localDay(status.end_at) : to;
+      for (const day of D.eachDay(start, end))
+        if (
+          !activeDays.some(
+            (entry) => entry.employee_id === status.employee_id && entry.date === day,
+          )
+        )
+          activeDays.push({ employee_id: status.employee_id, date: day });
+    }
     for (const { employee_id: employeeId, date: day } of activeDays) {
       const employee = employeeById.get(employeeId);
       if (!employee) continue;
@@ -510,6 +577,15 @@ export default function attendanceRoutes(r, { db }) {
         name: fullName(employee),
         code: employee.code,
         date: day,
+        workStatuses: statusHistory.filter(
+          (entry) =>
+            entry.employee_id === employee.id &&
+            localDay(entry.start_at) <= day &&
+            (!entry.end_at || localDay(entry.end_at) >= day),
+        ),
+        travelled: Boolean(statuses.get(employee.id)?.get(day)?.travelled),
+        onDuty: Boolean(statuses.get(employee.id)?.get(day)?.onDuty),
+        dutyMinutes: statuses.get(employee.id)?.get(day)?.dutyMinutes || 0,
         attendanceStatus: await db.value(
           'SELECT status FROM attendance WHERE employee_id = ? AND date = ?',
           employee.id,
@@ -535,11 +611,16 @@ export default function attendanceRoutes(r, { db }) {
       params.push(req.user.employeeId);
     } else if (!isHR(req.user)) {
       if (!req.user.employeeId) return res.json({ items: [], view });
-      where.push('e.manager_id = ?');
-      params.push(req.user.employeeId);
+      const scope = await scopeIds(db, req.user);
+      where.push(scope.length ? 'e.id IN (' + scope.map(() => '?').join(',') + ')' : '0=1');
+      params.push(...scope);
     } else if (req.user.employeeId) {
       where.push('s.employee_id != ?');
       params.push(req.user.employeeId);
+    }
+    if (['absence', 'short_hours'].includes(req.query.kind)) {
+      where.push('s.kind = ?');
+      params.push(req.query.kind);
     }
     if (req.query.status === 'open')
       where.push("s.status IN ('Awaiting explanation','Pending approval')");
@@ -598,7 +679,8 @@ export default function attendanceRoutes(r, { db }) {
       required: true,
       name: 'Action',
     });
-    await invalidatePayrollInputs(db, s.date, s.date, { rejectLocked: true });
+    if (s.kind !== 'absence')
+      await invalidatePayrollInputs(db, s.date, s.date, { rejectLocked: true });
     const note = str(req.body.note, { max: 500 });
     const att = await db.get(
       'SELECT * FROM attendance WHERE employee_id = ? AND date = ?',
@@ -612,7 +694,7 @@ export default function attendanceRoutes(r, { db }) {
         decided_at: new Date().toISOString(),
         decision_note: note,
       });
-      if (att) {
+      if (att && s.kind !== 'absence') {
         const base =
           (await db.value(
             'SELECT mode FROM work_sessions WHERE employee_id = ? AND date = ? ORDER BY start_at LIMIT 1',
@@ -621,11 +703,18 @@ export default function attendanceRoutes(r, { db }) {
           )) === 'wfh' || att.status === 'WFH'
             ? 'WFH'
             : 'P';
-        const status = action === 'approve' ? (att.status === 'HD' ? base : att.status) : 'HD';
+        const status =
+          s.kind === 'absence'
+            ? att.status
+            : action === 'approve'
+              ? att.status === 'HD'
+                ? base
+                : att.status
+              : 'HD';
         await db.run(
           'UPDATE attendance SET status = ?, note = ?, updated_by = ? WHERE employee_id = ? AND date = ?',
           status,
-          `Short hours ${action === 'approve' ? 'approved' : 'rejected'} by ${req.user.name}`,
+          `${s.kind === 'absence' ? 'Missing attendance reason' : 'Short hours'} ${action === 'approve' ? 'approved' : 'rejected'} by ${req.user.name}`,
           req.user.id,
           s.employee_id,
           s.date,
@@ -639,9 +728,11 @@ export default function attendanceRoutes(r, { db }) {
     await notifyUsers(
       db,
       [await userIdForEmployee(db, s.employee_id)],
-      action === 'approve'
-        ? `${req.user.name} approved your short hours on ${dayLabel(s.date)}. The day counts in full.`
-        : `${req.user.name} did not approve your short hours on ${dayLabel(s.date)}; it is marked as a half day.${note ? ` Note: ${note}` : ''}`,
+      s.kind === 'absence'
+        ? `${req.user.name} ${action === 'approve' ? 'accepted' : 'rejected'} your missing-attendance reason for ${dayLabel(s.date)}. Attendance remains unchanged; request a correction if needed.`
+        : action === 'approve'
+          ? `${req.user.name} approved your short hours on ${dayLabel(s.date)}. The day counts in full.`
+          : `${req.user.name} did not approve your short hours on ${dayLabel(s.date)}; it is marked as a half day.${note ? ` Note: ${note}` : ''}`,
       '/attendance?tab=short',
     );
     res.json({ ok: true });
@@ -653,7 +744,16 @@ export default function attendanceRoutes(r, { db }) {
     const from = D.monthStart(month);
     const to = D.monthEnd(month);
     const s = await settings();
-    const emps = await scopedEmployees(db, req.user, { ...req.query, from, to });
+    const emps = req.query.self === '1'
+      ? req.user.employeeId
+        ? await db.all(
+            `SELECT e.*, d.name AS department, v.short AS vertical, v.color AS vertical_color FROM employees e
+             LEFT JOIN departments d ON d.id = e.department_id LEFT JOIN verticals v ON v.id = e.vertical_id
+             WHERE e.id = ? AND e.join_date <= ? AND (e.exit_date IS NULL OR e.exit_date >= ?)`,
+            req.user.employeeId, to, from,
+          )
+        : []
+      : await scopedEmployees(db, req.user, { ...req.query, from, to });
     const st = await dayStatuses(db, emps, from, to, T, s);
     const holidays = await db.all('SELECT * FROM holidays WHERE date BETWEEN ? AND ?', from, to);
     const rows = await asyncMap(emps, async (e) => {
@@ -671,6 +771,9 @@ export default function attendanceRoutes(r, { db }) {
         days: await asyncMap([...days.entries()], async ([d, x]) => ({
           date: d,
           code: x.code,
+          onDuty: Boolean(x.onDuty),
+          travelled: Boolean(x.travelled),
+          dutyMinutes: x.dutyMinutes || 0,
           leave: x.leave?.code,
           leaveColor: x.leave?.color,
           lop: x.lop,
@@ -719,7 +822,7 @@ export default function attendanceRoutes(r, { db }) {
     else {
       await db.run(
         `INSERT INTO attendance (employee_id, date, status, note, updated_by) VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(employee_id, date) DO UPDATE SET status = excluded.status, note = excluded.note, updated_by = excluded.updated_by`,
+        ON CONFLICT(employee_id, date) DO UPDATE SET status = excluded.status, note = excluded.note, updated_by = excluded.updated_by, auto_absent = 0`,
         eid,
         d,
         status,
@@ -783,11 +886,19 @@ export default function attendanceRoutes(r, { db }) {
         label: d.slice(8),
         value: (x) => {
           const s = x.days.get(d);
-          return s.code === 'L' ? s.leave?.code : s.code;
+          return s.onDuty
+            ? 'OD (' + s.code + ')'
+            : s.travelled
+              ? 'TRV (' + s.code + ')'
+              : s.code === 'L'
+                ? s.leave?.code
+                : s.code;
         },
       })),
       { label: 'Present', value: (x) => x.sum.P },
       { label: 'WFH', value: (x) => x.sum.WFH },
+      { label: 'On Duty', value: (x) => x.sum.onDuty },
+      { label: 'Travelling', value: (x) => x.sum.travelled },
       { label: 'Half Day', value: (x) => x.sum.HD },
       { label: 'Absent', value: (x) => x.sum.A },
       { label: 'Leave', value: (x) => x.sum.L },

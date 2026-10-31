@@ -2,7 +2,7 @@
 // day-by-day attendance status that leave, attendance and payroll all share.
 import { getSettings } from '../core.js';
 import { isCompanyOwner } from '../lib/employee-policy.js';
-import { dow, eachDay, monthStart, monthEnd } from '../lib/dates.js';
+import { dow, eachDay, monthStart, monthEnd, zonedIso, addDays } from '../lib/dates.js';
 import { isWorkingDay } from '../lib/leave.js';
 
 export async function calendarCtx(db, settings) {
@@ -83,6 +83,38 @@ export async function dayStatuses(db, employees, from, to, today, settings) {
       m.set(r.date, r);
     }
   }
+  const dutyDays = new Map();
+  if (ids.length) {
+    const sessions = await db.all(
+      "SELECT employee_id,date,start_at,end_at FROM work_sessions WHERE mode='on_duty' AND activity_type='duty' AND date BETWEEN ? AND ? AND employee_id IN (" +
+        ids.map(() => '?').join(',') +
+        ')',
+      from,
+      to,
+      ...ids,
+    );
+    for (const session of sessions) {
+      const key = session.employee_id + ':' + session.date;
+      const value = dutyDays.get(key) || { minutes: 0, running: false };
+      value.minutes += Math.max(
+        0,
+        (Date.parse(session.end_at || new Date().toISOString()) - Date.parse(session.start_at)) /
+          60000,
+      );
+      value.running ||= !session.end_at;
+      dutyDays.set(key, value);
+    }
+  }
+  const statusRows = ids.length
+    ? await db.all(
+        'SELECT * FROM work_statuses WHERE employee_id IN (' +
+          ids.map(() => '?').join(',') +
+          ') AND start_at < ? AND (end_at IS NULL OR end_at >= ?)',
+        ...ids,
+        zonedIso(addDays(to, 1), '00:00', settings.timezone),
+        zonedIso(from, '00:00', settings.timezone),
+      )
+    : [];
   const unmarkedAbsent = settings.payroll.unmarkedAs === 'absent';
   const days = eachDay(from, to);
   const result = new Map();
@@ -107,9 +139,22 @@ export async function dayStatuses(db, employees, from, to, today, settings) {
         if (leave.half && r && r.status === 'A') lop += 0.5;
         s = { code: 'L', lop, leave };
       } else if (r) {
-        s = { code: r.status, lop: r.status === 'A' ? 1 : r.status === 'HD' ? 0.5 : 0 };
+        s = {
+          code: r.status,
+          automaticAbsent: r.status === 'A' && Boolean(r.auto_absent),
+          lop:
+            r.status === 'A'
+              ? r.auto_absent
+                ? unmarkedAbsent
+                  ? 1
+                  : 0
+                : 1
+              : r.status === 'HD'
+                ? 0.5
+                : 0,
+        };
       } else if (d < today) {
-        s = { code: 'U', lop: unmarkedAbsent ? 1 : 0 };
+        s = { code: 'A', automaticAbsent: true, lop: unmarkedAbsent ? 1 : 0 };
       } else {
         s = { code: 'F', lop: 0 };
       }
@@ -118,6 +163,41 @@ export async function dayStatuses(db, employees, from, to, today, settings) {
         s.checkOut = r.check_out;
         s.note = r.note;
         s.mark = r.status;
+      }
+      const duty = dutyDays.get(e.id + ':' + d);
+      if (duty && employed && !s.exempt) {
+        if (s.automaticAbsent) {
+          s.code = 'P';
+          s.lop = 0;
+          s.automaticAbsent = false;
+        }
+        s.onDuty = true;
+        s.dutyMinutes = Math.round(duty.minutes);
+        s.dutyRunning = duty.running;
+      }
+      const startOfDay = zonedIso(d, '00:00', settings.timezone);
+      const endOfDay = zonedIso(addDays(d, 1), '00:00', settings.timezone);
+      const statuses = statusRows.filter(
+        (row) =>
+          row.employee_id === e.id &&
+          row.start_at < endOfDay &&
+          (!row.end_at || row.end_at > startOfDay),
+      );
+      if (statuses.length && employed && !s.exempt) {
+        if (['F', 'U'].includes(s.code) || s.automaticAbsent) {
+          s.code = 'P';
+          s.lop = 0;
+          s.automaticAbsent = false;
+        }
+        const journeys = statuses.filter((row) => row.kind === 'travel');
+        s.travelled = journeys.length > 0;
+        s.travelRunning = journeys.some((row) => !row.end_at);
+        const site = statuses.filter((row) => row.kind === 'on_site');
+        if (site.length) {
+          s.onDuty = true;
+          s.dutyRunning = site.some((row) => !row.end_at);
+        }
+        s.statusReason = statuses.at(-1).reason;
       }
       m.set(d, s);
     }

@@ -1,3 +1,4 @@
+import { reconcileMissedAttendance } from './missed-attendance.js';
 // Work sessions and short-hours follow-up.
 //
 // A day can have several sessions: check in, step out (check out or sign
@@ -199,7 +200,7 @@ export async function syncAttendance(db, employeeId, date, userId) {
   const lastOut = open ? null : sessions[sessions.length - 1].end_at;
   await db.run(
     `INSERT INTO attendance (employee_id, date, status, check_in, check_out, updated_by) VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(employee_id, date) DO UPDATE SET status = excluded.status, check_in = excluded.check_in, check_out = excluded.check_out, updated_by = excluded.updated_by`,
+    ON CONFLICT(employee_id, date) DO UPDATE SET status = excluded.status, check_in = excluded.check_in, check_out = excluded.check_out, updated_by = excluded.updated_by, auto_absent = 0`,
     employeeId,
     date,
     status,
@@ -337,6 +338,13 @@ async function generateShortfallsUnlocked(
 ) {
   settings ??= await getSettings(db);
   await closeStaleSessions(db, today, settings);
+  await reconcileMissedAttendance(db, {
+    today,
+    through: D.addDays(workDate(today, settings), -1),
+    employeeIds,
+    settings,
+    notify,
+  });
   const from = D.addDays(today, -days);
   const to = D.addDays(today, -1);
   const required = requiredMinutes(settings);

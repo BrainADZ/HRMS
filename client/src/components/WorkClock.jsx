@@ -1,9 +1,10 @@
+import WorkStatusActions from './WorkStatusActions.jsx';
 // The work clock: a live timer at the right of the top bar, a pop-out
 // window that stays on screen when the app is minimised, the "reason for the
 // gap" step when someone comes back, and the short-hours prompt.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Timer,
   LogIn,
@@ -158,9 +159,18 @@ function TripStatus({ trip }) {
   if (!trip) return null;
   const travelling = ['Travelling', 'Travel started'].includes(trip.current_status);
   return (
-    <Link className="btn" to={'/travel/' + trip.id}>
+    <Link className="btn" to="/my">
       <MapPin size={16} />
-      {travelling ? 'Travelling' : 'On duty'} · View trip
+      {travelling ? 'Travelling' : 'On duty'} · View status
+    </Link>
+  );
+}
+
+function WorkStatusLink({ status }) {
+  return (
+    <Link className="btn" to="/my">
+      <MapPin size={16} />
+      {status.kind === 'travel' ? 'Travelling' : 'On-site duty'}
     </Link>
   );
 }
@@ -181,6 +191,7 @@ function CheckoutButton({ size }) {
     )
       setChoosing(false);
   };
+  if (s?.currentWorkStatus) return <WorkStatusLink status={s.currentWorkStatus} />;
   if (s?.workday?.mode === 'on_duty') return <TripStatus trip={activeTrip(s)} />;
   if (!choosing)
     return (
@@ -350,7 +361,7 @@ export function GapReasonModal({ welcome, onClose }) {
   const [note, setNote] = useState('');
   const [run, busy] = useAction(toast);
   const w = s?.workday;
-  if (user.isOwner || !w) return null;
+  if (user.isOwner || !w || s.currentWorkStatus) return null;
   const awayMin = w.awaySince
     ? Math.max(0, (now + (s.offset || 0) - Date.parse(w.awaySince)) / 60000)
     : 0;
@@ -430,14 +441,19 @@ export function GapReasonModal({ welcome, onClose }) {
 
 // Buttons used by the check-in cards on My Space and Attendance.
 export function ClockActions({ light }) {
-  const { pathname } = useLocation();
   const { toast, user } = useApp();
   const s = useWorkday();
   const [run, busy] = useAction(toast);
   const [ask, setAsk] = useState(false);
   const w = s?.workday;
-  if (user.isOwner || !w || (OFF_DAYS.includes(s.dayStatus) && !w.sessions.length)) return null;
-  if (pathname.startsWith('/travel') || activeTrip(s)) return <TripStatus trip={activeTrip(s)} />;
+  if (
+    user.isOwner ||
+    !w ||
+    (OFF_DAYS.includes(s.dayStatus) && !w.sessions.length && !s.currentWorkStatus)
+  )
+    return null;
+  if (s?.currentWorkStatus || activeTrip(s))
+    return <WorkStatusActions activeOnly legacyTrip={activeTrip(s)} />;
   const start = async (mode) => {
     if (
       await run(
@@ -450,7 +466,7 @@ export function ClockActions({ light }) {
   };
   return (
     <div className="col" style={{ gap: 6 }}>
-      <div className="row">
+      <div className="row wrap gap-8">
         {(!w.sessions.length || w.checkedOutAt) && (
           <>
             <Button variant="primary" icon={LogIn} loading={busy} onClick={() => start('office')}>
@@ -459,11 +475,7 @@ export function ClockActions({ light }) {
             <Button icon={House} loading={busy} onClick={() => start('wfh')}>
               Work from home
             </Button>
-            {s.travelTrips?.length > 0 && (
-              <Button icon={MapPin} loading={busy} onClick={() => start('on_duty')}>
-                On Duty
-              </Button>
-            )}
+            <WorkStatusActions />
           </>
         )}
         {w.openSince && <CheckoutButton />}
@@ -510,6 +522,9 @@ export function SessionList({ w, compact }) {
         </span>
         {mins != null && <span className="muted">{clockText(mins, false)}</span>}
         {x.mode === 'wfh' && <Badge tone="amber">WFH</Badge>}
+        {x.mode === 'on_duty' && (
+          <Badge tone="blue">{x.activityType === 'travel' ? 'Travel (legacy)' : 'On duty'}</Badge>
+        )}
       </div>,
     );
   });
@@ -518,7 +533,6 @@ export function SessionList({ w, compact }) {
 
 // ---------- top-bar clock ----------
 export default function WorkClock() {
-  const { pathname } = useLocation();
   const { user, toast } = useApp();
   const s = useWorkday();
   const now = useNow(1000);
@@ -529,8 +543,12 @@ export default function WorkClock() {
   const [run, busy] = useAction(toast);
   const ref = useClickOutside(useCallback(() => setOpen(false), []));
   const w = s?.workday;
-  const running = Boolean(w?.openSince);
+  const running = Boolean(w?.openSince) && !s?.currentWorkStatus && !activeTrip(s);
   const worked = workedNow(s, now);
+
+  useEffect(() => {
+    if (s?.currentWorkStatus) closeFloatingClock();
+  }, [s?.currentWorkStatus?.id]);
 
   // The running time in the tab title, so it shows even when the window is
   // minimised or another tab is in front.
@@ -554,8 +572,9 @@ export default function WorkClock() {
   }, []);
 
   if (user.isOwner || !user.employeeId || !w) return null;
-  if (OFF_DAYS.includes(s.dayStatus) && !w.sessions.length) return null;
-  if (pathname.startsWith('/travel') || activeTrip(s)) return <TripStatus trip={activeTrip(s)} />;
+  if (OFF_DAYS.includes(s.dayStatus) && !w.sessions.length && !s.currentWorkStatus) return null;
+  if (s?.currentWorkStatus) return <WorkStatusLink status={s.currentWorkStatus} />;
+  if (activeTrip(s)) return <TripStatus trip={activeTrip(s)} />;
   const pct = Math.min(100, (worked / w.requiredMinutes) * 100);
   const left = w.requiredMinutes - worked;
   const popOut = () =>
@@ -575,11 +594,7 @@ export default function WorkClock() {
         <Button variant="primary" icon={LogIn} loading={busy} onClick={() => start('office')}>
           Check in
         </Button>
-        {s.travelTrips?.length > 0 && (
-          <Button icon={MapPin} loading={busy} onClick={() => start('on_duty')}>
-            On Duty
-          </Button>
-        )}
+        <WorkStatusActions />
       </div>
     );
   }
@@ -860,7 +875,7 @@ export function ExplainModal({ item, onClose, onDone }) {
   const [run, busy] = useAction(toast);
   return (
     <Modal
-      title={`Short hours on ${fmtDay(item.date)}`}
+      title={`${item.kind === 'absence' ? 'Missing attendance' : 'Short hours'} on ${fmtDay(item.date)}`}
       onClose={onClose}
       footer={
         <>
@@ -890,13 +905,23 @@ export function ExplainModal({ item, onClose, onDone }) {
         <div className="alert warn">
           <TriangleAlert size={16} />
           <span>
-            You worked <b>{clockText(item.worked_minutes, false)}</b> of{' '}
-            <b>{clockText(item.required_minutes, false)}</b>. Your reporting manager (or the CEO)
-            approves the reason; if they don't, the day is marked as a half day.
+            {item.kind === 'absence' ? (
+              'No attendance was recorded. This day is marked Absent. Your manager can review your reason; an attendance correction is separate.'
+            ) : (
+              <>
+                You worked <b>{clockText(item.worked_minutes, false)}</b> of{' '}
+                <b>{clockText(item.required_minutes, false)}</b>. Your reporting manager (or the
+                CEO) approves the reason; if they don't, the day is marked as a half day.
+              </>
+            )}
           </span>
         </div>
         <SessionList w={{ sessions: item.sessions.map((x) => ({ ...x })), gaps: item.gaps }} />
-        <Field label="Why were your hours short?">
+        <Field
+          label={
+            item.kind === 'absence' ? 'Why was attendance missing?' : 'Why were your hours short?'
+          }
+        >
           <Textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
@@ -944,7 +969,7 @@ export function SignInPrompts() {
     if (welcome || short || shown.current.short || seen('short') || !s.toExplain) return;
     shown.current.short = true;
     api
-      .get('/attendance/short-hours?view=mine&status=Awaiting%20explanation')
+      .get('/attendance/short-hours?view=mine&kind=short_hours&status=Awaiting%20explanation')
       .then((r) => {
         if (r.items[0]) setShort(r.items[0]);
       })
@@ -996,6 +1021,27 @@ export function SignOutModal({ onClose }) {
       setBusy(false);
     }
   };
+  if (s?.currentWorkStatus)
+    return (
+      <Modal
+        title="Sign out"
+        size="narrow"
+        onClose={busy ? undefined : onClose}
+        footer={
+          <>
+            <Button disabled={busy} onClick={onClose}>
+              Cancel
+            </Button>
+            <Button variant="primary" loading={busy} onClick={() => go(false)}>
+              Sign out
+            </Button>
+          </>
+        }
+      >
+        <p>Your work status stays saved while you are signed out.</p>
+        {error && <p role="alert">{error}</p>}
+      </Modal>
+    );
   return (
     <Modal
       title="You're checked in"
