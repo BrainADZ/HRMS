@@ -595,7 +595,12 @@ function LeaveTypes() {
                     {t.calendar_days ? <span className="xs muted"> calendar days</span> : ''}
                   </td>
                   <td className="small">
-                    {t.accrual === 'monthly' ? 'Monthly' : 'Yearly (pro-rated)'}
+                    {{
+                      monthly: 'Completed months',
+                      quarterly: 'Quarterly',
+                      event: 'Full allowance',
+                      annual: 'Yearly (pro-rated)',
+                    }[t.accrual] || t.accrual}
                   </td>
                   <td className="small">
                     {t.carry_forward_max ? `Up to ${t.carry_forward_max}` : 'No'}
@@ -679,7 +684,9 @@ function LeaveTypes() {
                 onChange={(e) => setEdit({ ...edit, accrual: e.target.value })}
                 options={[
                   { value: 'annual', label: 'Credited yearly (pro-rated for joiners)' },
-                  { value: 'monthly', label: 'Accrues monthly' },
+                  { value: 'monthly', label: 'After each completed month' },
+                  { value: 'quarterly', label: 'Quarterly (April, July, October, January)' },
+                  { value: 'event', label: 'Full allowance (not pro-rated)' },
                 ]}
               />
             </Field>

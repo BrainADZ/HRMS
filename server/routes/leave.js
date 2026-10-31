@@ -21,7 +21,7 @@ import {
   getSettings,
 } from '../core.js';
 import * as D from '../lib/dates.js';
-import { leaveDaysByYear, isWorkingDay } from '../lib/leave.js';
+import { leaveDaysByPolicyYear, leaveYear, leaveYearBounds, isWorkingDay } from '../lib/leave.js';
 import { balances, leaveTypesFor } from '../services/leave.js';
 import { calendarCtx } from '../services/calendar.js';
 import { invalidatePayrollInputs } from '../services/payroll-inputs.js';
@@ -56,7 +56,7 @@ async function canApprove(db, user, employeeId) {
 export default function leaveRoutes(r, { db }) {
   r.get('/leave/overview', async (req, res) => {
     const T = await today(db);
-    const year = Number(req.query.year) || D.yearOf(T);
+    const year = Number(req.query.year) || leaveYear(T);
     const scope = await scopeIds(db, req.user);
     const approvable = isHR(req.user) ? null : scope.filter((x) => x !== req.user.employeeId);
     const apWhere =
@@ -87,7 +87,7 @@ export default function leaveRoutes(r, { db }) {
           db,
           emp,
           year,
-          year === D.yearOf(T) ? T : `${year}-12-31`,
+          year === leaveYear(T) ? T : leaveYearBounds(year).end,
           await calendarCtx(db),
         )
       : [];
@@ -131,8 +131,8 @@ export default function leaveRoutes(r, { db }) {
       avgApprovalAgeDays: Math.round(avgAge * 10) / 10,
       holidays: await db.value(
         "SELECT COUNT(*) FROM holidays WHERE type = 'Company' AND date BETWEEN ? AND ?",
-        `${year}-01-01`,
-        `${year}-12-31`,
+        leaveYearBounds(year).start,
+        leaveYearBounds(year).end,
       ),
       policyAckPct: current.length ? Math.round((acked / current.length) * 100) : 0,
     });
@@ -234,12 +234,14 @@ export default function leaveRoutes(r, { db }) {
     if (from < D.addDays(T, -45) && !isHR(user))
       fail(400, 'Leave older than 45 days must be applied by HR');
     const ctx = await calendarCtx(db);
-    const perYear = leaveDaysByYear(
+    const perYear = leaveDaysByPolicyYear(
       { from, to, halfDay, calendarDays: Boolean(type.calendar_days) },
       ctx,
     );
     const days = [...perYear.values()].reduce((a, b) => a + b, 0);
     if (!days) fail(400, 'The selected dates are weekly offs or holidays');
+    if (type.code === 'PL' && type.annual_quota != null && days > type.annual_quota)
+      fail(400, `Paternity leave cannot exceed ${type.annual_quota} working days per request`);
     const overlap = await db.get(
       "SELECT id FROM leave_requests WHERE employee_id = ? AND status IN ('Pending','Approved') AND from_date <= ? AND to_date >= ?",
       employeeId,
@@ -249,14 +251,10 @@ export default function leaveRoutes(r, { db }) {
     if (overlap) fail(409, 'You already have leave applied for some of these dates');
     if (type.annual_quota != null) {
       for (const [year, n] of perYear) {
+        const { start, end } = leaveYearBounds(year);
+        const effectiveDate = [from, T, start].sort().at(-1);
         const b = (
-          await balances(
-            db,
-            emp,
-            year,
-            year === D.yearOf(T) ? (to > T ? to : T) : `${year}-12-31`,
-            ctx,
-          )
+          await balances(db, emp, year, effectiveDate > end ? end : effectiveDate, ctx)
         ).find((x) => x.typeId === type.id);
         if (b && b.available != null && b.available < n)
           fail(
@@ -390,13 +388,13 @@ export default function leaveRoutes(r, { db }) {
     if (!eid) return res.json({ items: [] });
     if (!(await canSeeEmployee(db, req.user, eid))) fail(403, 'You cannot view this balance');
     const emp = (await db.get('SELECT * FROM employees WHERE id = ?', eid)) || notFound('Employee');
-    const year = Number(req.query.year) || D.yearOf(T);
+    const year = Number(req.query.year) || leaveYear(T);
     res.json({
       items: await balances(
         db,
         emp,
         year,
-        year === D.yearOf(T) ? T : `${year}-12-31`,
+        year === leaveYear(T) ? T : leaveYearBounds(year).end,
         await calendarCtx(db),
       ),
       types: (await leaveTypesFor(db, emp)).map((t) => t.id),
@@ -576,7 +574,9 @@ export default function leaveRoutes(r, { db }) {
         b.annual_quota === '' || b.annual_quota == null
           ? null
           : num(b.annual_quota, { min: 0, max: 400, name: 'Annual quota' }),
-      accrual: oneOf(b.accrual || 'annual', ['annual', 'monthly'], { name: 'Accrual' }),
+      accrual: oneOf(b.accrual || 'annual', ['annual', 'monthly', 'quarterly', 'event'], {
+        name: 'Accrual',
+      }),
       carry_forward_max: num(b.carry_forward_max ?? 0, { min: 0, max: 400, name: 'Carry forward' }),
       paid: b.paid === false || b.paid === 0 ? 0 : 1,
       calendar_days: b.calendar_days ? 1 : 0,
@@ -613,12 +613,12 @@ export default function leaveRoutes(r, { db }) {
   r.get('/leave/register', async (req, res) => {
     requireHR(req);
     const T = await today(db);
-    const year = Number(req.query.year) || D.yearOf(T);
+    const year = Number(req.query.year) || leaveYear(T);
     const ctx = await calendarCtx(db);
     const emps = await db.all(
       `SELECT e.*, d.name AS department FROM employees e LEFT JOIN departments d ON d.id = e.department_id
       WHERE e.status != 'Exited' AND e.join_date <= ? ${req.query.vertical ? 'AND e.vertical_id = ?' : ''} ORDER BY e.first_name`,
-      `${year}-12-31`,
+      leaveYearBounds(year).end,
       ...(req.query.vertical ? [Number(req.query.vertical)] : []),
     );
     res.json({
@@ -628,7 +628,13 @@ export default function leaveRoutes(r, { db }) {
         code: e.code,
         name: fullName(e),
         department: e.department,
-        balances: await balances(db, e, year, year === D.yearOf(T) ? T : `${year}-12-31`, ctx),
+        balances: await balances(
+          db,
+          e,
+          year,
+          year === leaveYear(T) ? T : leaveYearBounds(year).end,
+          ctx,
+        ),
       })),
     });
   });

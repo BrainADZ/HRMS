@@ -28,21 +28,57 @@ export function countLeaveDays(req, ctx) {
 
 export const roundHalf = (x) => Math.round(x * 2) / 2;
 
-// Leave credited for `year` as of `asOf`. Annual types are credited up front,
-// pro-rated from the joining month; monthly types accrue at the start of each
-// month of service. A null quota means unlimited (e.g. Loss of Pay).
+// Policy years are labelled by the April in which they start.
+export function leaveYear(date) {
+  return yearOf(date) - (Number(date.slice(5, 7)) < 4 ? 1 : 0);
+}
+
+export function leaveYearBounds(year) {
+  return { start: `${year}-04-01`, end: `${year + 1}-03-31` };
+}
+
+export function leaveDaysByPolicyYear(request, ctx) {
+  const out = new Map();
+  for (const day of eachDay(request.from, request.to)) {
+    if (request.halfDay && day !== request.from) break;
+    if (request.calendarDays || isWorkingDay(day, ctx)) {
+      const year = leaveYear(day);
+      out.set(year, (out.get(year) || 0) + (request.halfDay ? 0.5 : 1));
+    }
+  }
+  return out;
+}
+
+function completedMonths(from, until) {
+  return Math.max(
+    0,
+    (yearOf(until) - yearOf(from)) * 12 +
+      Number(until.slice(5, 7)) -
+      Number(from.slice(5, 7)) -
+      (until.slice(8) < from.slice(8) ? 1 : 0),
+  );
+}
+
+// EL is earned after each completed month. Quarterly leave is credited at
+// quarter start, with the joining quarter pro-rated for remaining months.
 export function entitlement(type, joinDate, year, asOf) {
   if (type.annual_quota == null) return null;
-  const yStart = `${year}-01-01`;
-  const yEnd = `${year}-12-31`;
-  if (joinDate > yEnd) return 0;
+  const { start: yStart, end: yEnd } = leaveYearBounds(year);
+  if (joinDate > yEnd || asOf < yStart || asOf < joinDate) return 0;
   const start = joinDate > yStart ? joinDate : yStart;
-  const startMonth = Number(start.slice(5, 7));
+  const until = asOf < yEnd ? asOf : yEnd;
+  const monthIndex = (date) => (yearOf(date) - year) * 12 + Number(date.slice(5, 7)) - 4;
   if (type.accrual === 'monthly') {
-    const until = asOf < yEnd ? asOf : yEnd;
-    if (until < start) return 0;
-    const endMonth = yearOf(until) === year ? Number(until.slice(5, 7)) : 12;
-    return roundHalf((type.annual_quota * (endMonth - startMonth + 1)) / 12);
+    // Include the last service day when evaluating a completed policy year.
+    const cutoff = until === yEnd ? `${year + 1}-04-01` : until;
+    return roundHalf((type.annual_quota * Math.min(12, completedMonths(start, cutoff))) / 12);
   }
-  return roundHalf((type.annual_quota * (12 - startMonth + 1)) / 12);
+  if (type.accrual === 'quarterly') {
+    const first = monthIndex(start);
+    const last = Math.min(11, Math.floor(monthIndex(until) / 3) * 3 + 2);
+    return roundHalf((type.annual_quota * Math.max(0, last - first + 1)) / 12);
+  }
+  // Family leave is an event allowance, not a join-month pro-rated quota.
+  if (type.accrual === 'event') return type.annual_quota;
+  return roundHalf((type.annual_quota * (12 - monthIndex(start))) / 12);
 }
