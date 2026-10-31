@@ -87,7 +87,7 @@ export async function destroySession(db, req, res) {
 export async function loadUser(db, userId) {
   const row = await db.get(
     `
-    SELECT u.id, u.email, u.username, u.role, u.display_name, u.employee_id, u.must_change_password, u.active,
+    SELECT u.id, u.email, u.username, u.role, u.master_admin, u.display_name, u.employee_id, u.must_change_password, u.active,
            e.first_name, e.last_name, e.designation, e.photo AS employee_photo, u.photo AS account_photo, e.code, e.gender
     FROM users u LEFT JOIN employees e ON e.id = u.employee_id WHERE u.id = ?`,
     userId,
@@ -98,6 +98,7 @@ export async function loadUser(db, userId) {
     email: row.email,
     username: row.username,
     role: row.role,
+    isMasterAdmin: Boolean(row.master_admin),
     employeeId: row.employee_id,
     isOwner: isCompanyOwner(row),
     name: row.first_name ? fullName(row) : row.display_name || row.email,

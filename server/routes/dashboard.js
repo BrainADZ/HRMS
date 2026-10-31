@@ -307,7 +307,7 @@ export default function dashboardRoutes(r, { db }) {
         departments: new Set(current.map((e) => e.department_id).filter(Boolean)).size,
         locations: new Set(current.map((e) => e.location_id).filter(Boolean)).size,
       },
-      notices: await db.all('SELECT * FROM notices ORDER BY created_at DESC LIMIT 3'),
+      notices: await db.all('SELECT * FROM notices ORDER BY created_at DESC, id DESC LIMIT 10'),
       scope: scope === null ? 'organisation' : 'team',
     });
   });
@@ -316,7 +316,9 @@ export default function dashboardRoutes(r, { db }) {
   r.get('/dashboard/me', async (req, res) => {
     const T = await today(db);
     const empId = req.user.employeeId;
-    const notices = await db.all('SELECT * FROM notices ORDER BY created_at DESC LIMIT 4');
+    const notices = await db.all(
+      'SELECT * FROM notices ORDER BY created_at DESC, id DESC LIMIT 10',
+    );
     const holidays = await db.all(
       'SELECT * FROM holidays WHERE date >= ? ORDER BY date LIMIT 5',
       T,

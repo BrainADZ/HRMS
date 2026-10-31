@@ -88,44 +88,18 @@ export function VerticalFilterNote() {
 }
 
 export function NoticeBoard({ notices, onChange, compact, headerOnly = false }) {
-  const { isHR, isManager, user, toast } = useApp();
-  const { data: celebrations } = useApi('/auth/celebrations');
-  const highlights = celebrations
-    ? [
-        ...celebrations.birthdays.map((item, i) => ({
-          id: `birthday-${i}`,
-          kind: 'birthday',
-          celebration: true,
-          title:
-            item.date === celebrations.today
-              ? `Happy birthday, ${item.name}!`
-              : `${item.name}'s birthday`,
-          body:
-            item.date === celebrations.today
-              ? 'Wishing you a wonderful day and a great year ahead.'
-              : 'A celebration to look forward to. Send your best wishes!',
-          created_at: item.date,
-        })),
-        ...celebrations.holidays.map((item, i) => ({
-          id: `holiday-${i}`,
-          kind: 'holiday',
-          celebration: true,
-          title: item.name,
-          body:
-            item.type === 'Restricted'
-              ? 'Upcoming optional / restricted holiday.'
-              : 'A holiday for the team to celebrate.',
-          created_at: item.date,
-        })),
-      ].sort((a, b) => a.created_at.localeCompare(b.created_at))
-    : [];
-  const feed = [...highlights.slice(0, 3), ...notices.slice(0, 3)];
+  const { isHR, isManager, toast } = useApp();
+  const today = fmtDate(new Date());
+  const feed = notices
+    .filter(
+      (notice) => new Date(notice.created_at) <= new Date() && fmtDate(notice.created_at) === today,
+    )
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at) || b.id - a.id)
+    .slice(0, 1);
   const canPost = isHR || isManager;
-  const [all, setAll] = useState(false);
   const [adding, setAdding] = useState(false);
   const [f, setF] = useState({ title: '', body: '', kind: 'general' });
   const [run, busy] = useAction(toast);
-  const [confirm, confirmEl] = useConfirm();
   const list = (items) =>
     items.map((n) => {
       const Icon = NOTICE_ICON[n.kind] || Megaphone;
@@ -145,34 +119,7 @@ export function NoticeBoard({ notices, onChange, compact, headerOnly = false }) 
               </div>
             )}
           </div>
-          <span className="announcement-date">
-            {n.celebration && n.created_at === celebrations?.today
-              ? 'Today'
-              : fmtDate(n.created_at)}
-          </span>
-          {!n.celebration && all && (isHR || n.created_by === user.id) && (
-            <button
-              type="button"
-              className="icon-btn"
-              style={{ width: 30, height: 30 }}
-              aria-label="Delete notice"
-              onClick={async () => {
-                if (
-                  await confirm({
-                    title: 'Delete notice?',
-                    text: n.title,
-                    danger: true,
-                    confirmLabel: 'Delete',
-                  })
-                ) {
-                  await run(() => api.del(`/notices/${n.id}`), 'Notice deleted');
-                  onChange?.();
-                }
-              }}
-            >
-              <Trash2 size={15} />
-            </button>
-          )}
+          <span className="announcement-date">{fmtDate(n.created_at)}</span>
         </div>
       );
     });
@@ -195,9 +142,9 @@ export function NoticeBoard({ notices, onChange, compact, headerOnly = false }) 
               Post
             </button>
           )}
-          <button type="button" className="link" onClick={() => setAll(true)}>
+          <Link className="link" to="/announcements">
             View all <ArrowRight size={14} />
-          </button>
+          </Link>
         </div>
       </div>
       {!headerOnly && (
@@ -205,14 +152,10 @@ export function NoticeBoard({ notices, onChange, compact, headerOnly = false }) 
           {feed.length ? (
             list(feed)
           ) : (
-            <Empty
-              icon={Megaphone}
-              text="You're all caught up. New announcements and birthdays will appear here."
-            />
+            <Empty icon={Megaphone} text="No announcements posted today." />
           )}
         </div>
       )}
-      {all && <NoticeList onClose={() => setAll(false)} render={list} highlights={highlights} />}
       {adding && (
         <Modal
           title="Post an announcement"
@@ -264,25 +207,7 @@ export function NoticeBoard({ notices, onChange, compact, headerOnly = false }) 
           </div>
         </Modal>
       )}
-      {confirmEl}
     </>
-  );
-}
-
-function NoticeList({ onClose, render, highlights = [] }) {
-  const { data } = useApi('/notices');
-  return (
-    <Modal title="Announcements" size="wide" onClose={onClose}>
-      {data ? (
-        data.items.length || highlights.length ? (
-          render([...highlights, ...data.items])
-        ) : (
-          <Empty />
-        )
-      ) : (
-        <Loading />
-      )}
-    </Modal>
   );
 }
 

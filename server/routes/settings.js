@@ -265,6 +265,8 @@ export default function settingsRoutes(r, { db, saveFile }) {
     requireHR(req);
     const u =
       (await db.get('SELECT * FROM users WHERE id = ?', id(req.params.id))) || notFound('User');
+    if (u.master_admin && !req.user.isMasterAdmin)
+      fail(403, 'Only a master admin can change this account');
     const role = req.body.role
       ? oneOf(req.body.role, ['employee', 'manager', 'hr', 'accounts', 'admin'], { name: 'Role' })
       : u.role;

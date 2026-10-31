@@ -405,19 +405,24 @@ function Notifications() {
         <div className="dropdown" style={{ width: 360 }}>
           <div className="head">
             Notifications{' '}
-            {data.unread > 0 && (
-              <button
-                type="button"
-                className="link"
-                onClick={async () => {
-                  await api.post('/notifications/read-all');
-                  load();
-                }}
-              >
-                <CheckCheck size={14} />
-                Mark all read
-              </button>
-            )}
+            <div className="row gap-12">
+              <Link className="link" to="/notifications" onClick={() => setOpen(false)}>
+                View all
+              </Link>
+              {data.unread > 0 && (
+                <button
+                  type="button"
+                  className="link"
+                  onClick={async () => {
+                    await api.post('/notifications/read-all');
+                    load();
+                  }}
+                >
+                  <CheckCheck size={14} />
+                  Mark all read
+                </button>
+              )}
+            </div>
           </div>
           <div style={{ maxHeight: 380, overflowY: 'auto' }}>
             {data.items.length === 0 && <div className="item muted">You're all caught up.</div>}

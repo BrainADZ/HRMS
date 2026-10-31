@@ -6,7 +6,7 @@ import { withLocation } from '../lib/location.js';
 import { useApp } from '../context.jsx';
 import { Avatar, Field, Input } from '../components/ui.jsx';
 import { Logo } from '../components/Layout.jsx';
-import CelebrationBoard, { resetCelebrationReminders } from '../components/CelebrationBoard.jsx';
+import CelebrationBoard from '../components/CelebrationBoard.jsx';
 
 export default function Login() {
   const { loadMe } = useApp();
@@ -77,7 +77,6 @@ export default function Login() {
           }),
         { onLocating: setLocating },
       );
-      resetCelebrationReminders();
       const signedInUser = await loadMe();
       if (!signedInUser) throw new Error('Could not load your account. Please sign in again.');
       navigate(signedInUser.role === 'employee' ? '/my' : '/', { replace: true });

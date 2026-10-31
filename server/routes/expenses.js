@@ -12,10 +12,10 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
   const masterAdmins = async () =>
     (
       await db.all(
-        "SELECT u.id, e.designation FROM users u JOIN employees e ON e.id=u.employee_id WHERE u.role='admin' AND u.active=1",
+        "SELECT u.id, u.master_admin, e.designation FROM users u LEFT JOIN employees e ON e.id=u.employee_id WHERE u.role='admin' AND u.active=1",
       )
-    ).filter(isCompanyOwner);
-  const canApproveAdvances = (user) => isAdmin(user) && user.isOwner;
+    ).filter((user) => user.master_admin || isCompanyOwner(user));
+  const canApproveAdvances = (user) => isAdmin(user) && (user.isMasterAdmin || user.isOwner);
   const admins = async () => db.all("SELECT id FROM users WHERE role='admin' AND active=1");
   const reviewer = async (user) =>
     isAdmin(user) || user.role === 'accounts' || (await accounts()).some((u) => u.id === user.id);

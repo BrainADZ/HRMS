@@ -165,9 +165,10 @@ export default function metaRoutes(r, { db, uploads }) {
 
   // ---------- notifications ----------
   r.get('/notifications', async (req, res) => {
+    const all = req.query.all === '1';
     res.json({
       items: await db.all(
-        'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 30',
+        `SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC, id DESC${all ? '' : ' LIMIT 30'}`,
         req.user.id,
       ),
       unread: await db.value(
@@ -192,7 +193,11 @@ export default function metaRoutes(r, { db, uploads }) {
   // ---------- notice board ----------
   r.get('/notices', async (_req, res) => {
     res.json({
-      items: await db.all('SELECT * FROM notices ORDER BY created_at DESC, id DESC LIMIT 50'),
+      items:
+        await db.all(`SELECT n.*, COALESCE(NULLIF(TRIM(e.first_name || ' ' || COALESCE(e.last_name, '')), ''), u.display_name, u.email, 'Unknown') AS posted_by
+        FROM notices n LEFT JOIN users u ON u.id = n.created_by
+        LEFT JOIN employees e ON e.id = u.employee_id
+        ORDER BY n.created_at DESC, n.id DESC`),
     });
   });
   r.post('/notices', async (req, res) => {
@@ -217,7 +222,15 @@ export default function metaRoutes(r, { db, uploads }) {
   });
   r.delete('/notices/:id', async (req, res) => {
     if (!isHR(req.user) && req.user.role !== 'manager') fail(403, 'Managers or HR only');
-    if (req.user.role === 'manager' && !(await db.value('SELECT 1 FROM notices WHERE id = ? AND created_by = ?', id(req.params.id), req.user.id))) fail(403, 'You can delete only your own announcements');
+    if (
+      req.user.role === 'manager' &&
+      !(await db.value(
+        'SELECT 1 FROM notices WHERE id = ? AND created_by = ?',
+        id(req.params.id),
+        req.user.id,
+      ))
+    )
+      fail(403, 'You can delete only your own announcements');
     await db.run('DELETE FROM notices WHERE id = ?', id(req.params.id));
     res.json({ ok: true });
   });

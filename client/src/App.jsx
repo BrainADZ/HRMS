@@ -8,6 +8,8 @@ import { OfflineBanner } from './components/InstallApp.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
 
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
+const Announcements = lazy(() => import('./pages/Announcements.jsx'));
+const NotificationsPage = lazy(() => import('./pages/Notifications.jsx'));
 const Expenses = lazy(() => import('./pages/Expenses.jsx'));
 const MySpace = lazy(() => import('./pages/MySpace.jsx'));
 const Hiring = lazy(() => import('./pages/Hiring.jsx'));
@@ -111,6 +113,8 @@ function AppRoutes() {
                       }
                     />
                     <Route path="/my" element={<MySpace />} />
+                    <Route path="/announcements" element={<Announcements />} />
+                    <Route path="/notifications" element={<NotificationsPage />} />
                     <Route path="/expenses/*" element={<Expenses />} />
                     <Route path="/travel" element={<Navigate to="/my" replace />} />
                     <Route path="/travel/:id" element={<Navigate to="/my" replace />} />

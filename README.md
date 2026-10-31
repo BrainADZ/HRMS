@@ -35,6 +35,16 @@ Current verification: 91 PostgreSQL regressions and five Chrome role/workflow te
 - **HR**: everything except administrator-only actions.
 - **Administrator**: everything, including the management approval step for payroll and data reset.
 
+### Create a master admin during deployment
+
+After `npm run db:setup` and the app's **first start** (which initializes the company), set `MASTER_ADMIN_EMAIL` and `MASTER_ADMIN_PASSWORD` in `.env`, then run:
+
+```bash
+npm run admin:create
+```
+
+Use an email that is not already assigned to another account. The password must be at least 12 characters and contain letters and numbers. Sign in through **Administrator** with that email; the app requires a password change on first login. The command creates only one account and does not seed or clear company data. Running it again with the same email leaves the existing account and password untouched. You can remove `MASTER_ADMIN_PASSWORD` from `.env` after creation. This account has administrator access and can approve expense advances. Personal employee actions still require linking an employee record.
+
 ## Run it on your computer
 
 You need **Node.js 22.13 or newer** ([download](https://nodejs.org)) and **PostgreSQL 16+**. Copy `.env.example` to `.env`, set the PostgreSQL connection, then create the database and schema with `npm run db:setup`. The server uses PostgreSQL only.

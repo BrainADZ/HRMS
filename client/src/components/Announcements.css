@@ -82,6 +82,38 @@
   padding: 4px 7px;
   white-space: nowrap;
 }
+.announcements-list {
+  display: grid;
+  gap: 14px;
+}
+.announcement-full-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px;
+}
+.announcement-full-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  min-width: 0;
+}
+.announcement-full-item h2 {
+  margin: 0 0 6px;
+  font-size: 18px;
+}
+.announcement-full-item p {
+  margin: 14px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.announcements-page .page-head .link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+}
 @media (max-width: 760px) {
   .announcement-feed {
     grid-template-columns: minmax(0, 1fr);

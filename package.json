@@ -18,6 +18,7 @@
     "demo:seed": "node --env-file=.env server/scripts/seed-demo.js",
     "seed:demo": "npm run demo:seed",
     "db:setup": "node --env-file-if-exists=.env server/scripts/db-setup.js",
+    "admin:create": "node --env-file-if-exists=.env server/scripts/create-master-admin.js",
     "db:backup": "node --env-file-if-exists=.env server/scripts/db-backup.js",
     "db:verify-backup": "node --env-file-if-exists=.env server/scripts/db-verify-backup.js",
     "test:browser": "node --env-file-if-exists=.env node_modules/@playwright/test/cli.js test"
