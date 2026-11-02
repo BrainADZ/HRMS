@@ -1,3 +1,4 @@
+import { can } from '../../shared/access.js';
 import { reconcileMissedAttendance } from './missed-attendance.js';
 // Work sessions and short-hours follow-up.
 //
@@ -10,7 +11,7 @@ import { reconcileMissedAttendance } from './missed-attendance.js';
 // hour_shortfalls row: the employee explains it, and their reporting manager
 // or an administrator approves it (the day counts in full) or rejects it (the
 // day becomes a half day).
-import { getSettings, fullName, notifyUsers, userIdForEmployee } from '../core.js';
+import { getSettings, fullName, notifyUsers, userIdForEmployee, scopeIds } from '../core.js';
 import * as D from '../lib/dates.js';
 import { dayStatuses } from './calendar.js';
 import { workflow } from '../database/workflows.js';
@@ -319,6 +320,11 @@ export async function approverUserIds(db, employeeId) {
 
 export async function canDecideShortfall(db, user, employeeId) {
   if (!user || user.employeeId === employeeId) return false;
+  if (user.managedAccess) {
+    if (can(user, 'attendance.manage')) return true;
+    if (!can(user, 'attendance.team')) return false;
+    return (await scopeIds(db, { ...user, role: 'manager' })).includes(employeeId);
+  }
   if (user.role === 'admin') return true;
   return (
     Boolean(user.employeeId) &&

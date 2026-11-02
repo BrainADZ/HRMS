@@ -10,7 +10,12 @@ export function employeeFilter(query = {}, alias = 'e') {
     employee: 'id',
   })) {
     if (query[key]) {
-      where.push(`${alias}.${column} = ?`);
+      where.push(
+        key === 'vertical'
+          ? `(${alias}.${column} = ? OR EXISTS(SELECT 1 FROM employee_verticals ev WHERE ev.employee_id=${alias}.id AND ev.vertical_id=?))`
+          : `${alias}.${column} = ?`,
+      );
+      if (key === 'vertical') params.push(id(query[key]));
       params.push(id(query[key]));
     }
   }

@@ -1,3 +1,5 @@
+import { membershipSql } from '../services/verticals.js';
+import { can } from '../../shared/access.js';
 import { lanAddresses, isLoopback } from '../lib/network.js';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -44,7 +46,7 @@ export default function metaRoutes(r, { db, uploads }) {
       leaveTypes: await db.all('SELECT * FROM leave_types WHERE active = 1 ORDER BY sort, id'),
       employees: await db.all(`
         SELECT e.id, e.code, e.first_name || CASE WHEN e.last_name != '' THEN ' ' || e.last_name ELSE '' END AS name,
-               e.designation, e.department_id, e.vertical_id, e.location_id, e.status, e.gender, e.manager_id,
+               ${membershipSql()} AS vertical_ids, e.designation, e.department_id, e.vertical_id, e.location_id, e.status, e.gender, e.manager_id,
                e.photo IS NOT NULL AS has_photo, e.email
         FROM employees e WHERE e.status != 'Exited' ORDER BY e.first_name, e.last_name`),
       ai: aiEnabled(),
@@ -298,7 +300,7 @@ export default function metaRoutes(r, { db, uploads }) {
 
 export async function isIcc(db, user) {
   if (!user) return false;
-  if (user.role === 'admin') return true;
+  if (user.managedAccess ? can(user, 'posh.manage') : user.role === 'admin') return true;
   const icc = (await getSettings(db)).icc || {};
   return (
     Boolean(user.employeeId) &&

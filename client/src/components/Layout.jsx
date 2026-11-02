@@ -1,3 +1,5 @@
+import { canOpenModule } from '../../../shared/access.js';
+import { PAYROLL_ENABLED } from '../../../shared/features.js';
 import MissingAttendanceModal from './MissingAttendanceModal.jsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
@@ -157,9 +159,15 @@ const NAV = [
   { to: '/performance', label: 'Performance & Appraisal', icon: IconPerformance },
   { to: '/attendance', aliases: ['/leave'], label: 'Attendance & Leave', icon: IconAttendance },
   { to: '/calendar', label: 'Holiday Calendar', icon: IconHolidays },
-  { to: '/payroll', label: 'Payroll', icon: IconPayroll, roles: ['admin', 'accounts', 'hr'] },
+  { to: '/payroll', label: 'Payroll', icon: IconPayroll, disabled: !PAYROLL_ENABLED },
   { to: '/reports', label: 'Reports', icon: IconReports, roles: ['admin', 'accounts', 'hr'] },
   { to: '/logs', label: 'Logs', icon: ScrollText, roles: ['admin'] },
+  {
+    to: '/access',
+    label: 'Users & Access',
+    icon: IconSettings,
+    roles: ['admin', 'accounts', 'hr'],
+  },
   { to: '/settings', label: 'Settings', icon: IconSettings, roles: ['admin', 'accounts', 'hr'] },
 ];
 
@@ -179,7 +187,9 @@ function Sidebar({ open, onClose, onFloat, collapsed, onToggle }) {
     n.to === '/my'
       ? !user.isOwner &&
         (n.roles.includes(user.role) || (user.role === 'admin' && Boolean(user.employeeId)))
-      : !n.roles || n.roles.includes(user.role),
+      : user.managedAccess
+        ? canOpenModule(user, n.to)
+        : !n.roles || n.roles.includes(user.role),
   );
   return (
     <>
@@ -218,21 +228,34 @@ function Sidebar({ open, onClose, onFloat, collapsed, onToggle }) {
           </button>
         </div>
         <nav className="nav" aria-label="Main">
-          {items.map((n) => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              end={n.end}
-              title={n.label}
-              className={({ isActive }) =>
-                isActive || n.aliases?.includes(pathname) ? 'active' : undefined
-              }
-              onClick={onClose}
-            >
-              <n.icon size={21} strokeWidth={1.9} />
-              <span className="nav-label">{n.label}</span>
-            </NavLink>
-          ))}
+          {items.map((n) =>
+            n.disabled ? (
+              <span
+                key={n.to}
+                className="nav-disabled"
+                role="link"
+                aria-disabled="true"
+                title="Payroll is temporarily disabled"
+              >
+                <n.icon size={21} strokeWidth={1.9} />
+                <span className="nav-label">{n.label} · Disabled</span>
+              </span>
+            ) : (
+              <NavLink
+                key={n.to}
+                to={n.to}
+                end={n.end}
+                title={n.label}
+                className={({ isActive }) =>
+                  isActive || n.aliases?.includes(pathname) ? 'active' : undefined
+                }
+                onClick={onClose}
+              >
+                <n.icon size={21} strokeWidth={1.9} />
+                <span className="nav-label">{n.label}</span>
+              </NavLink>
+            ),
+          )}
           <button
             type="button"
             className="nav-act"
@@ -718,7 +741,9 @@ export default function Layout({ children }) {
     n.to === '/my'
       ? !user.isOwner &&
         (n.roles.includes(user.role) || (user.role === 'admin' && Boolean(user.employeeId)))
-      : !n.roles || n.roles.includes(user.role),
+      : user.managedAccess
+        ? canOpenModule(user, n.to)
+        : !n.roles || n.roles.includes(user.role),
   );
   const [more, setMore] = useState(false);
   const [getApp, setGetApp] = useState(false);

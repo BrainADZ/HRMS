@@ -1,3 +1,4 @@
+import { can } from '../../shared/access.js';
 export const SELF_UPLOAD_DOCUMENTS = [
   'Aadhaar Card',
   'PAN Card',
@@ -7,6 +8,7 @@ export const SELF_UPLOAD_DOCUMENTS = [
 ];
 
 export async function canUploadDocuments(db, user) {
+  if (user?.managedAccess) return can(user, 'documents.manage');
   if (!user?.employeeId) return false;
   return Boolean(
     await db.value(

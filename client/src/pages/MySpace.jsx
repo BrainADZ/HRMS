@@ -1,3 +1,5 @@
+import { PAYROLL_ENABLED } from '../../../shared/features.js';
+import PayrollUnavailable from '../components/PayrollUnavailable.jsx';
 import { ExpenseCard } from '../components/Expenses.jsx';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -64,12 +66,16 @@ export default function MySpace() {
         onChange={(t) => setSp(t === 'overview' ? {} : { tab: t })}
         tabs={[
           { value: 'overview', label: 'Overview' },
-          { value: 'payslips', label: 'Payslips & Claims' },
+          {
+            value: 'payslips',
+            label: PAYROLL_ENABLED ? 'Payslips & Claims' : 'Payslips · Disabled',
+            disabled: !PAYROLL_ENABLED,
+          },
           { value: 'requests', label: 'My Requests' },
         ]}
       />
       {tab === 'overview' && <Overview />}
-      {tab === 'payslips' && <Payslips />}
+      {tab === 'payslips' && (PAYROLL_ENABLED ? <Payslips /> : <PayrollUnavailable />)}
       {tab === 'requests' && <MyRequests />}
     </div>
   );
@@ -250,12 +256,19 @@ function Overview() {
           <Card
             title="Latest payslip"
             action={
-              <Link className="link" to="/my?tab=payslips">
+              <Link
+                className="link"
+                aria-disabled={!PAYROLL_ENABLED}
+                onClick={(e) => !PAYROLL_ENABLED && e.preventDefault()}
+                to="/my?tab=payslips"
+              >
                 All payslips <ArrowRight size={14} />
               </Link>
             }
           >
-            {data.payslip ? (
+            {!PAYROLL_ENABLED ? (
+              <p className="muted">Payroll is temporarily disabled.</p>
+            ) : data.payslip ? (
               <div className="row between">
                 <div>
                   <div className="muted small">{fmtMonth(data.payslip.month)}</div>

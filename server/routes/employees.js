@@ -1,3 +1,7 @@
+import { membershipSql, saveVerticals } from '../services/verticals.js';
+import { can, legacyRole } from '../../shared/access.js';
+import { assignRoles } from './permissions.js';
+import { assignmentsFor, validateAssignments } from '../services/access.js';
 import { canUploadDocuments, SELF_UPLOAD_DOCUMENTS } from '../services/document-access.js';
 import { authorizeEmployeeUpload } from '../services/uploads.js';
 import { asyncForEach } from '../database/async.js';
@@ -29,7 +33,13 @@ import {
   DOC_CATEGORIES,
 } from '../core.js';
 import { json } from '../db.js';
-import { hashPassword, tempPassword, loginDetails, protectEmployeeAccount } from '../auth.js';
+import {
+  hashPassword,
+  tempPassword,
+  loginDetails,
+  protectEmployeeAccount,
+  loadUser,
+} from '../auth.js';
 import * as D from '../lib/dates.js';
 import { salaryStructure, estimateMonthlyTds } from '../lib/payroll.js';
 import { balances } from '../services/leave.js';
@@ -44,6 +54,15 @@ import { assignNewJoinerTraining } from '../services/training.js';
 const TYPES = ['Full-time', 'Part-time', 'Contract', 'Intern'];
 const STATUSES = ['Active', 'Notice', 'Exited'];
 const GRADES = ['Executive', 'Senior', 'Manager', 'Head', 'CXO'];
+const PRIVATE_FIELDS = ['ctc', 'monthly_tds', 'pan', 'uan', 'bank_name', 'bank_account', 'ifsc'];
+function guardPrivateFields(user, body) {
+  if (
+    user.managedAccess &&
+    !can(user, 'employees.sensitive') &&
+    PRIVATE_FIELDS.some((key) => Object.hasOwn(body, key))
+  )
+    fail(403, 'Compensation and bank updates need sensitive-details permission');
+}
 const PAN_RE = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const ONBOARDING = [
   'Offer letter signed',
@@ -54,7 +73,7 @@ const ONBOARDING = [
 ];
 
 const BASE_SELECT = `
-  SELECT e.*, COALESCE((SELECT CASE kind WHEN 'travel' THEN 'Travelling' ELSE 'On-site duty' END FROM work_statuses WHERE employee_id=e.id AND end_at IS NULL LIMIT 1), (SELECT u.status FROM travel_members tm JOIN travel_trips tt ON tt.id=tm.trip_id JOIN LATERAL (SELECT status FROM travel_updates WHERE member_id=tm.id ORDER BY created_at DESC,id DESC LIMIT 1) u ON true WHERE tm.employee_id=e.id AND tt.status='Approved' AND u.status IN ('Travelling','Travel started','Site reached','Duty started','Setup ongoing','Event running') ORDER BY tt.id DESC LIMIT 1)) AS travel_status, d.name AS department, v.name AS vertical, v.short AS vertical_short, v.color AS vertical_color, l.name AS location,
+  SELECT e.*, ${membershipSql()} AS vertical_ids, COALESCE((SELECT CASE kind WHEN 'travel' THEN 'Travelling' ELSE 'On-site duty' END FROM work_statuses WHERE employee_id=e.id AND end_at IS NULL LIMIT 1), (SELECT u.status FROM travel_members tm JOIN travel_trips tt ON tt.id=tm.trip_id JOIN LATERAL (SELECT status FROM travel_updates WHERE member_id=tm.id ORDER BY created_at DESC,id DESC LIMIT 1) u ON true WHERE tm.employee_id=e.id AND tt.status='Approved' AND u.status IN ('Travelling','Travel started','Site reached','Duty started','Setup ongoing','Event running') ORDER BY tt.id DESC LIMIT 1)) AS travel_status, d.name AS department, v.name AS vertical, v.short AS vertical_short, v.color AS vertical_color, l.name AS location,
          m.first_name AS m_first, m.last_name AS m_last, m.designation AS m_designation, m.photo AS m_photo
   FROM employees e
   LEFT JOIN departments d ON d.id = e.department_id
@@ -96,6 +115,7 @@ function listRow(e, leaveSet) {
     vertical_short: e.vertical_short,
     vertical_color: e.vertical_color,
     vertical_id: e.vertical_id,
+    vertical_ids: e.vertical_ids,
     location: e.location,
     work_place: e.work_place,
     status: e.status === 'Active' && leaveSet.has(e.id) ? 'On Leave' : e.status,
@@ -219,7 +239,12 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
     }
     for (const k of ['vertical', 'department', 'location']) {
       if (req.query[k]) {
-        where.push(`e.${k}_id = ?`);
+        where.push(
+          k === 'vertical'
+            ? '(e.vertical_id=? OR EXISTS(SELECT 1 FROM employee_verticals ev WHERE ev.employee_id=e.id AND ev.vertical_id=?))'
+            : `e.${k}_id = ?`,
+        );
+        if (k === 'vertical') params.push(Number(req.query[k]));
         params.push(Number(req.query[k]));
       }
     }
@@ -287,6 +312,8 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
 
   r.get('/employees/export.csv', async (req, res) => {
     requireHR(req);
+    if (req.user.managedAccess && !can(req.user, 'employees.sensitive'))
+      fail(403, 'Employee export needs sensitive-details permission');
     const filter = employeeFilter(req.query);
     const rows = await db.all(
       `${BASE_SELECT} WHERE ${filter.sql} ORDER BY e.code`,
@@ -322,11 +349,14 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
     const e = (await db.get(`${BASE_SELECT} WHERE e.id = ?`, eid)) || notFound('Employee');
     const full = await canSeeEmployee(db, req.user, eid);
     const self = req.user.employeeId === eid;
-    const sensitive = isHR(req.user) || self;
-    const canViewDocuments = isAdmin(req.user) || self;
+    const sensitive =
+      self || (req.user.managedAccess ? can(req.user, 'employees.sensitive') : isHR(req.user));
+    const canViewDocuments =
+      self || (req.user.managedAccess ? can(req.user, 'documents.manage') : isAdmin(req.user));
     const leaveSet = await onLeaveToday(db, T);
     const base = {
       ...listRow(e, leaveSet),
+      roleAssignments: await assignmentsFor(db, { employeeId: eid }),
       gender: e.gender,
       about: e.about,
       skills: json(e.skills, []),
@@ -499,11 +529,13 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
           'SELECT id, email, username, role, active, last_login FROM users WHERE employee_id = ?',
           eid,
         )) || null;
+    if (out.login) out.login.primaryRole = (await loadUser(db, out.login.id)).primaryRole;
     res.json(out);
   });
 
   r.post('/employees', async (req, res) => {
     requireHR(req);
+    guardPrivateFields(req.user, req.body);
     const data = await readEmployeeBody(db, req.body);
     if (data.code && (await db.value('SELECT 1 FROM employees WHERE UPPER(code) = ?', data.code)))
       fail(409, 'This employee ID is already in use');
@@ -516,13 +548,17 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
     )
       fail(400, 'Choose an active manager');
     const createLogin = Boolean(req.body.create_login);
-    const role = oneOf(
-      req.body.role || 'employee',
-      ['employee', 'manager', 'hr', 'accounts', 'admin'],
-      {
-        name: 'Role',
-      },
+    const selectedAssignments = await validateAssignments(
+      db,
+      req.body.roleAssignments || [{ role: req.body.role || 'employee' }],
     );
+    if (
+      req.user.managedAccess &&
+      !can(req.user, 'users.manage') &&
+      selectedAssignments.some((a) => a.role !== 'employee')
+    )
+      fail(403, 'Role assignment needs Users & Roles permission');
+    const role = legacyRole(selectedAssignments);
     if (['admin', 'accounts'].includes(role) && req.user.role !== 'admin')
       fail(403, 'Only an administrator can create admin or Accounts logins');
     let temp = null;
@@ -570,6 +606,9 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
           must_change_password: 1,
         });
       }
+      if (req.body.vertical_ids !== undefined)
+        await saveVerticals(db, req.user, newId, req.body.vertical_ids);
+      await assignRoles(db, req.user, { employeeId: newId }, selectedAssignments);
       return newId;
     });
     await audit(db, req.user, 'employee.create', 'employee', eid);
@@ -578,11 +617,18 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
 
   r.put('/employees/:id', async (req, res) => {
     const eid = id(req.params.id);
+    if (req.body.roleAssignments) {
+      if (req.user.managedAccess && !can(req.user, 'users.manage'))
+        fail(403, 'Role assignment needs Users & Roles permission');
+      if (!isHR(req.user)) fail(403, 'You cannot assign employee roles');
+      await assignRoles(db, req.user, { employeeId: eid }, req.body.roleAssignments);
+    }
     await protectEmployeeAccount(db, req.user, eid, { deactivate: req.body.status === 'Exited' });
     const existing =
       (await db.get('SELECT * FROM employees WHERE id = ?', eid)) || notFound('Employee');
     let data;
     if (isHR(req.user)) {
+      guardPrivateFields(req.user, req.body);
       data = await readEmployeeBody(db, req.body, { partial: true });
       if (
         data.code &&
@@ -641,6 +687,10 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
         await db.run('UPDATE users SET email = ? WHERE employee_id = ?', data.email, eid);
       }
       await db.update('employees', eid, data);
+      if (req.body.vertical_ids !== undefined) {
+        requireHR(req);
+        await saveVerticals(db, req.user, eid, req.body.vertical_ids);
+      }
       if (
         (data.designation !== undefined && data.designation !== existing.designation) ||
         (data.ctc !== undefined && data.ctc !== existing.ctc)
@@ -682,13 +732,11 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
     const e = (await db.get('SELECT * FROM employees WHERE id = ?', eid)) || notFound('Employee');
     if (e.status === 'Exited')
       fail(400, 'Reactivate the employee before creating or resetting their login');
-    const role = oneOf(
-      req.body.role || 'employee',
-      ['employee', 'manager', 'hr', 'accounts', 'admin'],
-      {
-        name: 'Role',
-      },
+    const selectedAssignments = await validateAssignments(
+      db,
+      req.body.roleAssignments || [{ role: req.body.role || 'employee' }],
     );
+    const role = legacyRole(selectedAssignments);
     if (['admin', 'accounts'].includes(role) && req.user.role !== 'admin')
       fail(403, 'Only an administrator can grant admin or Accounts access');
     const temp = tempPassword();
@@ -724,6 +772,7 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
         must_change_password: 1,
       });
     }
+    await assignRoles(db, req.user, { employeeId: eid }, selectedAssignments);
     await audit(db, req.user, existing ? 'login.reset' : 'login.create', 'employee', eid);
     res.json({ ...(await loginDetails(db, eid)), tempPassword: temp });
   });
@@ -825,7 +874,10 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
       params.push(String(req.query.category));
     }
     if ((isAdmin(req.user) || (await canUploadDocuments(db, req.user))) && req.query.vertical) {
-      where.push('e.vertical_id = ?');
+      where.push(
+        '(e.vertical_id = ? OR EXISTS(SELECT 1 FROM employee_verticals ev WHERE ev.employee_id=e.id AND ev.vertical_id=?))',
+      );
+      params.push(Number(req.query.vertical));
       params.push(Number(req.query.vertical));
     }
     if (req.query.department) {

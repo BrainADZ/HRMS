@@ -1,3 +1,8 @@
+import { legacyRole } from '../../shared/access.js';
+import { membershipSql, saveVerticals } from '../services/verticals.js';
+import { assignRoles } from './permissions.js';
+import { accessProfile, isCEO, assignmentsFor, permissionMatrix } from '../services/access.js';
+import { PAYROLL_ENABLED, PAYROLL_DISABLED_MESSAGE } from '../../shared/features.js';
 import { validatePayrollRules } from '../lib/payroll.js';
 import { asyncForEach } from '../database/async.js';
 import {
@@ -37,8 +42,13 @@ const MASTERS = {
   locations: ['name'],
 };
 const MASTER_REFS = {
-  verticals: ['employees.vertical_id', 'jobs.vertical_id'],
-  departments: ['employees.department_id', 'jobs.department_id'],
+  verticals: [
+    'employees.vertical_id',
+    'jobs.vertical_id',
+    'employee_verticals.vertical_id',
+    'role_assignments.vertical_id',
+  ],
+  departments: ['employees.department_id', 'jobs.department_id', 'role_assignments.department_id'],
   locations: ['employees.location_id', 'jobs.location_id'],
 };
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -64,6 +74,7 @@ export default function settingsRoutes(r, { db, saveFile }) {
   r.put('/settings', async (req, res) => {
     requireHR(req);
     const b = req.body;
+    if (!PAYROLL_ENABLED && Object.hasOwn(b, 'payroll')) fail(403, PAYROLL_DISABLED_MESSAGE);
     const cur = await getSettings(db);
     if (b.companyName !== undefined)
       await setSetting(
@@ -240,7 +251,7 @@ export default function settingsRoutes(r, { db, saveFile }) {
   r.get('/users', async (req, res) => {
     requireHR(req);
     const users = (
-      await db.all(`SELECT u.id, u.email, u.username, u.role, u.display_name, u.active, u.last_login, u.must_change_password, u.employee_id, e.first_name, e.last_name, e.code, e.designation
+      await db.all(`SELECT u.id, u.email, u.username, u.role, u.display_name, u.active, u.last_login, u.must_change_password, u.employee_id, e.first_name, e.last_name, e.code, e.designation, e.vertical_id, e.department_id, ${membershipSql()} AS vertical_ids
       FROM users u LEFT JOIN employees e ON e.id = u.employee_id ORDER BY u.role, e.first_name`)
     ).map((u) => ({ ...u, name: u.first_name ? fullName(u) : u.display_name || u.email }));
     const without = await db.value(
@@ -251,8 +262,37 @@ export default function settingsRoutes(r, { db, saveFile }) {
       e.first_name, e.last_name, e.code FROM password_reset_requests p JOIN users u ON u.id = p.user_id
       LEFT JOIN employees e ON e.id = u.employee_id WHERE p.status = 'Pending' ORDER BY p.requested_at, p.id`)
       : [];
+    const matrix = await permissionMatrix(db);
+    const allAssignments = await db.all(
+      'SELECT role,vertical_id,department_id,access_scope,employee_id,user_id FROM role_assignments ORDER BY id',
+    );
+    for (const u of users) {
+      const profile = await accessProfile(
+        db,
+        { ...u, employee_id: u.employee_id },
+        {
+          matrix,
+          assignments: allAssignments
+            .filter((a) => (a.employee_id && a.employee_id === u.employee_id) || a.user_id === u.id)
+            .map(({ role, vertical_id, department_id, access_scope }) => ({
+              role,
+              vertical_id,
+              department_id,
+              access_scope,
+            })),
+        },
+      );
+      u.roles = profile.roles;
+      u.primaryRole = profile.primaryRole;
+      u.roleAssignments = profile.managedAccess ? profile.roleAssignments : [];
+      u.legacyAccess = !profile.managedAccess;
+    }
     res.json({
       users,
+      employeesWithoutLogin: await db.all(
+        `SELECT e.id AS employee_id, e.code, e.first_name || ' ' || e.last_name AS name, e.designation, e.department_id, e.vertical_id, COALESCE((SELECT json_agg(json_build_object('role',ra.role,'vertical_id',ra.vertical_id,'department_id',ra.department_id,'access_scope',ra.access_scope)) FROM role_assignments ra WHERE ra.employee_id=e.id),'[]'::json) AS "roleAssignments", ${membershipSql()} AS vertical_ids FROM employees e WHERE e.status!='Exited' AND NOT EXISTS(SELECT 1 FROM users u WHERE u.employee_id=e.id) ORDER BY e.first_name`,
+      ),
+      canAssignCEO: isCEO(req.user),
       withoutLogin: without,
       passwordRequests: passwordRequests.map((p) => ({
         ...p,
@@ -265,8 +305,43 @@ export default function settingsRoutes(r, { db, saveFile }) {
     requireHR(req);
     const u =
       (await db.get('SELECT * FROM users WHERE id = ?', id(req.params.id))) || notFound('User');
-    if (u.master_admin && !req.user.isMasterAdmin)
+    if (u.master_admin && !req.user.isMasterAdmin && !isCEO(req.user))
       fail(403, 'Only a master admin can change this account');
+    if (req.body.vertical_ids !== undefined) {
+      if (!u.employee_id) fail(400, 'Link this login to an employee first');
+      if (isCEO(await (await import('../auth.js')).loadUser(db, u.id)) && !isCEO(req.user))
+        fail(403, 'Only a CEO can change a CEO account');
+      await saveVerticals(db, req.user, u.employee_id, req.body.vertical_ids);
+      if (!req.body.roleAssignments && req.body.active === undefined) return res.json({ ok: true });
+    }
+    if (req.body.roleAssignments) {
+      await assignRoles(
+        db,
+        req.user,
+        { employeeId: u.employee_id, userId: u.id },
+        req.body.roleAssignments,
+      );
+      if (req.body.active !== undefined) {
+        if (u.id === req.user.id && !req.body.active)
+          fail(400, 'You cannot deactivate your own account');
+        if (
+          !req.body.active &&
+          isCEO(await (await import('../auth.js')).loadUser(db, u.id)) &&
+          !isCEO(req.user)
+        )
+          fail(403, 'Only a CEO can deactivate a CEO');
+        await db.update('users', u.id, { active: req.body.active ? 1 : 0 });
+      }
+      return res.json({ ok: true });
+    }
+    if (req.body.role)
+      fail(400, 'Use roleAssignments to choose CEO, Admin, Head, Manager or Employee');
+    if (
+      req.body.active === false &&
+      isCEO(await (await import('../auth.js')).loadUser(db, u.id)) &&
+      !isCEO(req.user)
+    )
+      fail(403, 'Only a CEO can deactivate a CEO');
     const role = req.body.role
       ? oneOf(req.body.role, ['employee', 'manager', 'hr', 'accounts', 'admin'], { name: 'Role' })
       : u.role;
@@ -296,6 +371,8 @@ export default function settingsRoutes(r, { db, saveFile }) {
     requireAdmin(req);
     const u =
       (await db.get('SELECT * FROM users WHERE id = ?', id(req.params.id))) || notFound('User');
+    if (isCEO(await (await import('../auth.js')).loadUser(db, u.id)) && !isCEO(req.user))
+      fail(403, 'Only a CEO can reset a CEO login');
     const temp = tempPassword();
     await db.tx(async () => {
       await db.update('users', u.id, {
@@ -326,12 +403,15 @@ export default function settingsRoutes(r, { db, saveFile }) {
       for (const e of emps) {
         if (await db.value('SELECT 1 FROM users WHERE email = ?', e.email)) continue;
         const temp = tempPassword();
-        const role = (await db.value(
-          "SELECT COUNT(*) FROM employees WHERE manager_id = ? AND status != 'Exited'",
-          e.id,
-        ))
-          ? 'manager'
-          : 'employee';
+        const selectedRoles = await assignmentsFor(db, { employeeId: e.id });
+        const role = selectedRoles.length
+          ? legacyRole(selectedRoles)
+          : (await db.value(
+                "SELECT COUNT(*) FROM employees WHERE manager_id = ? AND status != 'Exited'",
+                e.id,
+              ))
+            ? 'manager'
+            : 'employee';
         await db.insert('users', {
           email: e.email,
           password_hash: hashPassword(temp),
@@ -474,6 +554,8 @@ export default function settingsRoutes(r, { db, saveFile }) {
     'leave_requests',
     'holidays',
     'leave_types',
+    'role_permission_rules',
+    'role_assignments',
     'users',
     'employees',
     'verticals',

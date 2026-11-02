@@ -1,3 +1,5 @@
+import permissionRoutes from './routes/permissions.js';
+import { PAYROLL_ENABLED, PAYROLL_DISABLED_MESSAGE } from '../shared/features.js';
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -208,6 +210,11 @@ export async function createApp({
       ? next(new HttpError(403, 'Change your temporary password before continuing'))
       : next(),
   );
+  api.use('/payroll', (_req, res, next) => {
+    if (!PAYROLL_ENABLED)
+      return res.status(403).json({ code: 'payroll_disabled', error: PAYROLL_DISABLED_MESSAGE });
+    next();
+  });
   for (const register of [
     metaRoutes,
     dashboardRoutes,
@@ -226,6 +233,7 @@ export async function createApp({
     performanceRoutes,
     reportRoutes,
     settingsRoutes,
+    permissionRoutes,
   ]) {
     await register(atomicRouter(api, db, ctx.onClose), ctx);
   }

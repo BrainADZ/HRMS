@@ -10,6 +10,7 @@ const VERTICAL_LISTS = new Set([
   '/documents',
   '/documents/checklist',
   '/attendance/today',
+  '/attendance/verification',
   '/attendance/register',
   '/attendance/locations',
   '/attendance/short-hours',

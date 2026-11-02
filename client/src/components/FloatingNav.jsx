@@ -271,6 +271,7 @@ export default function FloatingNav({ items, onDock, focusOnMount }) {
     open(which);
   };
   const go = (to) => {
+    if (items.find((n) => n.to === to)?.disabled) return;
     close();
     navigate(to);
   };
@@ -427,6 +428,19 @@ function FloatMenu({ anchor, items, path, wide, setWide, closing, onPicked, onQu
         <nav className="fnav-items" aria-label="Main">
           {items.map((n) => {
             const active = isActivePath(n, path);
+            if (n.disabled)
+              return (
+                <span
+                  key={n.to}
+                  className="fnav-item nav-disabled"
+                  role="link"
+                  aria-disabled="true"
+                  title="Payroll is temporarily disabled"
+                >
+                  <n.icon size={24} />
+                  <span className="lbl">{n.label} · Disabled</span>
+                </span>
+              );
             return (
               <NavLink
                 key={n.to}
@@ -589,6 +603,8 @@ function QuickAccess({ anchor, items, path, closing, onGo, onMenu, onDock, onClo
                 key={n.to}
                 type="button"
                 className={`fq-tile ${isActivePath(n, path) ? 'active' : ''}`}
+                disabled={n.disabled}
+                title={n.disabled ? 'Temporarily disabled' : undefined}
                 onClick={() => onGo(n.to)}
               >
                 <span className="fq-ic" style={{ '--tint': moduleFor(n.to).soft }}>

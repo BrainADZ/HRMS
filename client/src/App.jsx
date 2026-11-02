@@ -1,3 +1,6 @@
+import { canOpenModule } from '../../shared/access.js';
+import { PAYROLL_ENABLED } from '../../shared/features.js';
+import PayrollUnavailable from './components/PayrollUnavailable.jsx';
 import { Component, lazy, Suspense, useLayoutEffect } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useApp } from './context.jsx';
@@ -22,6 +25,7 @@ const Posh = lazy(() => import('./pages/Posh.jsx'));
 const Training = lazy(() => import('./pages/Training.jsx'));
 const Resignation = lazy(() => import('./pages/Resignation.jsx'));
 const Reports = lazy(() => import('./pages/Reports.jsx'));
+const UsersAccess = lazy(() => import('./pages/UsersAccess.jsx'));
 const SettingsPage = lazy(() => import('./pages/Settings.jsx'));
 const Print = lazy(() => import('./pages/Print.jsx'));
 const Documents = lazy(() => import('./pages/Documents.jsx'));
@@ -30,7 +34,8 @@ const Logs = lazy(() => import('./pages/Logs.jsx'));
 
 function Guard({ roles, children }) {
   const { user } = useApp();
-  if (roles && !roles.includes(user.role))
+  const path = useLocation().pathname;
+  if (user.managedAccess ? !canOpenModule(user, path) : roles && !roles.includes(user.role))
     return <Navigate to={user.role === 'employee' ? '/my' : '/'} replace />;
   return children;
 }
@@ -98,6 +103,10 @@ function AppRoutes() {
   return (
     <Suspense fallback={<Loading />}>
       <Routes>
+        <Route
+          path="/print/payslip/:id"
+          element={PAYROLL_ENABLED ? <Print /> : <PayrollUnavailable />}
+        />
         <Route path="/print/:kind/:id" element={<Print />} />
         <Route
           path="*"
@@ -109,7 +118,14 @@ function AppRoutes() {
                     <Route
                       path="/"
                       element={
-                        user.role === 'employee' ? <Navigate to="/my" replace /> : <Dashboard />
+                        !canOpenModule(user, '/') || user.role === 'employee' ? (
+                          <Navigate
+                            to={user.roles?.includes('ceo') ? '/access?tab=permissions' : '/my'}
+                            replace
+                          />
+                        ) : (
+                          <Dashboard />
+                        )
                       }
                     />
                     <Route path="/my" element={<MySpace />} />
@@ -140,11 +156,15 @@ function AppRoutes() {
                     <Route path="/leave" element={<AttendanceLeave />} />
                     <Route path="/calendar" element={<HolidayCalendar />} />
                     <Route
-                      path="/payroll"
+                      path="/payroll/*"
                       element={
-                        <Guard roles={[...HR, 'accounts']}>
-                          <Payroll />
-                        </Guard>
+                        PAYROLL_ENABLED ? (
+                          <Guard roles={[...HR, 'accounts']}>
+                            <Payroll />
+                          </Guard>
+                        ) : (
+                          <PayrollUnavailable />
+                        )
                       }
                     />
                     <Route path="/performance" element={<Performance />} />
@@ -165,6 +185,14 @@ function AppRoutes() {
                       element={
                         <Guard roles={['admin']}>
                           <Logs />
+                        </Guard>
+                      }
+                    />
+                    <Route
+                      path="/access"
+                      element={
+                        <Guard roles={HR}>
+                          <UsersAccess />
                         </Guard>
                       }
                     />

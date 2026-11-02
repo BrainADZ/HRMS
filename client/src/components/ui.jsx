@@ -77,12 +77,16 @@ export function Kpi({
     <div
       className="card kpi"
       onClick={onClick}
-      onKeyDown={onClick ? (event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          onClick();
-        }
-      } : undefined}
+      onKeyDown={
+        onClick
+          ? (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       style={onClick ? { cursor: 'pointer' } : undefined}
@@ -398,6 +402,8 @@ export function Tabs({ tabs, value, onChange, variant = '' }) {
             key={key}
             type="button"
             role="tab"
+            disabled={Boolean(t.disabled)}
+            title={t.disabled ? 'Temporarily disabled' : undefined}
             aria-selected={value === key}
             className={value === key ? 'on' : ''}
             onClick={() => onChange(key)}

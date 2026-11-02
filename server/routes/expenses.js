@@ -1,3 +1,5 @@
+import { can } from '../../shared/access.js';
+import { PAYROLL_ENABLED } from '../../shared/features.js';
 import path from 'node:path';
 import { isCompanyOwner } from '../lib/employee-policy.js';
 import { fail, id, num, str, notifyUsers, today, isAdmin } from '../core.js';
@@ -15,10 +17,22 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
         "SELECT u.id, u.master_admin, e.designation FROM users u LEFT JOIN employees e ON e.id=u.employee_id WHERE u.role='admin' AND u.active=1",
       )
     ).filter((user) => user.master_admin || isCompanyOwner(user));
-  const canApproveAdvances = (user) => isAdmin(user) && (user.isMasterAdmin || user.isOwner);
+  const canApproveAdvances = (user) =>
+    user.managedAccess
+      ? can(user, 'expenses.approve_advances')
+      : isAdmin(user) && (user.isMasterAdmin || user.isOwner);
+  const canCreateAdvance = (user) =>
+    !user.isOwner &&
+    (user.managedAccess
+      ? can(user, 'expenses.advances')
+      : isAdmin(user) || user.role === 'accounts');
   const admins = async () => db.all("SELECT id FROM users WHERE role='admin' AND active=1");
   const reviewer = async (user) =>
-    isAdmin(user) || user.role === 'accounts' || (await accounts()).some((u) => u.id === user.id);
+    user.managedAccess
+      ? can(user, 'expenses.review') || can(user, 'expenses.approve_advances')
+      : isAdmin(user) ||
+        user.role === 'accounts' ||
+        (await accounts()).some((u) => u.id === user.id);
   const view = (a) => ({
     ...a,
     expense_number: 'EXP-' + String(a.id).padStart(6, '0'),
@@ -32,7 +46,7 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
     );
     res.json({
       canReview,
-      canCreateAdvance: !req.user.isOwner && (isAdmin(req.user) || req.user.role === 'accounts'),
+      canCreateAdvance: canCreateAdvance(req.user),
       items: items.map(view),
     });
   });
@@ -59,8 +73,7 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
     return { ...a, entries, spent, balance: a.amount - spent };
   };
   r.get('/expenses/advances/eligible', async (req, res) => {
-    if (req.user.isOwner || (!isAdmin(req.user) && req.user.role !== 'accounts'))
-      return res.json({ items: [] });
+    if (!canCreateAdvance(req.user)) return res.json({ items: [] });
     res.json({
       items: (
         await db.all(
@@ -77,7 +90,7 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
     );
     res.json({
       canReview,
-      canCreate: !req.user.isOwner && (isAdmin(req.user) || req.user.role === 'accounts'),
+      canCreate: canCreateAdvance(req.user),
       canApprove: canApproveAdvances(req.user),
       items: rows.map((a) => ({
         ...advanceView(a),
@@ -86,8 +99,7 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
     });
   });
   r.post('/expenses/advances', async (req, res) => {
-    if (req.user.isOwner || (!isAdmin(req.user) && req.user.role !== 'accounts'))
-      fail(403, 'Only Admin / Accounts can create advances');
+    if (!canCreateAdvance(req.user)) fail(403, 'Only Admin / Accounts can create advances');
     const employeeId = id(req.body.employee_id);
     const employee = await db.get(
       'SELECT id, first_name, last_name, designation FROM employees WHERE id=?',
@@ -435,7 +447,7 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
         expense_details: JSON.stringify(details),
       });
       // Reimbursed claims are excluded from salary adjustments, preventing a second payment.
-      if (run) {
+      if (run && PAYROLL_ENABLED) {
         const { processRun } = await import('../services/payroll.js');
         await processRun(db, req.user, a.month);
       }
@@ -508,7 +520,7 @@ export default function expenseRoutes(r, { db, upload, uploads }) {
         },
       }),
     });
-    if (run) await processRun(db, req.user, a.month);
+    if (run && PAYROLL_ENABLED) await processRun(db, req.user, a.month);
     const owner = await db.get('SELECT id FROM users WHERE employee_id=?', a.employee_id);
     await notifyUsers(
       db,

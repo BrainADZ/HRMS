@@ -1,5 +1,7 @@
+import { PAYROLL_ENABLED } from '../../../shared/features.js';
+import PayrollUnavailable from '../components/PayrollUnavailable.jsx';
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Save,
   Plus,
@@ -40,40 +42,54 @@ import { TempPasswordModal } from '../components/forms.jsx';
 import { LEAVE_ICONS } from './Leave.jsx';
 
 export default function SettingsPage() {
-  const { isAdmin } = useApp();
+  const { user, isAdmin, isCEO, can } = useApp();
+  const settingsAccess = !user.managedAccess || can('settings.manage');
+  const usersAccess = !user.managedAccess || can('users.manage');
   const [sp, setSp] = useSearchParams();
-  const tab = sp.get('tab') || 'company';
+  const tab = sp.get('tab') || (settingsAccess ? 'company' : isCEO ? 'permissions' : 'users');
   const tabs = [
     { value: 'company', label: 'Company' },
-    { value: 'payroll', label: 'Payroll Rules' },
+    { value: 'payroll', label: 'Payroll Rules', disabled: !PAYROLL_ENABLED },
     { value: 'org', label: 'Organisation' },
     { value: 'leave', label: 'Leave Types' },
     { value: 'offices', label: 'Office Locations' },
-    { value: 'users', label: 'Users & Roles' },
     ...(isAdmin
       ? [
           { value: 'audit', label: 'Audit Log' },
           { value: 'data', label: 'Data' },
         ]
       : []),
-  ];
+  ].filter((t) =>
+    t.value === 'permissions'
+      ? isCEO
+      : t.value === 'users'
+        ? usersAccess
+        : t.value === 'audit'
+          ? !user.managedAccess || can('audit.view')
+          : t.value === 'data'
+            ? !user.managedAccess || can('system.manage')
+            : settingsAccess,
+  );
+  if (['users', 'permissions'].includes(tab))
+    return (
+      <Navigate to={'/access?tab=' + (tab === 'permissions' ? 'permissions' : 'people')} replace />
+    );
   return (
     <div>
       <div className="page-head">
         <div>
           <h1>Settings</h1>
-          <div className="sub">Company rules, masters, users and data.</div>
+          <div className="sub">Company rules, masters and data.</div>
         </div>
       </div>
       <Tabs value={tab} onChange={(t) => setSp({ tab: t })} tabs={tabs} />
-      {tab === 'company' && <Company />}
-      {tab === 'payroll' && <PayrollRules />}
-      {tab === 'org' && <Org />}
-      {tab === 'leave' && <LeaveTypes />}
-      {tab === 'offices' && <Offices />}
-      {tab === 'users' && <Users />}
-      {tab === 'audit' && isAdmin && <Audit />}
-      {tab === 'data' && isAdmin && <DataTab />}
+      {tab === 'company' && settingsAccess && <Company />}
+      {tab === 'payroll' && (PAYROLL_ENABLED ? <PayrollRules /> : <PayrollUnavailable />)}
+      {tab === 'org' && settingsAccess && <Org />}
+      {tab === 'leave' && settingsAccess && <LeaveTypes />}
+      {tab === 'offices' && settingsAccess && <Offices />}
+      {tab === 'audit' && (!user.managedAccess ? isAdmin : can('audit.view')) && <Audit />}
+      {tab === 'data' && (!user.managedAccess ? isAdmin : can('system.manage')) && <DataTab />}
     </div>
   );
 }
@@ -758,227 +774,6 @@ function LeaveTypes() {
         </Modal>
       )}
     </Card>
-  );
-}
-
-function Users() {
-  const { toast, isAdmin, user } = useApp();
-  const { data, reload } = useApi('/users');
-  const [q, setQ] = useState('');
-  const [temp, setTemp] = useState(null);
-  const [run, busy] = useAction(toast);
-  const [confirm, confirmEl] = useConfirm();
-  if (!data) return <Loading />;
-  const items = data.users.filter(
-    (u) => !q || `${u.name} ${u.email} ${u.username || ''}`.toLowerCase().includes(q.toLowerCase()),
-  );
-  const roles = [
-    { value: 'employee', label: 'Employee' },
-    { value: 'manager', label: 'Manager' },
-    { value: 'hr', label: 'HR' },
-    ...(isAdmin ? [{ value: 'accounts', label: 'Accounts Team' }] : []),
-    ...(isAdmin ? [{ value: 'admin', label: 'Administrator' }] : []),
-  ];
-  return (
-    <div>
-      <div className="alert info mb-16" style={{ alignItems: 'center' }}>
-        <span className="grow">
-          <b>Roles:</b> Employee = self-service · Manager = their team's leave, attendance, reviews
-          and hiring · Accounts Team = HR access, payroll and expenses · HR = everything except
-          admin settings · Administrator = everything, including payroll management approval and
-          data reset.
-        </span>
-      </div>
-      {isAdmin && data.passwordRequests?.length > 0 && (
-        <Card
-          flush
-          title={`Password reset requests (${data.passwordRequests.length})`}
-          className="mb-16"
-        >
-          <div className="table-wrap">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th style={{ paddingLeft: 18 }}>Employee</th>
-                  <th>Requested</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {data.passwordRequests.map((request) => (
-                  <tr key={request.id}>
-                    <td style={{ paddingLeft: 18 }}>
-                      <b>{request.name}</b>
-                      <div className="small muted">
-                        {request.username}
-                        {request.code ? ` · ${request.code}` : ''}
-                      </div>
-                    </td>
-                    <td className="small muted">{fmtDateTime(request.requested_at)}</td>
-                    <td className="right" style={{ paddingRight: 18 }}>
-                      <Button
-                        size="xs"
-                        icon={KeyRound}
-                        loading={busy}
-                        onClick={async () => {
-                          const out = await run(() => api.post(`/users/${request.user_id}/reset`));
-                          if (out) {
-                            setTemp(out);
-                            reload();
-                          }
-                        }}
-                      >
-                        Set temporary password
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
-      <Card
-        flush
-        title={`Logins (${data.users.length})`}
-        action={
-          <div className="row" style={{ gap: 8, marginRight: 18 }}>
-            <Input
-              className="sm"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search"
-              style={{ width: 200 }}
-            />
-            {data.withoutLogin > 0 && (
-              <Button
-                size="sm"
-                variant="primary"
-                icon={Download}
-                loading={busy}
-                onClick={async () => {
-                  if (
-                    await confirm({
-                      title: `Create ${data.withoutLogin} logins?`,
-                      text: 'Logins are created for every current employee without one. A CSV with one-time passwords downloads once; share each password privately.',
-                      confirmLabel: 'Create & download',
-                    })
-                  ) {
-                    await run(
-                      () => postDownload('/users/bulk-create', {}, 'new-logins.csv'),
-                      'Logins created. CSV downloaded.',
-                    );
-                    reload();
-                  }
-                }}
-              >
-                Create {data.withoutLogin} missing logins
-              </Button>
-            )}
-          </div>
-        }
-      >
-        <div className="table-wrap" style={{ marginTop: 8 }}>
-          <table className="table">
-            <thead>
-              <tr>
-                <th style={{ paddingLeft: 18 }}>User</th>
-                <th>Role</th>
-                <th>Status</th>
-                <th>Last sign-in</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((u) => (
-                <tr key={u.id}>
-                  <td style={{ paddingLeft: 18 }}>
-                    <b>{u.name}</b>
-                    <div className="small muted">
-                      {u.role === 'admin' ? u.email : u.username}
-                      {u.code ? ` · ${u.code}` : ''}
-                      {u.must_change_password ? ' · must change password' : ''}
-                    </div>
-                  </td>
-                  <td>
-                    <select
-                      className="select sm"
-                      style={{ width: 150 }}
-                      value={u.role}
-                      disabled={u.id === user.id || (u.role === 'admin' && !isAdmin)}
-                      onChange={(e) =>
-                        run(
-                          () => api.put(`/users/${u.id}`, { role: e.target.value }),
-                          'Role updated',
-                        ).then(reload)
-                      }
-                    >
-                      {roles
-                        .concat(
-                          u.role === 'admin' && !isAdmin
-                            ? [{ value: 'admin', label: 'Administrator' }]
-                            : [],
-                        )
-                        .map((r) => (
-                          <option key={r.value} value={r.value}>
-                            {r.label}
-                          </option>
-                        ))}
-                    </select>
-                  </td>
-                  <td>
-                    <Toggle
-                      on={Boolean(u.active)}
-                      disabled={u.id === user.id}
-                      label="Active"
-                      onChange={(v) =>
-                        run(
-                          () => api.put(`/users/${u.id}`, { active: v }),
-                          v ? 'Login enabled' : 'Login disabled',
-                        ).then(reload)
-                      }
-                    />
-                  </td>
-                  <td className="small muted">
-                    {u.last_login ? fmtDateTime(u.last_login) : 'Never'}
-                  </td>
-                  <td className="right" style={{ paddingRight: 18 }}>
-                    {isAdmin && (
-                      <Button
-                        size="xs"
-                        icon={KeyRound}
-                        onClick={async () => {
-                          const out = await run(() => api.post(`/users/${u.id}/reset`));
-                          if (out) {
-                            setTemp(out);
-                            reload();
-                          }
-                        }}
-                      >
-                        Reset password
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-      {temp && (
-        <TempPasswordModal
-          username={temp.username}
-          role={temp.role}
-          email={temp.email}
-          password={temp.tempPassword}
-          onClose={() => {
-            setTemp(null);
-            reload();
-          }}
-        />
-      )}
-      {confirmEl}
-    </div>
   );
 }
 

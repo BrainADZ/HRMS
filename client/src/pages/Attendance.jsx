@@ -51,7 +51,7 @@ const LABEL = {
   P: 'Present',
   OD: 'On duty',
   TRV: 'Travelling',
-  WFH: 'WFH',
+  WFH: 'Work from home',
   HD: 'Half day',
   A: 'Absent',
   L: 'On leave',
@@ -59,7 +59,7 @@ const LABEL = {
   WO: 'Weekly off',
   U: 'Not marked',
   F: 'Not marked yet',
-  NA: '—',
+  NA: 'Not applicable',
 };
 const TONE = {
   P: 'green',
@@ -77,10 +77,12 @@ const TONE = {
 
 export default function Attendance({ embedded = false }) {
   const [sp, setSp] = useSearchParams();
-  const { isHR, isManager, isAdmin } = useApp();
+  const { user, isHR, isManager, isAdmin } = useApp();
   const s = useWorkday();
   const team = isHR || isManager;
-  const tab = sp.get('tab') || (team ? 'today' : 'month');
+  const requestedTab = sp.get('tab');
+  const tab =
+    !requestedTab || requestedTab === 'verification' ? (team ? 'today' : 'month') : requestedTab;
   const shortCount = (s?.toExplain || 0) + (s?.toApprove || 0);
   return (
     <div>
@@ -687,6 +689,65 @@ function Today() {
   );
 }
 
+const LEAVE_NAMES = {
+  EL: 'Earned Leave',
+  CL: 'Casual & Sick Leave',
+  SL: 'Sick Leave',
+  ML: 'Maternity Leave',
+  PL: 'Paternity Leave',
+  LOP: 'Loss of Pay (unpaid leave)',
+};
+const displayedCode = (code) => ({ U: '·', F: '—', NA: 'N/A' })[code] || code;
+function leaveDescription(day, types = []) {
+  const name =
+    day.leaveName || types.find((type) => type.code === day.leave)?.name || LEAVE_NAMES[day.leave];
+  return day.leave ? day.leave + (name ? ' — ' + name : '') : 'On leave';
+}
+function attendanceDescription(day, types = []) {
+  return day.onDuty
+    ? 'On duty'
+    : day.travelled
+      ? 'Travelling'
+      : day.code === 'L'
+        ? leaveDescription(day, types)
+        : LABEL[day.code] || day.code;
+}
+function AttendanceLegend({ rows, leaveTypes }) {
+  const types = new Map(Object.entries(LEAVE_NAMES));
+  for (const type of leaveTypes || []) if (type.code !== 'WFH') types.set(type.code, type.name);
+  for (const row of rows)
+    for (const day of row.days)
+      if (day.leave && day.leave !== 'WFH')
+        types.set(day.leave, day.leaveName || types.get(day.leave) || 'Approved leave');
+  const item = (code, label, status = code) => (
+    <span key={code} className="attendance-legend-item">
+      <span className={'attendance-legend-code cell c-' + status}>{displayedCode(code)}</span>
+      <span>{label}</span>
+    </span>
+  );
+  return (
+    <section className="attendance-code-guide" aria-label="Attendance code meanings">
+      <div className="attendance-legend-line">
+        <b>Attendance codes</b>
+        <div className="attendance-legend-items">
+          {['P', 'OD', 'TRV', 'WFH', 'HD', 'A', 'L', 'H', 'WO', 'U', 'F', 'NA'].map((code) =>
+            item(code, LABEL[code]),
+          )}
+        </div>
+      </div>
+      <div className="attendance-legend-line">
+        <b>Leave codes</b>
+        <div className="attendance-legend-items">
+          {[...types].map(([code, name]) => item(code, name, 'L'))}
+        </div>
+      </div>
+      <p className="attendance-lop-help">
+        <b>LOP = Loss of Pay (unpaid days).</b> In each monthly total, 1 means one unpaid day, 0.5
+        means half an unpaid day, and 0 means no unpaid days.
+      </p>
+    </section>
+  );
+}
 function Register({ personal = false }) {
   const { meta, toast, vertical, isHR, isManager } = useApp();
   const [month, setMonth] = useState(meta.today.slice(0, 7));
@@ -772,34 +833,13 @@ function Register({ personal = false }) {
           </Button>
         )}
       </div>
-      <div className="row wrap small mb-12" style={{ gap: 10 }}>
-        {['P', 'OD', 'TRV', 'WFH', 'HD', 'A', 'L', 'H', 'U'].map((c) => (
-          <span key={c} className="row gap-4">
-            <span
-              className={`cell c-${c}`}
-              style={{
-                width: 22,
-                height: 18,
-                borderRadius: 5,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 9,
-                fontWeight: 700,
-              }}
-            >
-              {c === 'U' ? '·' : c === 'L' ? 'L' : c.slice(0, 2)}
-            </span>
-            {LABEL[c]}
-          </span>
-        ))}
-        {team && (
-          <span className="muted">
-            · Click a past day to change it. Unmarked past days are paid as{' '}
-            {data?.unmarkedAs || 'present'}.
-          </span>
-        )}
-      </div>
+      <AttendanceLegend rows={rows} leaveTypes={meta.leaveTypes} />
+      {team && (
+        <p className="small muted mb-12">
+          Click a past day to change it. Automatic / unmarked past days follow the company setting:{' '}
+          {data?.unmarkedAs || 'present'} for unpaid-day calculations.
+        </p>
+      )}
       {!data ? (
         <Loading />
       ) : !team ? (
@@ -811,7 +851,10 @@ function Register({ personal = false }) {
         <Modal title={`Mark attendance · ${pick.row.name}`} size="narrow" onClose={close}>
           <p className="small muted mb-12">
             {fmtDay(pick.date)} ·{' '}
-            {LABEL[pick.row.days.find((day) => day.date === pick.date)?.code] || 'Not marked'}
+            {attendanceDescription(
+              pick.row.days.find((day) => day.date === pick.date) || { code: 'U' },
+              meta.leaveTypes,
+            )}
           </p>
           <div className="row wrap gap-8">
             {['P', 'WFH', 'HD', 'A'].map((code) => (
@@ -826,14 +869,15 @@ function Register({ personal = false }) {
         </Modal>
       )}
       <div className="small muted mt-12">
-        <Clock size={13} style={{ verticalAlign: -2 }} /> LOP = loss-of-pay days used by payroll
-        (absent, half days, unpaid leave).
+        Unpaid days (LOP) include marked absences, half days and unpaid leave. Automatic / unmarked
+        absences follow the company setting. Hover over a date to see its full status.
       </div>
     </div>
   );
 }
 
 function EmployeeRegisterCards({ rows, data, onPick }) {
+  const { meta } = useApp();
   const offset = data.days.length ? (new Date(`${data.days[0]}T00:00:00Z`).getUTCDay() + 6) % 7 : 0;
   return (
     <div className="employee-register">
@@ -868,16 +912,14 @@ function EmployeeRegisterCards({ rows, data, onPick }) {
                   row.canMark &&
                   day.date <= data.today &&
                   !['H', 'WO', 'L', 'NA'].includes(day.code);
-                const label = `${row.name}, ${day.date}: ${day.onDuty ? 'On duty' : day.travelled ? 'Travelling' : day.code === 'L' ? day.leave : LABEL[day.code] || day.code}${day.in ? ` · in ${day.in}` : ''}${day.out ? ` · out ${day.out}` : ''}${day.late ? ' · late' : ''}`;
+                const label = `${row.name}, ${day.date}: ${attendanceDescription(day, meta.leaveTypes)}${day.in ? ` · in ${day.in}` : ''}${day.out ? ` · out ${day.out}` : ''}${day.late ? ' · late' : ''}`;
                 const code = day.onDuty
                   ? 'OD'
                   : day.travelled
                     ? 'TRV'
                     : day.code === 'L'
                       ? day.leave || 'L'
-                      : ['U', 'F', 'NA'].includes(day.code)
-                        ? '—'
-                        : day.code;
+                      : displayedCode(day.code);
                 return (
                   <button
                     key={day.date}
@@ -899,7 +941,7 @@ function EmployeeRegisterCards({ rows, data, onPick }) {
                 Present <b>{row.summary.P}</b>
               </span>
               <span>
-                On duty <b>{row.summary.onDuty || 0}</b> · WFH <b>{row.summary.WFH}</b>
+                On duty <b>{row.summary.onDuty || 0}</b> · Work from home <b>{row.summary.WFH}</b>
               </span>
               <span>
                 Leave <b>{row.summary.L}</b>
@@ -908,7 +950,7 @@ function EmployeeRegisterCards({ rows, data, onPick }) {
                 Absent <b>{row.summary.A}</b>
               </span>
               <span>
-                LOP <b>{row.summary.lop}</b>
+                Unpaid days (LOP) <b>{row.summary.lop}</b>
               </span>
             </div>
           </section>
@@ -920,6 +962,7 @@ function EmployeeRegisterCards({ rows, data, onPick }) {
 }
 
 function PersonalAttendance({ rows, data }) {
+  const { meta } = useApp();
   const navigate = useNavigate();
   return (
     <div className="personal-attendance">
@@ -932,7 +975,7 @@ function PersonalAttendance({ rows, data }) {
                 Present <b>{row.summary.P}</b>
               </span>
               <span>
-                On duty <b>{row.summary.onDuty || 0}</b> · WFH <b>{row.summary.WFH}</b>
+                On duty <b>{row.summary.onDuty || 0}</b> · Work from home <b>{row.summary.WFH}</b>
               </span>
               <span>
                 Leave <b>{row.summary.L}</b>
@@ -941,7 +984,7 @@ function PersonalAttendance({ rows, data }) {
                 Absent <b>{row.summary.A}</b>
               </span>
               <span>
-                LOP <b>{row.summary.lop}</b>
+                Unpaid days (LOP) <b>{row.summary.lop}</b>
               </span>
             </div>
             <div className="attendance-calendar" aria-label="Monthly attendance calendar">
@@ -958,7 +1001,8 @@ function PersonalAttendance({ rows, data }) {
                   type="button"
                   key={day.date}
                   className={`attendance-day ${day.date === data.today ? 'is-today' : ''} ${['H', 'WO'].includes(day.code) ? 'is-off' : ''}`}
-                  aria-label={`${day.date}: ${day.onDuty ? 'On duty' : LABEL[day.code] || day.code}`}
+                  aria-label={`${day.date}: ${attendanceDescription(day, meta.leaveTypes)}`}
+                  title={attendanceDescription(day, meta.leaveTypes)}
                   onClick={() => navigate(`/attendance?tab=activity&date=${day.date}`)}
                 >
                   <time dateTime={day.date}>{Number(day.date.slice(8))}</time>
@@ -968,8 +1012,10 @@ function PersonalAttendance({ rows, data }) {
                       : day.travelled
                         ? 'Travelling'
                         : day.code === 'L'
-                          ? day.leave || 'On leave'
-                          : LABEL[day.code] || day.code}
+                          ? day.leave || 'L'
+                          : day.code === 'WFH'
+                            ? 'WFH'
+                            : LABEL[day.code] || day.code}
                   </Badge>
                   {(day.in || day.out) && (
                     <div className="attendance-day-times">

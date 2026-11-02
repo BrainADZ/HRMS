@@ -1,3 +1,4 @@
+import { can, hasRole, moduleLevel } from '../../shared/access.js';
 import {
   createContext,
   useCallback,
@@ -121,9 +122,12 @@ export function AppProvider({ children }) {
       ? setTimeout(expire, Math.max(0, Math.min(2147483647, expiry - Date.now())))
       : null;
     const timer = setInterval(() => {
-      api.get('/auth/me').catch((error) => {
-        if (error.status === 401) expire();
-      });
+      api
+        .get('/auth/me')
+        .then((me) => setUser(me.user))
+        .catch((error) => {
+          if (error.status === 401) expire();
+        });
     }, 60000);
     return () => {
       clearTimeout(timeout);
@@ -156,9 +160,15 @@ export function AppProvider({ children }) {
 
   const value = useMemo(() => {
     const role = user?.role;
+    const level = moduleLevel(user, pathname);
     const visibleMeta =
       meta && vertical
-        ? { ...meta, employees: meta.employees.filter((e) => e.vertical_id === vertical) }
+        ? {
+            ...meta,
+            employees: meta.employees.filter(
+              (e) => e.vertical_id === vertical || e.vertical_ids?.includes(vertical),
+            ),
+          }
         : meta;
     return {
       user,
@@ -172,14 +182,19 @@ export function AppProvider({ children }) {
       refreshPhotos,
       photoVersion,
       logout,
-      isHR: role === 'admin' || role === 'accounts' || role === 'hr',
-      isAdmin: role === 'admin',
-      isManager: role === 'manager',
+      can: (permission) => can(user, permission),
+      isCEO: hasRole(user, 'ceo'),
+      isHR: user?.managedAccess
+        ? level.global
+        : role === 'admin' || role === 'accounts' || role === 'hr',
+      isAdmin: user?.managedAccess ? level.global : role === 'admin',
+      isManager: user?.managedAccess ? level.team : role === 'manager',
       isEmployeeOnly: role === 'employee',
       employeeName: (eid) => meta?.employees.find((e) => e.id === eid)?.name || '',
       verticalById: (vid) => meta?.verticals.find((v) => v.id === vid),
     };
   }, [
+    pathname,
     user,
     info,
     meta,

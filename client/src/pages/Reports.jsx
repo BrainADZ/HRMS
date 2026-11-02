@@ -1,3 +1,4 @@
+import { PAYROLL_ENABLED } from '../../../shared/features.js';
 import { useState } from 'react';
 import { Users, TrendingDown, IndianRupee, Wallet, Download, FileSpreadsheet } from 'lucide-react';
 import { useApp } from '../context.jsx';
@@ -19,7 +20,9 @@ export default function Reports() {
     as_of: asOf,
   });
   const { data, error, reload } = useApi('/reports/summary?' + filters);
-  const { data: runs } = useApi('/payroll?month=' + meta.today.slice(0, 7));
+  const { data: runs } = useApi(
+    PAYROLL_ENABLED ? '/payroll?month=' + meta.today.slice(0, 7) : null,
+  );
   const [month, setMonth] = useState(meta.today.slice(0, 7));
   if (error && !data) return <ErrorBox error={error} onRetry={reload} />;
   if (!data) return <Loading />;

@@ -1,7 +1,9 @@
+import { membershipSql } from './services/verticals.js';
 // Password hashing (scrypt) and cookie sessions stored in PostgreSQL.
 import crypto from 'node:crypto';
 import { isCompanyOwner } from './lib/employee-policy.js';
 import { fail, fullName } from './core.js';
+import { accessProfile, applyAccessContext, isCEO } from './services/access.js';
 
 const COOKIE = process.env.SESSION_COOKIE_NAME || 'hrms_session';
 if (!/^[A-Za-z0-9_-]+$/.test(COOKIE)) throw new Error('Invalid SESSION_COOKIE_NAME');
@@ -88,7 +90,7 @@ export async function loadUser(db, userId) {
   const row = await db.get(
     `
     SELECT u.id, u.email, u.username, u.role, u.master_admin, u.display_name, u.employee_id, u.must_change_password, u.active,
-           e.first_name, e.last_name, e.designation, e.photo AS employee_photo, u.photo AS account_photo, e.code, e.gender
+           ${membershipSql()} AS vertical_ids, e.vertical_id, e.first_name, e.last_name, e.designation, e.photo AS employee_photo, u.photo AS account_photo, e.code, e.gender
     FROM users u LEFT JOIN employees e ON e.id = u.employee_id WHERE u.id = ?`,
     userId,
   );
@@ -97,9 +99,11 @@ export async function loadUser(db, userId) {
     id: row.id,
     email: row.email,
     username: row.username,
-    role: row.role,
+    ...(await accessProfile(db, row)),
     isMasterAdmin: Boolean(row.master_admin),
     employeeId: row.employee_id,
+    vertical_ids: row.vertical_ids,
+    vertical_id: row.vertical_id,
     isOwner: isCompanyOwner(row),
     name: row.first_name ? fullName(row) : row.display_name || row.email,
     firstName: row.first_name || row.display_name?.split(/\s+/)[0] || row.email.split('@')[0],
@@ -130,7 +134,14 @@ export async function protectEmployeeAccount(db, actor, employeeId, { deactivate
     'SELECT id, role, active FROM users WHERE employee_id = ?',
     employeeId,
   );
-  if (!account || account.role !== 'admin') return;
+  if (!account) return;
+  const target = await loadUser(db, account.id);
+  if (isCEO(target) && !isCEO(actor) && actor.id !== account.id)
+    fail(403, 'Only a CEO can change a CEO employee account');
+  if (isCEO(target) && deactivate && actor.id === account.id)
+    fail(400, 'You cannot deactivate your own CEO account');
+  if (actor.employeeId === employeeId && !deactivate) return;
+  if (account.role !== 'admin') return;
   if (actor.role !== 'admin')
     fail(403, 'Only an administrator can change an administrator employee account');
   if (deactivate) {
@@ -154,6 +165,12 @@ export function sessionMiddleware(db) {
       );
       if (s && s.expires_at > new Date().toISOString()) {
         req.user = await loadUser(db, s.user_id);
+        applyAccessContext(
+          req.user,
+          req.method,
+          (req.originalUrl || req.url || '').split('?')[0].replace(/^\/api(?=\/)/, ''),
+          req.body || {},
+        );
         req.sessionExpiresAt = s.expires_at;
       }
     }

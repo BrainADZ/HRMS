@@ -125,6 +125,7 @@ export function MoreSheet({ items, onClose, onGetApp }) {
     };
   }, []);
   const go = (to) => {
+    if (items.find((n) => n.to === to)?.disabled) return;
     navigate(to);
     close();
   };
@@ -193,6 +194,8 @@ export function MoreSheet({ items, onClose, onGetApp }) {
                   key={n.to}
                   type="button"
                   className={`fq-tile ${isActive(n, pathname) ? 'active' : ''}`}
+                  disabled={n.disabled}
+                  title={n.disabled ? 'Temporarily disabled' : undefined}
                   onClick={() => go(n.to)}
                 >
                   <span className="fq-ic" style={{ '--tint': moduleFor(n.to).soft }}>

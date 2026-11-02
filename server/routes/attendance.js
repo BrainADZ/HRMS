@@ -744,16 +744,19 @@ export default function attendanceRoutes(r, { db }) {
     const from = D.monthStart(month);
     const to = D.monthEnd(month);
     const s = await settings();
-    const emps = req.query.self === '1'
-      ? req.user.employeeId
-        ? await db.all(
-            `SELECT e.*, d.name AS department, v.short AS vertical, v.color AS vertical_color FROM employees e
+    const emps =
+      req.query.self === '1'
+        ? req.user.employeeId
+          ? await db.all(
+              `SELECT e.*, d.name AS department, v.short AS vertical, v.color AS vertical_color FROM employees e
              LEFT JOIN departments d ON d.id = e.department_id LEFT JOIN verticals v ON v.id = e.vertical_id
              WHERE e.id = ? AND e.join_date <= ? AND (e.exit_date IS NULL OR e.exit_date >= ?)`,
-            req.user.employeeId, to, from,
-          )
-        : []
-      : await scopedEmployees(db, req.user, { ...req.query, from, to });
+              req.user.employeeId,
+              to,
+              from,
+            )
+          : []
+        : await scopedEmployees(db, req.user, { ...req.query, from, to });
     const st = await dayStatuses(db, emps, from, to, T, s);
     const holidays = await db.all('SELECT * FROM holidays WHERE date BETWEEN ? AND ?', from, to);
     const rows = await asyncMap(emps, async (e) => {
@@ -775,6 +778,7 @@ export default function attendanceRoutes(r, { db }) {
           travelled: Boolean(x.travelled),
           dutyMinutes: x.dutyMinutes || 0,
           leave: x.leave?.code,
+          leaveName: x.leave?.name,
           leaveColor: x.leave?.color,
           lop: x.lop,
           in: x.checkIn ? await timeLocal(x.checkIn) : null,
@@ -852,7 +856,13 @@ export default function attendanceRoutes(r, { db }) {
           notFound('Employee');
         if (d < employee.join_date || (employee.exit_date && d > employee.exit_date))
           fail(400, 'Attendance must be within the employment dates');
-        if (await db.value('SELECT id FROM attendance WHERE employee_id=? AND date=?', eid, d))
+        if (
+          await db.value(
+            'SELECT employee_id FROM attendance WHERE employee_id=? AND date=?',
+            eid,
+            d,
+          )
+        )
           continue;
         await db.run(
           `INSERT INTO attendance (employee_id, date, status, updated_by) VALUES (?, ?, ?, ?)

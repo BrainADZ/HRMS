@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createTestClient } from './postgres-client.js';
 import { openDb, prepareQuery, postgresConfig } from '../db.js';
 import fs from 'node:fs/promises';
+import { loadUser } from '../auth.js';
 
 test('PostgreSQL parameters preserve literals, comments, JSON and dollar strings', () => {
   const result = prepareQuery('SELECT ?, \'?\', $$?$$, $tag$?$tag$, "?" /* ? */ -- ?\n, ?', [
@@ -32,7 +33,7 @@ test('PostgreSQL configuration supports raw passwords and validates pool/TLS opt
 test('PostgreSQL schema, identities, case-insensitive uniqueness, rollback and foreign keys', async () => {
   const db = await openDb({ queryClient: await createTestClient() });
   try {
-    assert.equal(await db.value('SELECT MAX(version) FROM schema_migrations'), 24);
+    assert.equal(await db.value('SELECT MAX(version) FROM schema_migrations'), 31);
     const employee = await db.insert('employees', {
       code: 'TEST001',
       first_name: 'Test',
@@ -94,6 +95,39 @@ test('PostgreSQL schema, identities, case-insensitive uniqueness, rollback and f
     await db.run('DELETE FROM users WHERE id = ?', uid);
     assert.equal(await db.value('SELECT COUNT(*) FROM sessions'), 0);
     await assert.rejects(db.insert('bad;table', {}), /identifier/);
+  } finally {
+    await db.close();
+  }
+});
+
+test('repairs missing master_admin when migration 24 was already recorded', async () => {
+  const engine = await createTestClient();
+  let db = await openDb({ queryClient: engine });
+  try {
+    const uid = await db.insert('users', {
+      email: 'migration-repair@example.test',
+      password_hash: 'preserved-password-hash',
+      role: 'admin',
+    });
+    await db.exec('ALTER TABLE users DROP COLUMN master_admin');
+    await db.run('DELETE FROM schema_migrations WHERE version = ?', 26);
+    assert.equal(await db.value('SELECT version FROM schema_migrations WHERE version = ?', 24), 24);
+    db = await openDb({ queryClient: engine });
+    assert.equal((await loadUser(db, uid)).isMasterAdmin, false);
+    assert.equal(
+      await db.value('SELECT password_hash FROM users WHERE id = ?', uid),
+      'preserved-password-hash',
+    );
+    assert.equal(await db.value('SELECT version FROM schema_migrations WHERE version = ?', 26), 26);
+    await db.update('users', uid, { master_admin: 1 });
+    // Reapplying the repair must preserve existing master-admin privileges.
+    await db.exec(
+      await fs.readFile(
+        new URL('../database/026-repair-master-admin.sql', import.meta.url),
+        'utf8',
+      ),
+    );
+    assert.equal((await loadUser(db, uid)).isMasterAdmin, true);
   } finally {
     await db.close();
   }
@@ -177,7 +211,7 @@ test('username migration backfills existing accounts, preserves passwords and is
     });
     assert.equal(await db.value("SELECT username FROM users WHERE role = 'admin'"), null);
     db = await openDb({ queryClient: engine });
-    assert.equal(await db.value('SELECT COUNT(*) FROM schema_migrations'), 22);
+    assert.equal(await db.value('SELECT COUNT(*) FROM schema_migrations'), 29);
   } finally {
     await db.close();
   }

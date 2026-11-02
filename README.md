@@ -8,6 +8,8 @@ Current verification: 91 PostgreSQL regressions and five Chrome role/workflow te
 
 ## What's inside
 
+Payroll is temporarily disabled for every role during the office rollout. The Payroll menu stays visible but disabled; direct payroll pages, payslip access, exports, settings updates and payroll API actions are blocked. Attendance and the separate Expenses module remain available. Existing payroll records are retained. The temporary rollout switch is `PAYROLL_ENABLED` in `shared/features.js`; re-enabling requires rebuilding the client and restarting the server.
+
 | Module | What it does |
 |---|---|
 | **Dashboard** | Headcount, open positions, joiners, people on leave, vertical split, hiring funnel, upcoming interviews, leave approvals, payroll status, attrition trend, people analytics, policy and POSH compliance, notice board. Click a vertical logo in the top bar to filter by vertical. |
@@ -30,10 +32,19 @@ Current verification: 91 PostgreSQL regressions and five Chrome role/workflow te
 
 ### Roles
 
-- **Employee**: self-service only.
-- **Manager**: their team's leave, attendance, reviews and resignations, plus jobs they hire for.
-- **HR**: everything except administrator-only actions.
-- **Administrator**: everything, including the management approval step for payroll and data reset.
+**New role and permission controls:** Settings → **Users & Roles** assigns CEO, Admin, Head, Manager and Employee roles. A person can hold several assignments, including CEO plus Head of Sales, or Head assignments in several departments. Head/Manager assignments may specify a vertical and department. Their team permissions cover their reporting tree plus those explicit scopes. The reporting person is selected independently, so an Employee can report directly to a Head without an intermediate Manager.
+
+Settings → **Permissions** is visible to CEOs only. Each checkbox saves one permission for a role; a person's effective grants are the union of their assigned roles. Personal self-service remains available, and CEOs retain permission governance and role administration. Company-wide grants are separate from scoped team grants. Sensitive employee details require their own permission. Permission changes are checked on each API request and recorded in the audit log; concurrent stale edits are rejected. Payroll remains disabled regardless of role.
+
+Migration 27 is additive: it does **not** automatically reassign existing users or grant new privileges. Existing logins retain their previous access until an authorized administrator explicitly saves their new role assignments. Migration 30 supplies role defaults requested for the current HRMS; existing explicit permission choices are preserved. The CEO can customize the chart. New employees store their roles even if a login is not created yet. Existing CEO-designated administrator accounts can open the permission chart to configure this transition.
+
+Attendance Verification has been retired. Use Today, Monthly Register and Corrections for attendance updates. Migration 29 preserves previous Present, Absent and Half-day decisions as ordinary attendance marks; historical verification and audit records remain archived.
+
+- **CEO**: decides the permission chart and administers CEO role assignments; other grants are configurable.
+- **Admin**: receives the operational permissions selected by the CEO.
+- **Head**: can receive team permissions over reporting lines and explicitly assigned verticals/departments.
+- **Manager**: can receive team permissions over reporting lines and explicitly assigned scopes.
+- **Employee**: personal self-service, plus any additional permissions explicitly granted by the CEO.
 
 ### Create a master admin during deployment
 
@@ -183,3 +194,17 @@ npm test        # unit and API tests (node:test)
 - `server/scripts/`: development, database and maintenance commands.
 - `server/tests/`: isolated PostgreSQL (PGlite) tests, API flows and browser role checks.
 - `server/demo.js`: the single local demo launcher. Run `npm run demo`; it starts the real API and client with fictional data in a temporary embedded database. Press `q` and Enter to stop and remove its data.
+
+### Users & Access
+
+Open **Users & Access** from the main navigation. **People & roles** lists employees, including those without logins, with all working verticals and responsibilities. Use **Edit access** to select multiple verticals or add responsibilities such as CEO + Head (Sales) or Admin + Accounts. Primary verticals are changed from the employee form. A department can report directly to its Head without a Manager.
+
+Only the CEO can edit **Role permissions**. Select a role in the sidebar, then use the module matrix to enable View, Create, Edit, Delete, Approve, Assign and Export separately; each checkbox saves immediately. Unsupported actions show N/A (Not applicable). Expand a module for team workflows, sensitive details and other special controls. View access does not grant Edit, Delete or Export. Existing broad grants remain compatible, and individual actions can be disabled separately. Multiple roles combine their granted permissions. Team permissions follow reporting lines and explicit Head/Manager/Accounts scopes; company-wide actions remain company-wide. Membership alone grants no permissions. Updating only verticals preserves existing access; explicitly changing roles opts the person into the configured permissions. Payroll remains disabled.
+
+Role defaults: CEO has all supported company actions and system controls; Admin has operational access excluding confidential POSH and system reset; Head/Manager have scoped team workflows; Accounts has employee/document details, attendance, expenses and reporting; Employee retains personal self-service plus published policies and announcements. Defaults do not reassign employee roles. Existing explicit grants and denials are preserved.
+
+### Responsibility data scopes
+
+Users & Access → People & roles → Edit access separates work vertical membership from responsibility access. Each responsibility has a role and Own records, Reporting team, Selected department / vertical, or All employees scope. Selected department and vertical filters intersect; secondary vertical memberships count. Add another responsibility for another vertical. Reporting teams include direct and indirect reports, so a Manager layer is optional.
+
+Limited scopes support employee profile viewing, attendance, leave reviews, performance manager reviews, training visibility, and manager resignation reviews. Company administration, sensitive employee details, and other company-wide actions require an All employees responsibility with the corresponding permission. Self-service remains available. Existing scope preserves prior rules until explicitly changed. Each action uses only the scopes of responsibilities granting that action.

@@ -1,3 +1,5 @@
+import RoleAssignmentsEditor from '../components/RoleAssignmentsEditor.jsx';
+import { PAYROLL_ENABLED } from '../../../shared/features.js';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams, Link, Navigate } from 'react-router-dom';
 import {
@@ -263,7 +265,7 @@ function People({ selectedId }) {
                       <th>Employee</th>
                       <th>ID</th>
                       {!shown && <th className="hide-sm">Role</th>}
-                      <th>Vertical</th>
+                      <th>Verticals</th>
                       <th>Status</th>
                     </tr>
                   </thead>
@@ -287,7 +289,10 @@ function People({ selectedId }) {
                         {!shown && <td className="hide-sm">{e.grade || '—'}</td>}
                         <td>
                           <VChip
-                            vertical={e.vertical_short}
+                            vertical={(e.vertical_ids || [e.vertical_id])
+                              .map((id) => meta.verticals.find((v) => v.id === id)?.short)
+                              .filter(Boolean)
+                              .join(' / ')}
                             color={e.vertical_color}
                             department={e.department}
                           />
@@ -367,7 +372,7 @@ function MiniStat({ icon: Icon, tone, label, value, dot }) {
 
 // ---------------------------------------------------------------- profile
 export function EmployeeProfile({ id, onChanged, isSelf }) {
-  const { isHR, toast, refreshMeta, refreshPhotos } = useApp();
+  const { isHR, toast, refreshMeta, refreshPhotos, meta } = useApp();
   const [month, setMonth] = useState(null);
   const { data, error, reload } = useApi(`/employees/${id}${month ? `?month=${month}` : ''}`);
   const [tab, setTab] = useState('Overview');
@@ -507,7 +512,14 @@ export function EmployeeProfile({ id, onChanged, isSelf }) {
             </div>
           </div>
           <div className="row wrap mt-12" style={{ gap: 8 }}>
-            <VChip vertical={e.vertical_short} color={e.vertical_color} department={e.department} />
+            <VChip
+              vertical={(e.vertical_ids || [e.vertical_id])
+                .map((id) => meta.verticals.find((v) => v.id === id)?.short)
+                .filter(Boolean)
+                .join(' / ')}
+              color={e.vertical_color}
+              department={e.department}
+            />
             <span
               className="vchip"
               style={{ background: 'var(--blue-soft)', color: 'var(--blue)' }}
@@ -1498,7 +1510,10 @@ function Compensation({ data }) {
                 <Badge>{p.status}</Badge>
                 <a
                   className="link"
-                  href={`/print/payslip/${p.id}`}
+                  href={PAYROLL_ENABLED ? `/print/payslip/${p.id}` : undefined}
+                  aria-disabled={!PAYROLL_ENABLED}
+                  title={!PAYROLL_ENABLED ? 'Payroll is temporarily disabled' : undefined}
+                  onClick={(e) => !PAYROLL_ENABLED && e.preventDefault()}
                   target="_blank"
                   rel="noreferrer"
                 >
@@ -1644,7 +1659,8 @@ function Assets({ data, reload }) {
 
 // ---------------------------------------------------------------- forms
 export function EmployeeForm({ employee, onClose, onSaved, selfOnly, fullPage = false }) {
-  const { meta, toast, isAdmin, vertical } = useApp();
+  const { meta, toast, isAdmin, vertical, user, can } = useApp();
+  const canSensitive = !user.managedAccess || can('employees.sensitive');
   const e = employee?.employee;
   const c = employee?.compensation || {};
   const [f, setF] = useState(() => ({
@@ -1656,6 +1672,8 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly, fullPage = 
     gender: e?.gender || '',
     dob: e?.dob || '',
     vertical_id: e?.vertical_id || vertical || '',
+    vertical_ids:
+      e?.vertical_ids || (e?.vertical_id || vertical ? [Number(e?.vertical_id || vertical)] : []),
     department_id: e?.department_id || '',
     designation: e?.designation || '',
     grade: e?.grade || 'Executive',
@@ -1677,6 +1695,9 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly, fullPage = 
     skills: (e?.skills || []).join(', '),
     create_login: true,
     role: 'employee',
+    roleAssignments: e
+      ? e.roleAssignments || []
+      : [{ role: 'employee', vertical_id: null, department_id: null }],
   }));
   const [run, busy] = useAction(toast);
   const [temp, setTemp] = useState(null);
@@ -1700,9 +1721,17 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly, fullPage = 
         }
       : {
           ...f,
+          roleAssignments:
+            f.roleAssignments.length &&
+            (!e || JSON.stringify(f.roleAssignments) !== JSON.stringify(e.roleAssignments || []))
+              ? f.roleAssignments
+              : undefined,
           ctc: f.ctc === '' ? 0 : Number(f.ctc),
           monthly_tds: f.monthly_tds === '' ? '' : Number(f.monthly_tds),
         };
+    if (!canSensitive && !selfOnly)
+      for (const key of ['ctc', 'monthly_tds', 'pan', 'uan', 'bank_name', 'bank_account', 'ifsc'])
+        delete body[key];
     if (!e) {
       const out = await run(() => api.post('/employees', body), 'Employee added');
       if (out) {
@@ -1783,13 +1812,47 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly, fullPage = 
           >
             <Input value={f.code} onChange={set('code')} maxLength={30} placeholder="BZ001" />
           </Field>
-          <Field label="Vertical">
+          <Field label="Primary vertical">
             <Select
               value={f.vertical_id}
-              onChange={set('vertical_id')}
+              onChange={(event) =>
+                setF({
+                  ...f,
+                  vertical_id: event.target.value,
+                  vertical_ids: [
+                    ...new Set([...f.vertical_ids, Number(event.target.value)].filter(Boolean)),
+                  ],
+                })
+              }
               placeholder="Select"
               options={opts(meta.verticals)}
             />
+          </Field>
+          <Field
+            label="Works across"
+            className="full"
+            hint="Select every vertical this employee works in. This does not grant permissions."
+          >
+            <div className="row wrap" style={{ gap: 16 }}>
+              {meta.verticals.map((v) => (
+                <label className="check" key={v.id}>
+                  <input
+                    type="checkbox"
+                    checked={f.vertical_ids.includes(v.id)}
+                    disabled={v.id === Number(f.vertical_id)}
+                    onChange={(event) =>
+                      setF({
+                        ...f,
+                        vertical_ids: event.target.checked
+                          ? [...f.vertical_ids, v.id]
+                          : f.vertical_ids.filter((id) => id !== v.id),
+                      })
+                    }
+                  />
+                  {v.name}
+                </label>
+              ))}
+            </div>
           </Field>
           <Field label="Department">
             <Select
@@ -1809,7 +1872,10 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly, fullPage = 
               options={['Executive', 'Senior', 'Manager', 'Head', 'CXO']}
             />
           </Field>
-          <Field label="Reporting manager">
+          <Field
+            label="Reports to (CEO / Head / Manager)"
+            hint="A department may have employees reporting directly to its Head."
+          >
             <EmployeeSelect
               value={f.manager_id}
               onChange={set('manager_id')}
@@ -1849,43 +1915,59 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly, fullPage = 
           <Field label="Joining date *">
             <Input type="date" value={f.join_date} onChange={set('join_date')} />
           </Field>
-          <div className="form-section">Pay & statutory</div>
-          <Field
-            label="Annual CTC (₹)"
-            hint={f.ctc ? `${lpa(Number(f.ctc) / 100000)}` : 'Gross cost to company per year'}
-          >
-            <Input type="number" min="0" value={f.ctc} onChange={set('ctc')} />
-          </Field>
-          <Field label="Monthly TDS (₹)" hint="Leave blank to estimate (new regime)">
-            <Input type="number" min="0" value={f.monthly_tds} onChange={set('monthly_tds')} />
-          </Field>
-          <Field label="PAN">
-            <Input
-              value={f.pan}
-              onChange={set('pan')}
-              placeholder="ABCDE1234F"
-              maxLength={10}
-              style={{ textTransform: 'uppercase' }}
-            />
-          </Field>
-          <Field label="UAN">
-            <Input value={f.uan} onChange={set('uan')} placeholder="12 digits" maxLength={12} />
-          </Field>
-          <Field label="Bank name">
-            <Input value={f.bank_name} onChange={set('bank_name')} />
-          </Field>
-          <Field label="Account number">
-            <Input value={f.bank_account} onChange={set('bank_account')} maxLength={18} />
-          </Field>
-          <Field label="IFSC">
-            <Input
-              value={f.ifsc}
-              onChange={set('ifsc')}
-              placeholder="HDFC0001234"
-              maxLength={11}
-              style={{ textTransform: 'uppercase' }}
-            />
-          </Field>
+          <>
+            {canSensitive && (
+              <>
+                <div className="form-section">Pay & statutory</div>
+                <Field
+                  label="Annual CTC (₹)"
+                  hint={f.ctc ? `${lpa(Number(f.ctc) / 100000)}` : 'Gross cost to company per year'}
+                >
+                  <Input type="number" min="0" value={f.ctc} onChange={set('ctc')} />
+                </Field>
+                <Field label="Monthly TDS (₹)" hint="Leave blank to estimate (new regime)">
+                  <Input
+                    type="number"
+                    min="0"
+                    value={f.monthly_tds}
+                    onChange={set('monthly_tds')}
+                  />
+                </Field>
+                <Field label="PAN">
+                  <Input
+                    value={f.pan}
+                    onChange={set('pan')}
+                    placeholder="ABCDE1234F"
+                    maxLength={10}
+                    style={{ textTransform: 'uppercase' }}
+                  />
+                </Field>
+                <Field label="UAN">
+                  <Input
+                    value={f.uan}
+                    onChange={set('uan')}
+                    placeholder="12 digits"
+                    maxLength={12}
+                  />
+                </Field>
+                <Field label="Bank name">
+                  <Input value={f.bank_name} onChange={set('bank_name')} />
+                </Field>
+                <Field label="Account number">
+                  <Input value={f.bank_account} onChange={set('bank_account')} maxLength={18} />
+                </Field>
+                <Field label="IFSC">
+                  <Input
+                    value={f.ifsc}
+                    onChange={set('ifsc')}
+                    placeholder="HDFC0001234"
+                    maxLength={11}
+                    style={{ textTransform: 'uppercase' }}
+                  />
+                </Field>
+              </>
+            )}
+          </>
         </>
       )}
       <div className="form-section">Profile</div>
@@ -1905,6 +1987,15 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly, fullPage = 
       <Field label="About" className="full">
         <Textarea value={f.about} onChange={set('about')} maxLength={1000} />
       </Field>
+      {!selfOnly && (
+        <div className="full">
+          <div className="form-section">Roles</div>
+          <RoleAssignmentsEditor
+            value={f.roleAssignments}
+            onChange={(rows) => setF((old) => ({ ...old, roleAssignments: rows }))}
+          />
+        </div>
+      )}
       {!e && (
         <>
           <div className="form-section">Login</div>
@@ -1913,21 +2004,6 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly, fullPage = 
               <input type="checkbox" checked={f.create_login} onChange={set('create_login')} />
               Create HRMS login
             </label>
-            {f.create_login && (
-              <Field label="Role">
-                <Select
-                  value={f.role}
-                  onChange={set('role')}
-                  options={[
-                    { value: 'employee', label: 'Employee' },
-                    { value: 'manager', label: 'Manager' },
-                    { value: 'hr', label: 'HR' },
-                    ...(isAdmin ? [{ value: 'accounts', label: 'Accounts Team' }] : []),
-                    ...(isAdmin ? [{ value: 'admin', label: 'Administrator' }] : []),
-                  ]}
-                />
-              </Field>
-            )}
             {fullPage && (
               <div className="employee-form-inline-action">
                 <Button onClick={onClose}>Cancel</Button>
@@ -1961,7 +2037,11 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly, fullPage = 
 
 function LoginModal({ employee, login, onClose, onDone }) {
   const { toast, isAdmin } = useApp();
-  const [role, setRole] = useState(login?.role || 'employee');
+  const [roleAssignments, setRoleAssignments] = useState(
+    employee.roleAssignments?.length
+      ? employee.roleAssignments
+      : [{ role: login?.primaryRole || 'employee' }],
+  );
   const [run, busy] = useAction(toast);
   const [temp, setTemp] = useState(null);
   if (temp)
@@ -1989,7 +2069,9 @@ function LoginModal({ employee, login, onClose, onDone }) {
             variant="primary"
             loading={busy}
             onClick={async () => {
-              const out = await run(() => api.post(`/employees/${employee.id}/login`, { role }));
+              const out = await run(() =>
+                api.post(`/employees/${employee.id}/login`, { roleAssignments }),
+              );
               if (out) setTemp(out);
             }}
           >
@@ -2003,19 +2085,7 @@ function LoginModal({ employee, login, onClose, onDone }) {
           {employee.name} will sign in with <b>{employee.email}</b>. A temporary password is
           generated; they must change it at first sign-in.
         </div>
-        <Field label="Role">
-          <Select
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-            options={[
-              { value: 'employee', label: 'Employee' },
-              { value: 'manager', label: 'Manager' },
-              { value: 'hr', label: 'HR' },
-              ...(isAdmin ? [{ value: 'accounts', label: 'Accounts Team' }] : []),
-              ...(isAdmin ? [{ value: 'admin', label: 'Administrator' }] : []),
-            ]}
-          />
-        </Field>
+        <RoleAssignmentsEditor value={roleAssignments} onChange={setRoleAssignments} />
       </div>
     </Modal>
   );

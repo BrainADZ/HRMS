@@ -34,7 +34,9 @@ const RATING_LABELS = {
 
 export default function performanceRoutes(r, { db }) {
   const isManagerOf = async (user, employeeId) =>
-    user.role === 'manager' && (await reportIds(db, user.employeeId)).includes(employeeId);
+    user.role === 'manager' &&
+    employeeId !== user.employeeId &&
+    (await scopeIds(db, user)).includes(employeeId);
   const canManage = async (user, employeeId) => isHR(user) || (await isManagerOf(user, employeeId));
 
   r.get('/performance', async (req, res) => {

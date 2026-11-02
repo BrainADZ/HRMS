@@ -162,9 +162,44 @@ export async function reportIds(db, employeeId) {
 // Employees whose HR records this user may see: null means everyone.
 export async function scopeIds(db, user) {
   if (isHR(user)) return null;
-  const ids = user.role === 'manager' ? await reportIds(db, user.employeeId) : [];
+  const scoped = user.scopeAssignments || user.roleAssignments || [];
+  if (user.role === 'manager' && scoped.some((a) => a.access_scope === 'all')) return null;
+  const reporting =
+    !user.managedAccess ||
+    scoped.some((a) => !a.access_scope || ['legacy', 'team', 'all'].includes(a.access_scope));
+  const ids = user.role === 'manager' && reporting ? await reportIds(db, user.employeeId) : [];
+  if (user.managedAccess && user.role === 'manager') {
+    for (const assignment of scoped) {
+      if (assignment.access_scope && !['legacy', 'selected'].includes(assignment.access_scope))
+        continue;
+      if (
+        (!assignment.access_scope || assignment.access_scope === 'legacy') &&
+        !['head', 'manager', 'accounts'].includes(assignment.role)
+      )
+        continue;
+      const clauses = ['1=1'];
+      const params = [];
+      for (const key of ['vertical_id', 'department_id']) {
+        if (assignment[key]) {
+          clauses.push(
+            key === 'vertical_id'
+              ? '(vertical_id = ? OR EXISTS (SELECT 1 FROM employee_verticals ev WHERE ev.employee_id=employees.id AND ev.vertical_id=?))'
+              : `${key} = ?`,
+          );
+          if (key === 'vertical_id') params.push(assignment[key]);
+          params.push(assignment[key]);
+        }
+      }
+      if (params.length)
+        ids.push(
+          ...(
+            await db.all(`SELECT id FROM employees WHERE ${clauses.join(' AND ')}`, ...params)
+          ).map((e) => e.id),
+        );
+    }
+  }
   if (user.employeeId) ids.push(user.employeeId);
-  return ids;
+  return [...new Set(ids)];
 }
 
 export async function canSeeEmployee(db, user, employeeId) {

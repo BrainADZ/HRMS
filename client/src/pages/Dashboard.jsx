@@ -1,3 +1,4 @@
+import { PAYROLL_ENABLED } from '../../../shared/features.js';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
@@ -88,7 +89,7 @@ export function VerticalFilterNote() {
 }
 
 export function NoticeBoard({ notices, onChange, compact, headerOnly = false }) {
-  const { isHR, isManager, toast } = useApp();
+  const { isHR, isManager, toast, user, can } = useApp();
   const today = fmtDate(new Date());
   const feed = notices
     .filter(
@@ -96,7 +97,7 @@ export function NoticeBoard({ notices, onChange, compact, headerOnly = false }) 
     )
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at) || b.id - a.id)
     .slice(0, 1);
-  const canPost = isHR || isManager;
+  const canPost = user.managedAccess ? can('notices.manage') : isHR || isManager;
   const [adding, setAdding] = useState(false);
   const [f, setF] = useState({ title: '', body: '', kind: 'general' });
   const [run, busy] = useAction(toast);
@@ -472,7 +473,12 @@ export default function Dashboard() {
               </>
             }
             action={
-              <Link className="link" to={`/payroll?month=${p.month}`}>
+              <Link
+                className="link"
+                aria-disabled={!PAYROLL_ENABLED}
+                onClick={(e) => !PAYROLL_ENABLED && e.preventDefault()}
+                to={`/payroll?month=${p.month}`}
+              >
                 View details <ArrowRight size={14} />
               </Link>
             }
