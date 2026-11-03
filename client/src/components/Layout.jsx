@@ -629,17 +629,19 @@ function UserMenu({ onGetApp }) {
             <Camera size={16} />
             Change photo
           </button>
-          <button
-            type="button"
-            className="item"
-            onClick={() => {
-              setOpen(false);
-              setPw(true);
-            }}
-          >
-            <KeyRound size={16} />
-            Change password
-          </button>
+          {user.canManageCredentials && (
+            <button
+              type="button"
+              className="item"
+              onClick={() => {
+                setOpen(false);
+                setPw(true);
+              }}
+            >
+              <KeyRound size={16} />
+              Change password
+            </button>
+          )}
           {onGetApp && (
             <button
               type="button"

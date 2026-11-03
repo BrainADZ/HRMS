@@ -523,7 +523,7 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
         ),
       };
     }
-    if (isHR(req.user))
+    if (isHR(req.user) || req.user.employeeId === eid)
       out.login =
         (await db.get(
           'SELECT id, email, username, role, active, last_login FROM users WHERE employee_id = ?',
@@ -676,6 +676,17 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
       data = await readEmployeeBody(db, body, { partial: true });
     } else fail(403, 'You can only edit your own profile');
     const updated = { ...existing, ...data };
+    if (
+      !req.user.canManageCredentials &&
+      ['email', 'first_name', 'code', 'vertical_id'].some(
+        (k) => data[k] !== undefined && data[k] !== existing[k],
+      ) &&
+      (await db.value('SELECT id FROM users WHERE employee_id=?', eid))
+    )
+      fail(
+        403,
+        'Only the CEO / IT team can change login email or fields that generate a login username',
+      );
     if (updated.exit_date && updated.exit_date < updated.join_date)
       fail(400, 'Exit date cannot be before joining date');
     if (data.status === 'Exited' && updated.exit_date > (await today(db)))
@@ -728,6 +739,8 @@ export default function employeeRoutes(r, { db, uploads, upload }) {
 
   r.post('/employees/:id/login', async (req, res) => {
     requireHR(req);
+    if (!req.user.canManageCredentials)
+      fail(403, 'Only the CEO / IT team can create or reset login credentials');
     const eid = id(req.params.id);
     const e = (await db.get('SELECT * FROM employees WHERE id = ?', eid)) || notFound('Employee');
     if (e.status === 'Exited')

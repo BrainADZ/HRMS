@@ -1,4 +1,9 @@
 import { ACTION_PERMISSIONS } from './permission-modules.js';
+export const canManageCredentials = (user) =>
+  Boolean(
+    user?.roles?.includes('ceo') ||
+    (user?.roles?.includes('admin') && (user.managedAccess || user.role === 'admin')),
+  );
 export const ROLES = [
   { value: 'ceo', label: 'CEO' },
   { value: 'admin', label: 'Admin' },

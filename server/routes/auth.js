@@ -263,6 +263,8 @@ export default function authRoutes(r, { db, passwordResetMailer }) {
 
   r.post('/auth/change-password', async (req, res) => {
     if (!req.user) fail(401, 'Please sign in');
+    if (!req.user.canManageCredentials)
+      fail(403, 'Only the CEO / IT team can change login credentials');
     if (String(req.body?.current || '').length > 200) fail(400, 'Password is too long');
     const row = await db.get('SELECT password_hash FROM users WHERE id = ?', req.user.id);
     if (!verifyPassword(String(req.body?.current || ''), row.password_hash))

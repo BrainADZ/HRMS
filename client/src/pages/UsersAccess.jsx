@@ -240,7 +240,11 @@ function Users() {
                       </Button>
                       <Button
                         size="xs"
-                        disabled={typeof u.id !== 'number' || (u.roles.includes('ceo') && !isCEO)}
+                        disabled={
+                          !user.canManageCredentials ||
+                          typeof u.id !== 'number' ||
+                          (u.roles.includes('ceo') && !isCEO)
+                        }
                         onClick={async () => {
                           const out = await run(() => api.post('/users/' + u.id + '/reset'));
                           if (out) setTemp(out);

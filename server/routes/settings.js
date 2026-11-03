@@ -369,6 +369,8 @@ export default function settingsRoutes(r, { db, saveFile }) {
 
   r.post('/users/:id/reset', async (req, res) => {
     requireAdmin(req);
+    if (!req.user.canManageCredentials)
+      fail(403, 'Only the CEO / IT team can reset login credentials');
     const u =
       (await db.get('SELECT * FROM users WHERE id = ?', id(req.params.id))) || notFound('User');
     if (isCEO(await (await import('../auth.js')).loadUser(db, u.id)) && !isCEO(req.user))
