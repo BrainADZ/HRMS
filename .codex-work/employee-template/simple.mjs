@@ -1,0 +1,14 @@
+import fs from 'node:fs/promises';
+import {Workbook,SpreadsheetFile} from '@oai/artifact-tool';
+const dir='D:/HRMS/outputs/employee-template-20261102';
+const lists=JSON.parse(await fs.readFile(new URL('./lists.json',import.meta.url),'utf8'));
+const wb=Workbook.create(),s=wb.worksheets.add('Employees');
+const headers=['First name *','Last name','Work email *','Gender','Date of birth','Phone','Employee ID','Primary vertical','Works across','Department','Designation','Reports to (CEO / Head / Manager)','Employment type','Working place','Assigned branch','Joining date *','Annual CTC (₹)','Monthly TDS (₹)','PAN','UAN','Bank name','Account number','IFSC','Address','Emergency contact','Skills','About','Role','Data access','Responsibility department','Responsibility vertical','Create HRMS login'];
+s.showGridLines=false;s.tabColor='#233564';s.getRange('A1:AF1').values=[headers];s.tables.add('A1:AF101',true,'Employees');s.getRange('A1:AF101').format.font={name:'Arial',size:10,color:'#1E293B'};s.getRange('A1:AF101').format.columnWidth=25;s.getRange('A1:AF101').format.verticalAlignment='center';s.getRange('A2:AF101').format.rowHeight=26;s.getRange('A2:AF101').format.fill='#FFF9E8';s.getRange('A2:AF101').setNumberFormat('@');s.getRange('A1:AF1').format={fill:'#233564',font:{name:'Arial',size:10,bold:true,color:'#FFFFFF'},wrapText:true,rowHeight:44,horizontalAlignment:'center'};
+for(const c of ['C','I','L','X','Y','AA'])s.getRange(c+'1:'+c+'101').format.columnWidth=36;
+for(const c of ['E','P'])s.getRange(c+'2:'+c+'101').setNumberFormat('yyyy-mm-dd');s.getRange('Q2:R101').setNumberFormat('#,##0.00');s.freezePanes.freezeRows(1);s.freezePanes.freezeColumns(3);
+const dropdown=(c,v)=>s.getRange(c+'2:'+c+'101').dataValidation={rule:{type:'list',values:v}};
+dropdown('D',['Female','Male','Other']);dropdown('H',lists.verticals.map(x=>x.name));dropdown('J',lists.departments.map(x=>x.name));dropdown('M',['Full-time','Part-time','Contract','Intern']);dropdown('N',['On Site (Office)','WFH (Work from home)']);dropdown('O',lists.locations.map(x=>x.name));dropdown('AB',['CEO','Admin','Head','Manager','Accounts','Employee']);dropdown('AC',['Own records only','Reporting team','Selected department / vertical','All employees']);dropdown('AD',lists.departments.map(x=>x.name));dropdown('AE',lists.verticals.map(x=>x.name));dropdown('AF',['Yes','No']);
+wb.recalculate();console.log((await wb.inspect({kind:'table',range:'Employees!A1:H3',include:'values',tableMaxRows:3,tableMaxCols:8})).ndjson);
+for(const [range,name]of [['A1:F6','simple-personal-preview'],['AB1:AF6','simple-role-preview']]){const blob=await wb.render({sheetName:'Employees',range,scale:1,format:'png'});await fs.writeFile(dir+'/'+name+'.png',new Uint8Array(await blob.arrayBuffer()));}
+await(await SpreadsheetFile.exportXlsx(wb)).save(dir+'/BrainADZ_Add_Employee_Form.xlsx');console.log('EXPORTED');

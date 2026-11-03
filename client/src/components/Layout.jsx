@@ -43,6 +43,7 @@ import {
   IconPayroll,
   IconReports,
   IconSettings,
+  IconAccess,
   IconPerformance,
   IconAttendance,
   IconPosh,
@@ -165,7 +166,7 @@ const NAV = [
   {
     to: '/access',
     label: 'Users & Access',
-    icon: IconSettings,
+    icon: IconAccess,
     roles: ['admin', 'accounts', 'hr'],
   },
   { to: '/settings', label: 'Settings', icon: IconSettings, roles: ['admin', 'accounts', 'hr'] },

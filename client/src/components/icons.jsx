@@ -621,3 +621,18 @@ export function moduleFor(path = '') {
     ) || GENERAL
   );
 }
+
+// Uploaded icon for user roles and access management.
+export function IconAccess({ size = 24, className }) {
+  return (
+    <img
+      src={`${import.meta.env.BASE_URL}icons/lock.png`}
+      width={size}
+      height={size}
+      className={className}
+      style={{ objectFit: 'contain', flexShrink: 0 }}
+      alt=""
+      aria-hidden="true"
+    />
+  );
+}

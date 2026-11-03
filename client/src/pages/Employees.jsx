@@ -1676,7 +1676,6 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly, fullPage = 
       e?.vertical_ids || (e?.vertical_id || vertical ? [Number(e?.vertical_id || vertical)] : []),
     department_id: e?.department_id || '',
     designation: e?.designation || '',
-    grade: e?.grade || 'Executive',
     manager_id: e?.manager_id || '',
     employment_type: e?.employment_type || 'Full-time',
     location_id: e?.location_id || '',
@@ -1697,7 +1696,7 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly, fullPage = 
     role: 'employee',
     roleAssignments: e
       ? e.roleAssignments || []
-      : [{ role: 'employee', vertical_id: null, department_id: null }],
+      : [{ role: 'employee', access_scope: 'own', vertical_id: null, department_id: null }],
   }));
   const [run, busy] = useAction(toast);
   const [temp, setTemp] = useState(null);
@@ -1865,13 +1864,6 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly, fullPage = 
           <Field label="Designation">
             <Input value={f.designation} onChange={set('designation')} />
           </Field>
-          <Field label="Grade">
-            <Select
-              value={f.grade}
-              onChange={set('grade')}
-              options={['Executive', 'Senior', 'Manager', 'Head', 'CXO']}
-            />
-          </Field>
           <Field
             label="Reports to (CEO / Head / Manager)"
             hint="A department may have employees reporting directly to its Head."
@@ -1989,7 +1981,7 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly, fullPage = 
       </Field>
       {!selfOnly && (
         <div className="full">
-          <div className="form-section">Roles</div>
+          <div className="form-section">Roles &amp; responsibilities</div>
           <RoleAssignmentsEditor
             value={f.roleAssignments}
             onChange={(rows) => setF((old) => ({ ...old, roleAssignments: rows }))}
