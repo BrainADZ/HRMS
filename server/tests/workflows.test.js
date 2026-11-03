@@ -49,8 +49,13 @@ test('only administrators use email; employees, HR and managers use case-insensi
   );
 });
 
-test('CEO manages employee passwords, revokes sessions and keeps login IDs visible after resets', async () => {
+test('new employee credentials, first-login gate, session rotation, rename and role transitions work together', async () => {
   const admin = await as(ctx.base, ADMIN);
+  const adminEmployeeId = (await admin.get('/auth/me')).body.user.employeeId;
+  assert.equal(
+    (await admin.post(`/employees/${adminEmployeeId}/login`, { role: 'employee' })).status,
+    400,
+  );
   const today = (await admin.get('/meta')).body.today;
   const made = await admin.post('/employees', {
     first_name: 'Login Test',
@@ -59,56 +64,66 @@ test('CEO manages employee passwords, revokes sessions and keeps login IDs visib
     create_login: true,
   });
   assert.equal(made.status, 200, JSON.stringify(made.body));
+  const profile = (await admin.get(`/employees/${made.body.id}`)).body;
+  assert.equal(made.body.username, `logintest${profile.employee.code.toLowerCase()}`);
   const user = await as(ctx.base, made.body.username, made.body.tempPassword);
-  assert.equal((await user.get('/meta')).status, 200);
-  assert.equal((await user.get('/auth/me')).body.user.mustChangePassword, false);
+  assert.equal((await user.get('/employees')).status, 403);
   assert.equal(
     (
       await user.post('/auth/change-password', {
         current: made.body.tempPassword,
-        next: 'SelfChange2026',
+        next: 'NewPassword2026',
       })
     ).status,
-    403,
+    200,
   );
-  const profile = (await user.get(`/employees/${made.body.id}`)).body;
-  assert.equal(profile.login.username, made.body.username);
-  const reset = await admin.post(`/users/${profile.login.id}/reset`);
-  assert.equal(reset.status, 200, JSON.stringify(reset.body));
-  assert.equal((await user.get('/auth/me')).status, 401);
-  const resetUser = await as(ctx.base, reset.body.username, reset.body.tempPassword);
-  assert.equal((await resetUser.get('/meta')).status, 200);
-  assert.equal((await resetUser.get('/auth/me')).body.user.mustChangePassword, false);
+  const raw = await fetch(ctx.base + '/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'hrms' },
+    body: JSON.stringify({ username: made.body.username, password: 'NewPassword2026' }),
+  });
+  const staleCookie = raw.headers.get('set-cookie').split(';')[0];
   assert.equal(
     (
-      await resetUser.post('/auth/change-password', {
-        current: reset.body.tempPassword,
-        next: 'StillBlocked2026',
+      await user.post('/auth/change-password', {
+        current: 'NewPassword2026',
+        next: 'NextPassword2026',
       })
     ).status,
-    403,
+    200,
+  );
+  assert.equal(
+    (await fetch(ctx.base + '/auth/me', { headers: { Cookie: staleCookie } })).status,
+    401,
   );
   assert.equal(
     (await admin.put(`/employees/${made.body.id}`, { first_name: 'Renamed' })).status,
     200,
   );
   const changed = (await admin.get(`/employees/${made.body.id}`)).body.login;
-  assert.notEqual(changed.username, made.body.username);
+  assert.equal(changed.username, `renamed${profile.employee.code.toLowerCase()}`);
   assert.equal(
     (
       await client(ctx.base).post('/auth/login', {
         username: made.body.username,
-        password: reset.body.tempPassword,
+        password: 'NextPassword2026',
       })
     ).status,
     401,
   );
-  const renamed = await as(ctx.base, changed.username, reset.body.tempPassword);
-  assert.equal(
-    (await renamed.get(`/employees/${made.body.id}`)).body.login.username,
-    changed.username,
-  );
+  await as(ctx.base, changed.username, 'NextPassword2026');
+  assert.equal((await admin.put(`/users/${changed.id}`, { role: 'admin' })).status, 200);
+  assert.equal((await user.get('/auth/me')).status, 401);
+  const promoted = await as(ctx.base, 'login.test@example.com', 'NextPassword2026');
+  assert.equal((await promoted.get('/auth/me')).body.user.username, null);
+  assert.equal((await admin.put(`/users/${changed.id}`, { role: 'employee' })).status, 200);
+  assert.equal((await promoted.get('/auth/me')).status, 401);
+  const reset = await admin.post(`/users/${changed.id}/reset`);
+  assert.equal(reset.body.username, changed.username);
+  const resetUser = await as(ctx.base, reset.body.username, reset.body.tempPassword);
+  assert.equal((await resetUser.get('/meta')).status, 403);
 });
+
 test('vertical usernames are returned at creation, accept mixed-case login and follow transfers', async () => {
   const admin = await as(ctx.base, ADMIN);
   const meta = (await admin.get('/meta')).body;

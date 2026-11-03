@@ -163,7 +163,7 @@ test('payroll: run, finance review, management approval by admin only, transfer,
   assert.match(bank.body, /Beneficiary Name/);
 });
 
-test('HR adds an employee with a managed login; the new hire signs in and checks in', async () => {
+test('HR adds an employee with a login; the new hire changes password and checks in', async () => {
   const hr = await as(ctx.base, HR);
   const meta = (await hr.get('/meta')).body;
   const created = await hr.post('/employees', {
@@ -181,12 +181,13 @@ test('HR adds an employee with a managed login; the new hire signs in and checks
   assert.equal(bad.status, 400);
   assert.match(created.body.username, /^testbz\d+$/);
   const me = await as(ctx.base, created.body.username, created.body.tempPassword);
-  assert.equal((await me.get('/auth/me')).body.user.mustChangePassword, false);
-  assert.equal((await me.get('/meta')).status, 200);
+  assert.equal((await me.get('/auth/me')).body.user.mustChangePassword, true);
+  assert.equal((await me.get('/meta')).status, 403);
+  assert.equal((await me.post('/attendance/check-in', { mode: 'wfh' })).status, 403);
   assert.equal(
     (await me.post('/auth/change-password', { current: created.body.tempPassword, next: 'short' }))
       .status,
-    403,
+    400,
   );
   assert.equal(
     (
@@ -195,7 +196,7 @@ test('HR adds an employee with a managed login; the new hire signs in and checks
         next: 'BetterPass123',
       })
     ).status,
-    403,
+    200,
   );
   assert.equal((await me.post('/attendance/check-in', { mode: 'wfh' })).status, 200);
   assert.equal((await me.post('/attendance/check-in', { mode: 'office' })).status, 409);

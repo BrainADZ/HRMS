@@ -58,8 +58,7 @@ test('employee requests an admin reset; only admin can issue the one-time passwo
     401,
   );
   const signedIn = await as(ctx.base, username, reset.body.tempPassword);
-  assert.equal((await signedIn.get('/auth/me')).body.user.mustChangePassword, false);
-  assert.equal((await signedIn.get('/meta')).status, 200);
+  assert.equal((await signedIn.get('/auth/me')).body.user.mustChangePassword, true);
 });
 
 test('admin email recovery sends a private single-use link and revokes old sessions after reset', async () => {

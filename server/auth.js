@@ -1,5 +1,4 @@
 import { membershipSql } from './services/verticals.js';
-import { canManageCredentials } from '../shared/access.js';
 // Password hashing (scrypt) and cookie sessions stored in PostgreSQL.
 import crypto from 'node:crypto';
 import { isCompanyOwner } from './lib/employee-policy.js';
@@ -97,13 +96,11 @@ export async function loadUser(db, userId) {
   );
   if (!row || !row.active) return null;
   const access = await accessProfile(db, row);
-  const credentialAdmin = canManageCredentials({ ...access, role: access.role });
   return {
     id: row.id,
     email: row.email,
     username: row.username,
     ...access,
-    canManageCredentials: credentialAdmin,
     isMasterAdmin: Boolean(row.master_admin),
     employeeId: row.employee_id,
     vertical_ids: row.vertical_ids,
@@ -121,7 +118,7 @@ export async function loadUser(db, userId) {
         ? `/api/files/avatar/${row.id}?v=${encodeURIComponent(row.account_photo)}`
         : null,
     code: row.code,
-    mustChangePassword: Boolean(row.must_change_password) && credentialAdmin,
+    mustChangePassword: Boolean(row.must_change_password),
   };
 }
 

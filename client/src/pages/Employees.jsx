@@ -421,12 +421,11 @@ export function EmployeeProfile({ id, onChanged, isSelf }) {
   };
   const menu = [
     canEdit && { label: 'Change photo', icon: Camera, onClick: () => photoRef.current?.click() },
-    isHR &&
-      user.canManageCredentials && {
-        label: data.login ? 'Reset login password' : 'Create login',
-        icon: KeyRound,
-        onClick: () => setModal('login'),
-      },
+    isHR && {
+      label: data.login ? 'Reset login password' : 'Create login',
+      icon: KeyRound,
+      onClick: () => setModal('login'),
+    },
     isHR &&
       e.status !== 'Exited' && {
         label: 'Apply leave on behalf',
@@ -1678,7 +1677,6 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly, fullPage = 
   const { meta, toast, isAdmin, vertical, user, can } = useApp();
   const canSensitive = !user.managedAccess || can('employees.sensitive');
   const e = employee?.employee;
-  const loginLocked = !!e && !!employee?.login && !user.canManageCredentials;
   const c = employee?.compensation || {};
   const [f, setF] = useState(() => ({
     code: e?.code || '',
@@ -1791,13 +1789,13 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly, fullPage = 
         <>
           <div className="form-section">Personal</div>
           <Field label="First name *">
-            <Input value={f.first_name} readOnly={loginLocked} onChange={set('first_name')} />
+            <Input value={f.first_name} onChange={set('first_name')} />
           </Field>
           <Field label="Last name">
             <Input value={f.last_name} onChange={set('last_name')} />
           </Field>
           <Field label="Work email *">
-            <Input type="email" value={f.email} readOnly={loginLocked} onChange={set('email')} />
+            <Input type="email" value={f.email} onChange={set('email')} />
           </Field>
           <Field label="Gender">
             <Select
@@ -1826,18 +1824,11 @@ export function EmployeeForm({ employee, onClose, onSaved, selfOnly, fullPage = 
             label="Employee ID"
             hint="Your unique company ID. Leave blank when adding to generate BZ + employee number automatically."
           >
-            <Input
-              value={f.code}
-              readOnly={loginLocked}
-              onChange={set('code')}
-              maxLength={30}
-              placeholder="BZ001"
-            />
+            <Input value={f.code} onChange={set('code')} maxLength={30} placeholder="BZ001" />
           </Field>
           <Field label="Primary vertical">
             <Select
               value={f.vertical_id}
-              disabled={loginLocked}
               onChange={(event) =>
                 setF({
                   ...f,

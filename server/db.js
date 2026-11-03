@@ -238,6 +238,7 @@ export async function openDb({
         [29, '029-retire-attendance-verification.sql'],
         [30, '030-default-role-permissions.sql'],
         [31, '031-access-scopes.sql'],
+        [33, '033-remove-custom-credential-access.sql'],
       ];
       await db.tx(async () => {
         await db.exec('SELECT pg_advisory_xact_lock(7264182026)');
