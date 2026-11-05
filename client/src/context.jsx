@@ -30,6 +30,7 @@ const readVertical = () => {
 export function AppProvider({ children }) {
   const [user, setUser] = useState(undefined); // undefined = loading, null = signed out
   const [info, setInfo] = useState({});
+  const [leavingWorkspace, setLeavingWorkspace] = useState(false);
   const [meta, setMeta] = useState(null);
   const [vertical, setVerticalState] = useState(readVertical);
   const [toasts, setToasts] = useState([]);
@@ -74,6 +75,8 @@ export function AppProvider({ children }) {
         demo: me.demo,
         ai: me.ai,
         sessionExpiresAt: me.sessionExpiresAt,
+        globalAppsUrl: me.globalAppsUrl,
+        globalAppSession: me.globalAppSession,
       });
       if (me.user.mustChangePassword) {
         setMeta(null);
@@ -148,14 +151,23 @@ export function AppProvider({ children }) {
   // pause: stop the work clock; the next sign-in asks the reason for the gap.
   const logout = useCallback(
     async ({ pause = false } = {}) => {
-      await api.post('/auth/logout', { pause });
+      // Keep the local login screen hidden while the browser opens Global.
+      if (info.globalAppsUrl) setLeavingWorkspace(true);
+      let result;
+      try {
+        result = await api.post(info.globalAppSession ? '/auth/exit' : '/auth/logout', { pause });
+      } catch (error) {
+        setLeavingWorkspace(false);
+        throw error;
+      }
       window.dispatchEvent(new Event('hrms:signed-out'));
       clearWorkday();
       setUser(null);
       setMeta(null);
-      navigate('/', { replace: true });
+      if (info.globalAppsUrl) window.location.replace(result.returnTo || info.globalAppsUrl);
+      else navigate('/', { replace: true });
     },
-    [navigate],
+    [navigate, info.globalAppsUrl, info.globalAppSession],
   );
 
   const value = useMemo(() => {
@@ -172,6 +184,7 @@ export function AppProvider({ children }) {
         : meta;
     return {
       user,
+      leavingWorkspace,
       info,
       meta: visibleMeta,
       vertical,
@@ -196,6 +209,7 @@ export function AppProvider({ children }) {
   }, [
     pathname,
     user,
+    leavingWorkspace,
     info,
     meta,
     vertical,

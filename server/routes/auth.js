@@ -1,7 +1,10 @@
+import { globalAppsUrl, isGlobalAppSession } from '../services/global-workspace.js';
+import { globalLoginRequest } from '../services/global-login.js';
 import { createHmac, randomBytes } from 'node:crypto';
 import {
   createSession,
   destroySession,
+  clearSessionCookie,
   verifyPassword,
   hashPassword,
   checkPasswordStrength,
@@ -107,19 +110,26 @@ export default function authRoutes(r, { db, passwordResetMailer }) {
   });
 
   r.post('/auth/login', async (req, res) => {
+    const globalLogin = Object.hasOwn(req.body || {}, 'identifier')
+      ? await globalLoginRequest(db, req)
+      : null;
+    const clientIp = globalLogin?.ip || req.ip;
     const loginType = req.body?.loginType || (req.body?.username ? 'employee' : 'admin');
     if (!['admin', 'employee'].includes(loginType))
       fail(400, 'Choose administrator or employee sign-in');
-    const identifier = str(loginType === 'admin' ? req.body?.email : req.body?.username, {
-      required: true,
-      name: loginType === 'admin' ? 'Email' : 'Username',
-      max: 200,
-    }).toLowerCase();
+    const identifier =
+      globalLogin?.identifier ||
+      str(loginType === 'admin' ? req.body?.email : req.body?.username, {
+        required: true,
+        name: loginType === 'admin' ? 'Email' : 'Username',
+        max: 200,
+      }).toLowerCase();
     const password = String(req.body?.password || '');
     if (password.length > 200) fail(400, 'Password is too long');
-    const guard = loginThrottle(`${req.ip}|${identifier}`);
-    const user =
-      loginType === 'admin'
+    const guard = loginThrottle(`${clientIp}|${identifier}`);
+    const user = globalLogin
+      ? globalLogin.user
+      : loginType === 'admin'
         ? await db.get(
             "SELECT id, password_hash, active FROM users WHERE LOWER(email) = ? AND role = 'admin'",
             identifier,
@@ -129,7 +139,10 @@ export default function authRoutes(r, { db, passwordResetMailer }) {
             identifier,
           );
     const quickLogin =
-      quickLoginEnabled(req) && user && req.body?.quickLoginToken === quickToken(user.id);
+      !globalLogin &&
+      quickLoginEnabled(req) &&
+      user &&
+      req.body?.quickLoginToken === quickToken(user.id);
     if (!user || !user.active || (!quickLogin && !verifyPassword(password, user.password_hash))) {
       guard.failed();
       fail(401, 'Incorrect login details');
@@ -142,10 +155,10 @@ export default function authRoutes(r, { db, passwordResetMailer }) {
     const T = workDate(await today(db), settings);
     const who = await loadUser(db, user.id);
     const coords = readCoords(req.body?.location);
-    const check = await checkLocation(db, { user: who, coords, ip: req.ip, today: T, settings });
+    const check = await checkLocation(db, { user: who, coords, ip: clientIp, today: T, settings });
     if (!check.ok) {
       if (check.code !== 'location_required')
-        await logLocation(db, { user: who, event: 'sign-in blocked', coords, ip: req.ip, check });
+        await logLocation(db, { user: who, event: 'sign-in blocked', coords, ip: clientIp, check });
       return res.status(403).json({
         error: check.message,
         code: check.code,
@@ -154,7 +167,7 @@ export default function authRoutes(r, { db, passwordResetMailer }) {
       });
     }
     if (geofencePolicy(settings).mode !== 'off')
-      await logLocation(db, { user: who, event: 'sign-in', coords, ip: req.ip, check });
+      await logLocation(db, { user: who, event: 'sign-in', coords, ip: clientIp, check });
     await db.run('UPDATE users SET last_login = ? WHERE id = ?', new Date().toISOString(), user.id);
     // Office-only sign-ins last until midnight, so each workday starts in the office.
     const expiresAt =
@@ -227,27 +240,39 @@ export default function authRoutes(r, { db, passwordResetMailer }) {
   });
 
   // pause: true stops the work clock; the next sign-in asks why the employee was away.
-  r.post('/auth/logout', async (req, res) => {
-    let paused = null;
-    if (req.user?.employeeId && !req.user.isOwner && req.body?.pause) {
-      const active = await db.get(
-        'SELECT date, mode, work_status_id FROM work_sessions WHERE employee_id=? AND end_at IS NULL ORDER BY start_at DESC LIMIT 1',
-        req.user.employeeId,
-      );
-      if (!active?.work_status_id)
-        paused = await endSession(db, {
-          employeeId: req.user.employeeId,
-          date:
-            active?.mode === 'on_duty'
-              ? active.date
-              : workDate(await today(db), await getSettings(db)),
-          by: 'signout',
-          userId: req.user.id,
-        });
-    }
-    await destroySession(db, req, res);
-    res.json({ ok: true, paused: Boolean(paused) });
-  });
+  const leave =
+    (appOnly = false) =>
+    async (req, res) => {
+      if (appOnly && !req.user) fail(401, 'Please sign in');
+      let paused = null;
+      if (req.user?.employeeId && !req.user.isOwner && req.body?.pause) {
+        const active = await db.get(
+          'SELECT date, mode, work_status_id FROM work_sessions WHERE employee_id=? AND end_at IS NULL ORDER BY start_at DESC LIMIT 1',
+          req.user.employeeId,
+        );
+        if (!active?.work_status_id)
+          paused = await endSession(db, {
+            employeeId: req.user.employeeId,
+            date:
+              active?.mode === 'on_duty'
+                ? active.date
+                : workDate(await today(db), await getSettings(db)),
+            by: 'signout',
+            userId: req.user.id,
+          });
+      }
+      // App exit keeps the Global session available for choosing another app.
+      // Full /auth/logout always revokes the native session as before.
+      if (appOnly && isGlobalAppSession(req)) clearSessionCookie(req, res);
+      else await destroySession(db, req, res);
+      res.json({
+        ok: true,
+        paused: Boolean(paused),
+        ...(appOnly ? { returnTo: globalAppsUrl(req) } : {}),
+      });
+    };
+  r.post('/auth/logout', leave());
+  r.post('/auth/exit', leave(true));
 
   r.get('/auth/me', async (req, res) => {
     if (!req.user) return res.status(401).json({ error: 'Please sign in' });
@@ -258,6 +283,8 @@ export default function authRoutes(r, { db, passwordResetMailer }) {
       demo: exposeDemo(s),
       ai: aiEnabled(),
       sessionExpiresAt: req.sessionExpiresAt,
+      globalAppsUrl: globalAppsUrl(req),
+      globalAppSession: isGlobalAppSession(req),
     });
   });
 

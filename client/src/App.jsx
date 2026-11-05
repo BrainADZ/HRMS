@@ -90,14 +90,15 @@ export default function App() {
 }
 
 function AppRoutes() {
-  const { user, meta } = useApp();
+  const { user, meta, leavingWorkspace } = useApp();
   const location = useLocation();
   useLayoutEffect(() => {
     window.scrollTo(0, 0);
   }, [location.pathname]);
+  if (leavingWorkspace) return <Loading text="Opening your workspace..." />;
   if (location.pathname === '/reset-password') return <ResetPassword />;
   if (user?.mustChangePassword) return <ChangePassword forced onClose={() => {}} />;
-  if (user === undefined || (user && !meta)) return <Loading text="Loading BrainADZ HRMS…" />;
+  if (user === undefined || (user && !meta)) return <Loading text="Loading BrainADZ HRMSÃ¢â‚¬Â¦" />;
   if (!user) return <Login />;
   const HR = ['admin', 'accounts', 'hr'];
   return (

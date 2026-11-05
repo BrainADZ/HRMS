@@ -182,7 +182,7 @@ const readFloating = () => {
 };
 
 function Sidebar({ open, onClose, onFloat, collapsed, onToggle }) {
-  const { user, setVertical } = useApp();
+  const { user, setVertical, info } = useApp();
   const { pathname } = useLocation();
   const items = NAV.filter((n) =>
     n.to === '/my'
@@ -256,6 +256,12 @@ function Sidebar({ open, onClose, onFloat, collapsed, onToggle }) {
                 <span className="nav-label">{n.label}</span>
               </NavLink>
             ),
+          )}
+          {info.globalAppsUrl && (
+            <a href={info.globalAppsUrl} title="Switch App" onClick={onClose}>
+              <LayoutGrid size={21} strokeWidth={1.9} />
+              <span className="nav-label">Switch App</span>
+            </a>
           )}
           <button
             type="button"
@@ -549,7 +555,7 @@ export function ChangePassword({ onClose, forced }) {
 }
 
 function UserMenu({ onGetApp }) {
-  const { user, logout, toast } = useApp();
+  const { user, logout, toast, info } = useApp();
   const workday = useWorkday();
   const [open, setOpen] = useState(false);
   const [pw, setPw] = useState(false);
@@ -665,6 +671,12 @@ function UserMenu({ onGetApp }) {
             <FileText size={16} />
             Resignation
           </button>
+          {info.globalAppsUrl && (
+            <a className="item" href={info.globalAppsUrl}>
+              <LayoutGrid size={16} />
+              Switch App
+            </a>
+          )}
           <button type="button" className="item" style={{ color: 'var(--red)' }} onClick={signOut}>
             <LogOut size={16} />
             Sign out

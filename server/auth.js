@@ -80,10 +80,14 @@ export async function createSession(db, req, res, userId, { expiresAt = null } =
   );
 }
 
+export function clearSessionCookie(req, res) {
+  res.setHeader('Set-Cookie', `${COOKIE}=; ${cookieOptions(req)}; Max-Age=0`);
+}
+
 export async function destroySession(db, req, res) {
   const token = parseCookies(req.headers.cookie)[COOKIE];
   if (token) await db.run('DELETE FROM sessions WHERE token_hash = ?', sha256(token));
-  res.setHeader('Set-Cookie', `${COOKIE}=; ${cookieOptions(req)}; Max-Age=0`);
+  clearSessionCookie(req, res);
 }
 
 export async function loadUser(db, userId) {
